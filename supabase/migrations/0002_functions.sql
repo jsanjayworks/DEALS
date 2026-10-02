@@ -88,7 +88,9 @@ select
   d.original_price,
   d.deal_price,
   d.discount_pct,
-  d.currency,
+  -- char(3) on the table, text in the deal_card composite: cast once here so
+  -- every reader inherits it.
+  d.currency::text as currency,
   d.price_unit,
   d.taxes_note,
   d.min_purchase,
@@ -421,6 +423,9 @@ declare
   v_tod       text    := nullif(p_filters->>'time_of_day', '');
   v_from      time;
   v_to        time;
+  -- Cleaned query words, matched against the tags array. Tags cannot live in
+  -- the generated search_vector (see 0001_init), so they are matched here.
+  v_terms     text[]  := '{}';
 begin
   -- A named locality replaces the device location as the search centre.
   if v_locality is not null then
@@ -433,6 +438,11 @@ begin
   v_origin := coalesce(v_origin, st_setsrid(st_makepoint(p_lng, p_lat), 4326)::geography);
 
   if v_q is not null then
+    v_terms := array(
+      select regexp_replace(w, '[^a-zA-Z0-9]', '', 'g')
+      from unnest(string_to_array(lower(v_q), ' ')) w
+      where length(regexp_replace(w, '[^a-zA-Z0-9]', '', 'g')) > 2
+    );
     -- Prefix-match every word so "biry" still finds biryani.
     v_tsq := to_tsquery('simple',
       array_to_string(
@@ -458,7 +468,8 @@ begin
         when v_tsq is null then 0.5
         else least(
           ts_rank(v.search_vector, v_tsq)::double precision * 4
-            + similarity(lower(v.title), lower(v_q))::double precision,
+            + similarity(lower(v.title), lower(v_q))::double precision
+            + case when v.tags && v_terms then 0.35 else 0 end,
           1.0
         )
       end as relevance
@@ -469,6 +480,7 @@ begin
       and v.location is not null
       and st_dwithin(v.location, v_origin, (v_radius_km * 1000)::int)
       and (v_tsq is null or v.search_vector @@ v_tsq
+           or v.tags && v_terms
            or similarity(lower(v.title), lower(v_q)) > 0.25)
       and (p_filters->>'vertical'      is null or v.vertical      = p_filters->>'vertical')
       and (p_filters->>'category_slug' is null or v.category_slug = p_filters->>'category_slug')
@@ -562,31 +574,29 @@ end $$;
 
 -- ------------------------------------------------------ lifecycle engine ---
 
-create or replace function transition_deal(
+/**
+ * The trusted core. It takes the actor on faith, so it is never granted to
+ * anon or authenticated — only other SECURITY DEFINER functions call it.
+ *
+ * It exists because some legitimate transitions are made by 'system' while a
+ * customer is the one signed in: claiming the last unit sells a deal out, and
+ * approving one walks it PUBLISHED -> ACTIVE. Deriving the actor from the
+ * session, as the public wrapper does, would refuse both.
+ */
+create or replace function transition_deal_internal(
   p_deal_id   uuid,
   p_to_status deal_status,
-  p_actor     actor_kind default 'merchant',
-  p_reason    text       default null
+  p_actor     actor_kind,
+  p_reason    text default null
 ) returns deal_status
 language plpgsql security definer set search_path = public as $$
 declare
-  v_deal   deals;
-  v_actor  actor_kind := p_actor;
+  v_deal  deals;
+  v_actor actor_kind := p_actor;
 begin
   select * into v_deal from deals where id = p_deal_id for update;
   if not found then
     raise exception 'deal % not found', p_deal_id using errcode = 'P0002';
-  end if;
-
-  -- Resolve who is really acting, rather than trusting the caller's claim.
-  if current_is_admin() then
-    v_actor := 'admin';
-  elsif is_business_member(v_deal.business_id) then
-    v_actor := 'merchant';
-  elsif auth.uid() is null then
-    v_actor := 'system';       -- pg_cron and server-side workers
-  else
-    raise exception 'not permitted to move deal %', p_deal_id using errcode = '42501';
   end if;
 
   if not exists (
@@ -629,6 +639,40 @@ begin
 end $$;
 
 /**
+ * The client-facing entry point. Resolves who is really acting from the
+ * session rather than trusting p_actor, then defers to the core. p_actor is
+ * kept in the signature for call-site readability and is ignored.
+ */
+create or replace function transition_deal(
+  p_deal_id   uuid,
+  p_to_status deal_status,
+  p_actor     actor_kind default 'merchant',
+  p_reason    text       default null
+) returns deal_status
+language plpgsql security definer set search_path = public as $$
+declare
+  v_deal  deals;
+  v_actor actor_kind;
+begin
+  select * into v_deal from deals where id = p_deal_id;
+  if not found then
+    raise exception 'deal % not found', p_deal_id using errcode = 'P0002';
+  end if;
+
+  if current_is_admin() then
+    v_actor := 'admin';
+  elsif is_business_member(v_deal.business_id) then
+    v_actor := 'merchant';
+  elsif auth.uid() is null then
+    v_actor := 'system';       -- pg_cron and server-side workers
+  else
+    raise exception 'not permitted to move deal %', p_deal_id using errcode = '42501';
+  end if;
+
+  return transition_deal_internal(p_deal_id, p_to_status, v_actor, p_reason);
+end $$;
+
+/**
  * Admin decision from the review queue. Approving runs the whole tail of the
  * lifecycle in one transaction: APPROVED -> PUBLISHED, and straight on to
  * ACTIVE when the start time has already passed.
@@ -663,7 +707,7 @@ begin
     perform transition_deal(p_deal_id, 'APPROVED',  'admin');
     v_status := transition_deal(p_deal_id, 'PUBLISHED', 'admin');
     if v_deal.starts_at is null or v_deal.starts_at <= now() then
-      v_status := transition_deal(p_deal_id, 'ACTIVE', 'system');
+      v_status := transition_deal_internal(p_deal_id, 'ACTIVE', 'system');
     end if;
   end if;
 
@@ -798,7 +842,10 @@ begin
     redemption_code, payload
   ) values (
     p_deal_id, auth.uid(), p_action_type,
-    case when p_action_type = 'enquiry' then 'pending' else 'confirmed' end,
+    -- An enquiry stays pending until the merchant replies; everything else
+    -- confirms on the spot.
+    (case when p_action_type = 'enquiry' then 'pending' else 'confirmed' end)
+      ::customer_action_status,
     p_quantity, p_slot_start,
     case when p_action_type in ('claim','booking','reserve','registration')
          then gen_redemption_code() end,
@@ -816,7 +863,7 @@ begin
   -- Sold out closes the deal in the same transaction.
   if v_deal.capacity_remaining is not null
      and v_deal.capacity_remaining - p_quantity = 0 then
-    perform transition_deal(p_deal_id, 'EXPIRED', 'system', 'sold out');
+    perform transition_deal_internal(p_deal_id, 'EXPIRED', 'system', 'sold out');
   end if;
 
   return v_row;
@@ -857,15 +904,16 @@ declare
   v_row  customer_actions;
   v_biz  uuid;
 begin
-  select ca.*, d.business_id into v_row, v_biz
-  from customer_actions ca
-  join deals d on d.id = ca.deal_id
-  where ca.redemption_code = upper(trim(p_code))
-  for update of ca;
+  select * into v_row
+  from customer_actions
+  where redemption_code = upper(trim(p_code))
+  for update;
 
   if not found then
     raise exception 'code not recognised' using errcode = 'P0002';
   end if;
+
+  select business_id into v_biz from deals where id = v_row.deal_id;
   if not (is_business_member(v_biz) or current_is_admin()) then
     raise exception 'not your deal' using errcode = '42501';
   end if;
@@ -1239,7 +1287,7 @@ begin
       and (starts_at is null or starts_at <= now())
       and (ends_at is null or ends_at > now())
   loop
-    perform transition_deal(v_id, 'ACTIVE', 'system');
+    perform transition_deal_internal(v_id, 'ACTIVE', 'system');
     v_n := v_n + 1;
   end loop;
   return v_n;
@@ -1253,7 +1301,7 @@ begin
     select id from deals
     where status in ('ACTIVE','PUBLISHED','PAUSED') and ends_at is not null and ends_at <= now()
   loop
-    perform transition_deal(v_id, 'EXPIRED', 'system', 'window closed');
+    perform transition_deal_internal(v_id, 'EXPIRED', 'system', 'window closed');
     v_n := v_n + 1;
   end loop;
   return v_n;

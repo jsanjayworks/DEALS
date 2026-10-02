@@ -33,7 +33,14 @@
     "start": "expo start",
     "android": "expo start --android",
     "ios": "expo start --ios",
-    "web": "expo start --web"
+    "web": "expo start --web",
+    "typecheck": "tsc --noEmit",
+    "lint": "expo lint",
+    "gen:seed": "tsc --ignoreConfig src/data/seed-deals.ts src/data/seed-reference.ts --outDir .seedbuild --module commonjs --target es2022 --skipLibCheck --esModuleInterop && node scripts/gen-seed-sql.mjs .seedbuild",
+    "db:up": "docker run -d --name yolo-pg -e POSTGRES_PASSWORD=yolo -e POSTGRES_DB=yolo -p 55432:5432 postgis/postgis:16-3.4",
+    "db:reset": "bash scripts/db-reset.sh",
+    "db:test": "bash scripts/db-test.sh",
+    "db:verify": "bash scripts/db-verify.sh"
   },
   "private": true
 }

@@ -21,7 +21,9 @@ dropped straight on top.
 |---|---|---|
 | Database schema | `supabase/migrations/0001_init.sql` | 30 tables, enums, indexes, partitioned `deal_events`, lifecycle transition table |
 | Business logic | `supabase/migrations/0002_functions.sql` | All five PRD engines as `SECURITY DEFINER` RPCs |
-| Security | `supabase/migrations/0003_rls.sql` | RLS on every table, plus column-level revokes on `deals.status` |
+| Security | `supabase/migrations/0003_rls.sql` | RLS on every table, plus table-level write lockdown routing all writes through RPCs |
+| Seed SQL | `supabase/migrations/0004_seed.sql` | Generated from the TypeScript seed by `npm run gen:seed` |
+| Backend tests | `supabase/local/0{1,2}_*.sql` | **110 assertions, all passing** against Postgres 16.4 + PostGIS 3.4.3 |
 | Domain types | `src/data/types.ts` | Field names mirror the SQL one-to-one |
 | Mapping layer | `src/data/mapping.ts` | SQL `deal_card` row ↔ nested `DealCardModel`, both directions |
 | Data contract | `src/data/api.ts` | The single interface every screen will call |
@@ -33,44 +35,77 @@ dropped straight on top.
 | Seed content | `src/data/seed-*.ts` | 10 localities, 31 categories, 32 businesses, 56 live deals + pipeline/queue deals |
 | Design tokens | `src/theme/tokens.ts` | PRD section 28 palette and type scale |
 
-`npx tsc --noEmit` passes clean.
+`npm run typecheck` and `npm run db:verify` both pass.
+
+### Bugs the test suite caught
+
+Worth recording, because all three would have shipped silently and two were
+security holes:
+
+1. **A customer claiming the last unit could not sell the deal out.**
+   `take_deal_action` expired the deal via `transition_deal`, which re-derives
+   the actor from the session — and a customer may not move deals. Same flaw
+   broke `review_deal`'s `PUBLISHED → ACTIVE` step. Fixed by splitting the
+   trusted core (`transition_deal_internal`, never granted to clients) from the
+   public wrapper that resolves the real actor.
+
+2. **`deals.status` was writable by any authenticated user.** Column-level
+   `REVOKE UPDATE (status)` is a no-op while a table-wide `UPDATE` grant
+   exists, and Supabase grants exactly that by default. The lifecycle could
+   have been bypassed entirely. Fixed by revoking table-level writes on `deals`
+   and `customer_actions` and granting nothing back — every write goes through
+   an RPC.
+
+3. **A customer could make themselves an admin.** `profiles_self_write` allowed
+   updating any column of your own row, including `is_admin` and
+   `is_yolo_verified`. Fixed by revoking `UPDATE` on `profiles` and granting
+   back only the fields a person legitimately edits.
 
 ### Not done yet
 
 - **All screens.** Waiting on Figma.
 - **Supabase adapter** (`src/data/supabase.ts`) — the contract is defined, the
   RPC calls are not written yet.
-- **Seed SQL** (`0004_seed.sql`) — the TypeScript seed exists; the SQL version
-  that loads the same rows into Postgres does not.
-- **Migrations have not been executed against a real Postgres.** They are
-  written but unverified: Docker Desktop would not start on this machine, so
-  nothing has run them yet. Treat the SQL as draft until it does.
-- `App.tsx` is still the Expo template. Expo Router is installed but not wired.
+- `App.tsx` is still the Expo template. Expo Router is installed but not wired,
+  and per `AGENTS.md` routes belong in `src/app/`.
+- Migrations have only run against local Postgres, not the real Supabase
+  project. `0004_seed.sql` inserts into `auth.users` directly, which Supabase
+  discourages — on the real project, create the three demo accounts through
+  Auth first, then run the seed with those ids.
+- pg_cron is not scheduled yet. `activate_due_deals()`, `expire_due_deals()`
+  and `rollup_deal_analytics()` exist and are tested, but nothing calls them on
+  a timer.
 
 ---
 
-## Resuming after a restart
+## Running it
 
 ```bash
-npm install          # if node_modules is missing
-npx tsc --noEmit     # should exit 0
+npm install
+npm run typecheck     # tsc --noEmit
+npm run db:up         # start the local PostGIS container (once)
+npm run db:verify     # rebuild the schema, then run 110 assertions
 ```
 
-### To verify the SQL (the next thing worth doing)
+| Command | What it does |
+|---|---|
+| `npm run db:up` | Starts `postgis/postgis:16-3.4` on port 55432 |
+| `npm run db:reset` | Drops and rebuilds the schema, applying every migration in order |
+| `npm run db:test` | Runs the two SQL suites (needs a freshly reset database) |
+| `npm run db:verify` | `db:reset` then `db:test` — the one to use |
+| `npm run gen:seed` | Regenerates `0004_seed.sql` from `src/data/seed-*.ts` |
 
-Either start Docker Desktop and run:
+The seed's dates are relative to generation time, so the Today and Ending Soon
+rails go stale after a few days — rerun `npm run gen:seed`.
 
-```bash
-docker run -d --name yolo-pg -e POSTGRES_PASSWORD=yolo -e POSTGRES_DB=yolo \
-  -p 55432:5432 postgis/postgis:16-3.4
-```
+`supabase/local/` is test scaffolding only. It fakes the `auth` schema and the
+`anon` / `authenticated` roles that Supabase provides for real, so
+**never run it against the real project**.
 
-…then apply `0001` → `0002` → `0003` in that order. The schema references
-`auth.users` and the `anon` / `authenticated` roles, so a local run needs a
-small Supabase stub first (not written yet).
+### Against real Supabase
 
-Or point it at the real Supabase project, which already has `auth` and the
-roles, and apply the three migrations through the SQL editor.
+Apply `0001` → `0002` → `0003` through the SQL editor. Skip the stub: the
+project already has `auth` and the roles.
 
 ---
 

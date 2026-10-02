@@ -279,21 +279,46 @@ create policy search_queries_read on search_queries for select
 -- is created, so with RLS enabled they are unreachable from anon/authenticated
 -- keys; the SECURITY DEFINER functions and the service role still reach them.
 
--- ------------------------------------------------- column-level lockdown ---
--- Even with the update policy above, these columns must never move from a
--- client: status is the lifecycle, the counters are analytics, and
--- capacity_remaining is decremented under a row lock by take_deal_action().
+-- -------------------------------------------------- write lockdown --------
+-- Supabase grants ALL on public tables to anon and authenticated and leans on
+-- RLS. A table-wide UPDATE grant OVERRIDES any column-level revoke — Postgres
+-- keeps honouring the broader privilege — so `revoke update (status)` alone is
+-- worthless. The table-level privilege has to go first.
+--
+-- Nothing is granted back. Every write to these two tables belongs to an RPC:
+--   deals             -> save_deal_draft, transition_deal, review_deal, duplicate_deal
+--   customer_actions  -> take_deal_action, cancel_action, redeem_action
+-- Those are SECURITY DEFINER, so they run as the owner and are unaffected.
+--
+-- The policies above are kept deliberately: they stay correct if a future
+-- migration grants a narrow column set back, and they document the intent.
 
-revoke update (status, published_at, rejection_reason,
-               capacity_remaining, view_count, search_count, action_count,
-               rating_avg, rating_count)
-  on deals from authenticated, anon;
+revoke insert, update, delete on deals            from anon, authenticated;
+revoke insert, update, delete on customer_actions from anon, authenticated;
 
-revoke update (redemption_code, status, redeemed_at)
-  on customer_actions from authenticated, anon;
+-- profiles_self_write lets a user update their own row, which without this
+-- would include is_admin and is_yolo_verified — self-promotion to admin, and
+-- self-granting the badge that unlocks "verified users only" deals. Only the
+-- fields a person legitimately edits about themselves are granted back.
+-- Note phone is excluded: it is the identity, and changing it belongs to auth.
+revoke update on profiles from anon, authenticated;
+grant  update (full_name, email, date_of_birth, default_radius_m,
+               onboarded_at, deleted_at)
+  on profiles to authenticated;
 
-revoke insert on deal_status_history from authenticated, anon;
-revoke update on deal_status_history from authenticated, anon;
+-- The audit trail is append-only, and only from inside transition_deal().
+revoke insert, update, delete on deal_status_history from anon, authenticated;
+
+-- Reviews and reports are ordinary user content and stay client-writable,
+-- but their verdict fields are not.
+revoke update on reports from anon, authenticated;
+grant  update (details) on reports to authenticated;
+
+-- Reference data is read-only for clients; admins change it through the
+-- categories_admin / deal_types_admin / localities_admin policies, which the
+-- grants below still allow.
+revoke insert, update, delete on deal_transitions, ranking_config
+  from anon, authenticated;
 
 -- ----------------------------------------------------------- grants -------
 -- RPCs are the supported surface. Reads go through the views and policies.
@@ -322,7 +347,30 @@ grant execute on function current_is_admin()             to anon, authenticated;
 grant execute on function is_business_member(uuid)       to anon, authenticated;
 
 -- Workers only.
-revoke execute on function claim_outbox_batch(int)    from anon, authenticated;
-revoke execute on function activate_due_deals()       from anon, authenticated;
-revoke execute on function expire_due_deals()         from anon, authenticated;
-revoke execute on function rollup_deal_analytics(date) from anon, authenticated;
+--
+-- Postgres grants EXECUTE on every new function to PUBLIC, and anon and
+-- authenticated inherit it through that. Revoking from those two roles alone
+-- leaves the PUBLIC grant intact and changes nothing — PUBLIC has to be named.
+--
+-- transition_deal_internal is the sharpest edge here: it trusts its actor
+-- argument, so reaching it would let a client claim to be 'system' and drive
+-- any deal anywhere. Clients get transition_deal, which derives the actor from
+-- the session instead.
+revoke execute on function transition_deal_internal(uuid, deal_status, actor_kind, text)
+  from public, anon, authenticated;
+revoke execute on function claim_outbox_batch(int)
+  from public, anon, authenticated;
+revoke execute on function activate_due_deals()
+  from public, anon, authenticated;
+revoke execute on function expire_due_deals()
+  from public, anon, authenticated;
+revoke execute on function rollup_deal_analytics(date)
+  from public, anon, authenticated;
+revoke execute on function ensure_event_partitions()
+  from public, anon, authenticated;
+revoke execute on function emit_event(text, text, uuid, jsonb, uuid)
+  from public, anon, authenticated;
+revoke execute on function notify_profile(uuid, text, text, text, jsonb)
+  from public, anon, authenticated;
+revoke execute on function gen_redemption_code()
+  from public, anon, authenticated;

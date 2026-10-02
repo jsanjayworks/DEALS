@@ -229,11 +229,14 @@ create table deals (
   location              geography(Point,4326),          -- primary location, denormalized
   search_radius_m       int not null default 5000,
 
+  -- Tags are deliberately NOT folded in here: array_to_string() is only
+  -- stored as stable, not immutable, so Postgres rejects it in a generated
+  -- column. search_deals() matches the tags array directly instead, which the
+  -- deals_tags GIN index serves.
   search_vector         tsvector generated always as (
                           setweight(to_tsvector('simple', coalesce(title,'')), 'A') ||
                           setweight(to_tsvector('simple', coalesce(short_description,'')), 'B') ||
-                          setweight(to_tsvector('simple', coalesce(description,'')), 'C') ||
-                          setweight(to_tsvector('simple', coalesce(array_to_string(tags,' '),'')), 'B')
+                          setweight(to_tsvector('simple', coalesce(description,'')), 'C')
                         ) stored,
 
   rejection_reason      text,
