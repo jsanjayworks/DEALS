@@ -3,9 +3,15 @@
 Hyperlocal deals marketplace for Bengaluru. One Expo app carries both the
 customer and merchant modes; a Next.js admin console comes later.
 
-The engineering plan and the Figma design prompt are not in the repo yet — they
-live outside it for now. Worth committing them under `docs/` so the spec and
-the code travel together.
+Designs come from Figma Make; the token source is committed at
+`docs/design/figma-make/index.css` and `src/theme/tokens.ts` is derived from it.
+
+**A naming trap worth knowing about.** The Figma tokens kept their original
+teal-era *names* after the palette moved to plum, lilac and lime.
+`--color-aqua` is plum `#4B1D6B`. `--color-citrus` is lime `#C8EB2A`.
+`--color-seafoam` is lilac. Nothing in the palette is aqua or seafoam any more.
+`tokens.ts` renames them semantically (`brand`, `cta`, `surfaceSoft`) and notes
+the mapping on each one.
 
 ---
 
@@ -32,8 +38,10 @@ dropped straight on top.
 | Ranking | `src/domain/ranking.ts` | Mirror of `deal_score()` — same 8 weights |
 | Action rules | `src/domain/rules.ts` | Mirror of `take_deal_action()` eligibility |
 | NL search | `src/search/parser.ts` | Rule-based parser, no API key needed |
-| Seed content | `src/data/seed-*.ts` | 10 localities, 31 categories, 32 businesses, 56 live deals + pipeline/queue deals |
-| Design tokens | `src/theme/tokens.ts` | PRD section 28 palette and type scale |
+| Seed content | `src/data/seed-*.ts` | 10 localities, 30 categories, 32 businesses, 56 live deals + pipeline/queue deals |
+| Design tokens | `src/theme/tokens.ts` | Plum / lilac / lime palette, Inter scale, derived from the Figma export |
+| Component library | `src/components/` | Icon set (30 paths ported 1:1), Button, Chip, Badges, StatusPill, Price, DealCard (3 variants), Header, Section, Field, EmptyState |
+| Navigation | `src/app/` | Expo Router: customer tabs, deal detail, results. Home reads live feed data |
 
 `npm run typecheck` and `npm run db:verify` both pass.
 

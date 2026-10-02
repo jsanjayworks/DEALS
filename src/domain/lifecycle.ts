@@ -89,19 +89,6 @@ export const STATUS_LABEL: Record<DealStatus, string> = {
   ARCHIVED: 'Archived',
 };
 
-/** Which of the four status colours a pill should use. */
-export type StatusTone = 'active' | 'pending' | 'rejected' | 'info';
-
-export const STATUS_TONE: Record<DealStatus, StatusTone> = {
-  DRAFT: 'info',
-  SUBMITTED: 'pending',
-  VERIFICATION: 'pending',
-  APPROVED: 'active',
-  REJECTED: 'rejected',
-  PUBLISHED: 'active',
-  ACTIVE: 'active',
-  PAUSED: 'pending',
-  EXPIRED: 'rejected',
-  COMPLETED: 'info',
-  ARCHIVED: 'info',
-};
+// Status colour is a presentation concern and lives with the components:
+// see TONE_BY_LABEL in src/components/Badges.tsx. Keeping it out of here stops
+// the domain layer from depending on the theme.

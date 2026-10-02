@@ -1,0 +1,42 @@
+/* Exported verbatim from Figma Make (src/index.css). Reference only.
+   src/theme/tokens.ts is derived from this file — keep the two in step.
+
+   Naming warning: these variables kept their teal-era NAMES after the palette
+   moved to plum, lilac and lime. --color-aqua is plum, --color-citrus is lime,
+   --color-seafoam is lilac. tokens.ts renames them semantically. */
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+@import 'tailwindcss';
+
+@theme {
+  --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
+  --color-aqua: #4B1D6B;
+  --color-teal: #3A1454;
+  --color-turq: #8B5CF6;
+  --color-seafoam: #D9C8F0;
+  --color-lightaqua: #E6D9F7;
+  --color-ice: #F7F3FA;
+  --color-warm: #FF9F68;
+  --color-citrus: #C8EB2A;
+  --color-terra: #E8445A;
+  --color-coral: #F0506E;
+  --color-lemon: #D4F23F;
+  --color-ink: #1E1028;
+  --color-ink2: #5E4E6B;
+  --color-ink3: #A89BB3;
+  --color-line: #E9E0F0;
+}
+
+@layer base {
+  body { font-family: var(--font-sans); color: var(--color-ink); background: var(--color-ice); -webkit-font-smoothing: antialiased; }
+  ::selection { background: var(--color-lightaqua); }
+  .tnum { font-variant-numeric: tabular-nums; }
+  .noscroll::-webkit-scrollbar { display: none; }
+  .noscroll { scrollbar-width: none; }
+}
+@keyframes pop { 0% { transform: scale(.4); opacity: 0 } 70% { transform: scale(1.1) } 100% { transform: scale(1); opacity: 1 } }
+@keyframes up { from { transform: translateY(100%) } to { transform: translateY(0) } }
+@keyframes fade { from { opacity: 0; transform: translateY(6px) } to { opacity: 1; transform: none } }
+.anim-pop { animation: pop .5s cubic-bezier(.2,.8,.2,1) both }
+.anim-up { animation: up .32s cubic-bezier(.2,.8,.2,1) both }
+.anim-fade { animation: fade .3s ease both }
