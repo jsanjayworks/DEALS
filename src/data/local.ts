@@ -20,17 +20,31 @@ import {
 } from './seed-reference';
 import { SEED_ADMIN_QUEUE_DEALS, SEED_DEALS, SEED_PIPELINE_DEALS } from './seed-deals';
 import { dealToCard, haversineKm } from './mapping';
-import { RuleViolation } from './api';
-import type {
-  ActionWithDeal,
-  DataSource,
-  DealDraftInput,
-  FeedQuery,
-  MerchantStats,
-  SearchQuery,
-  SearchResult,
-  TakeActionInput,
+import {
+  RuleViolation,
+  type ActionWithDeal,
+  type AppViewer,
+  type DataSource,
+  type DealDraftInput,
+  type FeedQuery,
+  type MerchantStats,
+  type SearchQuery,
+  type SearchResult,
+  type TakeActionInput,
+  type BusinessVerification,
+  type VerificationRequest,
 } from './api';
+import {
+  CONSTITUTION_LABEL,
+  LICENCE_LABEL,
+  fssaiProblem,
+  gstinProblem,
+  normaliseId,
+  panConstitutionProblem,
+  panOfGstin,
+  panProblem,
+  udyamProblem,
+} from '../lib/india-ids';
 import { canTransition, isPubliclyVisible, type Actor } from '../domain/lifecycle';
 import { scoreDeal, textRelevance } from '../domain/ranking';
 import {
@@ -39,7 +53,6 @@ import {
   initialStatus,
   isVisibleTo,
   mintsCode,
-  type Viewer,
 } from '../domain/rules';
 import type {
   Business,
@@ -55,11 +68,8 @@ import type {
   SearchFilters,
 } from './types';
 
-export interface LocalViewer extends Viewer {
-  is_admin: boolean;
-  /** Businesses this account is a member of — the merchant-mode gate. */
-  business_ids: string[];
-}
+/** The demo accounts use the same viewer shape the Supabase session produces. */
+export type LocalViewer = AppViewer;
 
 export const DEMO_CUSTOMER: LocalViewer = {
   id: 'usr-demo-customer',
@@ -106,6 +116,8 @@ export interface LocalStore {
   saved: Set<string>;
   outbox: OutboxEvent[];
   reports: { id: string; target_type: string; target_id: string; reason: string }[];
+  /** Every verification request, oldest first, with who filed it. */
+  verifications: (BusinessVerification & { business_id: string; owner_profile_id: string })[];
   viewer: LocalViewer;
 }
 
@@ -120,6 +132,7 @@ export function createStore(viewer: LocalViewer = DEMO_CUSTOMER): LocalStore {
     saved: new Set<string>(),
     outbox: [],
     reports: [],
+    verifications: [],
     viewer,
   };
 }
@@ -307,6 +320,136 @@ export function createLocalDataSource(
       return BUSINESSES.find((b) => b.id === id) ?? null;
     },
 
+    // Mirrors create_business() in 0006_merchant_onboarding.sql.
+    async createBusiness(input): Promise<string> {
+      const name = input.name.trim();
+      const address = input.address_line.trim();
+      const phone = input.phone?.trim() || '';
+      const email = input.email?.trim() || '';
+      if (name.length < 2 || name.length > 80) {
+        throw new RuleViolation('Business name must be 2 to 80 characters');
+      }
+      if (!CATEGORIES.some((c) => c.id === input.primary_category_id)) {
+        throw new RuleViolation('Choose what kind of business this is');
+      }
+      const locality = LOCALITIES.find((l) => l.id === input.locality_id);
+      if (!locality) throw new RuleViolation('Choose the area your business is in');
+      if (address.length < 5) throw new RuleViolation('Enter the street address');
+      if (phone && !/^\+?[0-9 ]{8,16}$/.test(phone)) throw new RuleViolation('Enter a valid phone number');
+      if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+        throw new RuleViolation('Enter a valid email address');
+      }
+      if (store.viewer.business_ids.length >= 5) {
+        throw new RuleViolation('You can own up to five businesses. Contact support to add more');
+      }
+
+      const id = uid('biz');
+      BUSINESSES.push({
+        id,
+        name,
+        phone,
+        email,
+        primary_category_id: input.primary_category_id,
+        verification_status: 'unverified',
+        rating_avg: 0,
+        rating_count: 0,
+        locality_id: locality.id,
+        address_line: address,
+        location: locality.centroid,
+      });
+      // Kept on the demo account too, so switching accounts and back keeps the
+      // business; the fresh object is what makes subscribers re-render.
+      store.viewer.business_ids.push(id);
+      store.viewer = { ...store.viewer, business_ids: [...store.viewer.business_ids] };
+      emit('merchant.business_created', 'business', id, { name });
+      return id;
+    },
+
+    // Mirrors submit_business_verification() in 0006_merchant_onboarding.sql.
+    async submitBusinessVerification(businessId, input): Promise<'pending'> {
+      if (!store.viewer.business_ids.includes(businessId)) {
+        throw new RuleViolation('Only the owner can ask for verification');
+      }
+      const b = businessById(businessId);
+      const legal = input.legal_name.trim();
+      const gstin = input.gstin ? normaliseId(input.gstin) : '';
+      let pan = input.pan ? normaliseId(input.pan) : '';
+      let licenceType = input.licence_type ?? null;
+      let licence = input.licence_number?.trim().toUpperCase() || '';
+      const fssai = input.fssai?.replace(/\s/g, '') || '';
+
+      if (legal.length < 2) throw new RuleViolation('Enter the registered business name');
+      if (!CONSTITUTION_LABEL[input.constitution]) throw new RuleViolation('Choose the type of business');
+      if (gstin) {
+        if (gstinProblem(gstin)) {
+          throw new RuleViolation('That GSTIN is not valid. Copy it from your GST certificate');
+        }
+        pan = panOfGstin(gstin);
+        licenceType = null;
+        licence = '';
+      } else {
+        if (panProblem(pan)) {
+          throw new RuleViolation('Enter your GSTIN, or your PAN if you are not registered under GST');
+        }
+        if (!licenceType || !LICENCE_LABEL[licenceType]) {
+          throw new RuleViolation('Without GST, add a Udyam, Shop and Establishment or trade licence number');
+        }
+        if (licence.length < 5) throw new RuleViolation('Enter the registration number');
+        if (licenceType === 'udyam' && udyamProblem(licence)) throw new RuleViolation(udyamProblem(licence)!);
+      }
+      const mismatch = panConstitutionProblem(pan, input.constitution);
+      if (mismatch) throw new RuleViolation(mismatch);
+
+      const isFood = CATEGORIES.find((c) => c.id === b.primary_category_id)?.vertical === 'food';
+      if (fssai && fssaiProblem(fssai)) throw new RuleViolation('FSSAI numbers have 14 digits');
+      if (isFood && !fssai) {
+        throw new RuleViolation('Food businesses need their 14-digit FSSAI licence or registration number');
+      }
+      if (input.registered_address.trim().length < 10) throw new RuleViolation('Enter the registered address');
+      if (input.owner_name.trim().length < 2) throw new RuleViolation('Enter your full name as on your PAN or ID');
+      if (!['owner', 'partner', 'director', 'manager'].includes(input.owner_role)) {
+        throw new RuleViolation('Choose your role in the business');
+      }
+      if (input.declared !== true) throw new RuleViolation('Confirm that these details are correct');
+
+      if (b.verification_status === 'pending') {
+        throw new RuleViolation('Verification is already being reviewed');
+      }
+      if (b.verification_status === 'verified') {
+        throw new RuleViolation('This business is already verified');
+      }
+      b.verification_status = 'pending';
+      store.verifications.push({
+        business_id: b.id,
+        owner_profile_id: store.viewer.id,
+        legal_name: legal,
+        constitution: input.constitution,
+        gstin: gstin || undefined,
+        pan,
+        licence_type: licenceType ?? undefined,
+        licence_number: licence || undefined,
+        fssai: fssai || undefined,
+        registered_address: input.registered_address.trim(),
+        owner_name: input.owner_name.trim(),
+        owner_role: input.owner_role,
+        declared: true,
+        status: 'submitted',
+        rejection_reason: null,
+        submitted_at: new Date().toISOString(),
+      });
+      emit('merchant.verification_submitted', 'business', b.id);
+      return 'pending';
+    },
+
+    async getBusinessVerification(businessId): Promise<BusinessVerification | null> {
+      if (!store.viewer.business_ids.includes(businessId) && !store.viewer.is_admin) return null;
+      const mine = store.verifications.filter((v) => v.business_id === businessId);
+      const last = mine[mine.length - 1];
+      if (!last) return null;
+      const { business_id: _b, owner_profile_id: _o, ...rest } = last;
+      return rest;
+    },
+
     async feedNearby(q: FeedQuery): Promise<DealCardModel[]> {
       const radiusKm = q.radius_m / 1000;
       let cards = candidates(q.origin, radiusKm);
@@ -405,7 +548,12 @@ export function createLocalDataSource(
     async getDeal(id, origin): Promise<DealCardModel | null> {
       const deal = store.deals.find((d) => d.id === id);
       if (!deal) return null;
-      if (!isPubliclyVisible(deal.status) && !isMember(deal.business_id)) return null;
+      // Mirrors get_deal: public deals for anyone; otherwise the owning business,
+      // an admin, or a customer who has already acted on it.
+      const actedOn = store.actions.some(
+        (a) => a.deal_id === id && a.customer_id === store.viewer.id,
+      );
+      if (!isPubliclyVisible(deal.status) && !isMember(deal.business_id) && !actedOn) return null;
       return dealToCard(deal, origin ?? null);
     },
 
@@ -546,7 +694,16 @@ export function createLocalDataSource(
         if (deal.status !== 'DRAFT' && deal.status !== 'REJECTED' && !store.viewer.is_admin) {
           throw new RuleViolation('Only draft or rejected deals can be edited');
         }
+        const wasUnclaimed = deal.status === 'DRAFT' || deal.status === 'REJECTED';
         Object.assign(deal, stripUndefined(toDealPatch(input)));
+        // Generated from the stored row in Postgres, so recompute from the merged row
+        // rather than from whichever prices this save happened to include.
+        deal.discount_pct = computeDiscount(deal.original_price, deal.deal_price);
+        // Mirrors save_deal_draft: nothing is claimed before review, so what is left
+        // follows the total. A live deal keeps its count.
+        if (wasUnclaimed && input.capacity_total !== undefined) {
+          deal.capacity_remaining = input.capacity_total;
+        }
         return deal.id;
       }
 
@@ -740,6 +897,73 @@ export function createLocalDataSource(
       return status;
     },
 
+    async listVerificationQueue(): Promise<VerificationRequest[]> {
+      if (!store.viewer.is_admin) throw new RuleViolation('Admin only');
+      return store.verifications
+        .filter((v) => v.status === 'submitted')
+        .map((v) => {
+          const b = businessById(v.business_id);
+          const elsewhere = new Set(
+            store.verifications
+              .filter(
+                (o) =>
+                  o.business_id !== v.business_id &&
+                  o.status !== 'rejected' &&
+                  ((!!v.gstin && o.gstin === v.gstin) || o.pan === v.pan),
+              )
+              .map((o) => o.business_id),
+          );
+          return {
+            business_id: b.id,
+            name: b.name,
+            category_name: CATEGORIES.find((c) => c.id === b.primary_category_id)?.name ?? '',
+            locality_name: LOCALITIES.find((l) => l.id === b.locality_id)?.name ?? '',
+            address_line: b.address_line,
+            phone: b.phone,
+            email: b.email,
+            legal_name: v.legal_name,
+            constitution: v.constitution,
+            gstin: v.gstin ?? null,
+            pan: v.pan ?? '',
+            licence_type: v.licence_type ?? null,
+            licence_number: v.licence_number ?? null,
+            fssai: v.fssai ?? null,
+            registered_address: v.registered_address,
+            owner_name: v.owner_name,
+            owner_role: v.owner_role,
+            same_id_elsewhere: elsewhere.size,
+            submitted_at: v.submitted_at,
+          };
+        });
+    },
+
+    // Mirrors review_business() in 0006_merchant_onboarding.sql.
+    async reviewBusiness(businessId, approve, reason): Promise<'verified' | 'rejected'> {
+      if (!store.viewer.is_admin) throw new RuleViolation('Admin only');
+      if (!approve && (reason?.trim().length ?? 0) < 5) {
+        throw new RuleViolation('Give the owner a reason they can act on');
+      }
+      const req = [...store.verifications]
+        .reverse()
+        .find((v) => v.business_id === businessId && v.status === 'submitted');
+      if (!req) throw new RuleViolation('Nothing is waiting for review for this business');
+
+      const state = approve ? 'verified' : 'rejected';
+      const b = businessById(businessId);
+      b.verification_status = state;
+      req.status = approve ? 'approved' : 'rejected';
+      req.rejection_reason = approve ? null : reason!.trim();
+      notify(
+        req.owner_profile_id,
+        approve ? 'business_verified' : 'business_rejected',
+        approve ? 'You are YOLO Verified' : 'Verification needs changes',
+        approve ? b.name + ' now shows the YOLO Verified badge.' : reason!.trim(),
+        { business_id: businessId },
+      );
+      emit('merchant.verification_changed', 'business', businessId, { status: state, reason });
+      return state;
+    },
+
     async listNotifications(): Promise<Notification[]> {
       return store.notifications.filter((n) => n.profile_id === store.viewer.id);
     },
@@ -790,8 +1014,27 @@ function toDealPatch(input: DealDraftInput): Partial<Deal> {
     deal_type_code: input.deal_type_code as Deal['deal_type_code'] | undefined,
     offering_kind: input.offering_kind as Deal['offering_kind'] | undefined,
   };
-  if (input.original_price != null || input.deal_price != null) {
-    patch.discount_pct = computeDiscount(input.original_price, input.deal_price);
+  // The rest mirror save_deal_draft's update branch: the category follows a
+  // slug or id, and eligibility and CTAs are replaced wholesale when posted.
+  const categoryId =
+    input.category_id ?? CATEGORIES.find((c) => c.slug === input.category_slug)?.id;
+  if (categoryId) patch.category_id = categoryId;
+  if (input.eligibility) {
+    patch.eligibility = {
+      audience: (input.eligibility.audience as Deal['eligibility']['audience']) ?? 'everyone',
+      min_age: input.eligibility.min_age ?? null,
+      min_spend: input.eligibility.min_spend ?? null,
+      membership_required: input.eligibility.membership_required ?? false,
+      advance_booking_hours: input.eligibility.advance_booking_hours ?? null,
+      custom_rule: input.eligibility.custom_rule ?? null,
+    };
+  }
+  if (input.actions) {
+    patch.primary_cta =
+      (input.actions.find((a) => a.is_primary)?.action_type as Deal['primary_cta']) ?? 'claim';
+    patch.secondary_ctas = input.actions
+      .filter((a) => !a.is_primary)
+      .map((a) => a.action_type) as Deal['secondary_ctas'];
   }
   if (input.lat != null && input.lng != null) {
     patch.location = { lat: input.lat, lng: input.lng };

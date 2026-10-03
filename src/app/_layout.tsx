@@ -1,5 +1,5 @@
 /**
- * Root layout. Loads Inter, holds the providers, and keeps the splash up until
+ * Root layout. Loads Inter and the display faces, holds the providers, and keeps the splash up until
  * the fonts are ready — otherwise the first frame renders in the system face
  * and visibly reflows once Inter arrives.
  */
@@ -18,7 +18,16 @@ import {
   Inter_800ExtraBold,
   useFonts,
 } from '@expo-google-fonts/inter';
+import { BricolageGrotesque_700Bold } from '@expo-google-fonts/bricolage-grotesque/700Bold';
+import { Fraunces_600SemiBold } from '@expo-google-fonts/fraunces/600SemiBold';
 import { color } from '../theme/tokens';
+import { ChromeProvider } from '../ui/chrome';
+
+// A deep link to a deal, a category or Profile still has Home underneath, so
+// Back and "go home" land somewhere instead of leaving the app.
+export const unstable_settings = {
+  anchor: '(customer)',
+};
 
 SplashScreen.preventAutoHideAsync().catch(() => {
   // Already hidden, or called twice during fast refresh. Not worth failing for.
@@ -31,6 +40,8 @@ export default function RootLayout() {
     Inter_600SemiBold,
     Inter_700Bold,
     Inter_800ExtraBold,
+    BricolageGrotesque_700Bold,
+    Fraunces_600SemiBold,
   });
 
   useEffect(() => {
@@ -46,16 +57,24 @@ export default function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
-        <StatusBar style="dark" />
-        <Stack
-          screenOptions={{
-            headerShown: false,
-            contentStyle: { backgroundColor: color.background },
-          }}
-        >
-          <Stack.Screen name="(customer)" />
-          <Stack.Screen name="deal/[id]" options={{ presentation: 'card' }} />
-        </Stack>
+        <ChromeProvider>
+          <StatusBar style="dark" />
+          <Stack
+            screenOptions={{
+              headerShown: false,
+              contentStyle: { backgroundColor: color.background },
+            }}
+          >
+            <Stack.Screen name="(customer)" />
+            <Stack.Screen name="deal/[id]" options={{ presentation: 'card' }} />
+            <Stack.Screen name="profile" />
+            <Stack.Screen name="sign-in" options={{ presentation: 'modal' }} />
+            <Stack.Screen name="business" />
+            <Stack.Screen name="list-business" />
+            <Stack.Screen name="merchant" />
+            <Stack.Screen name="admin" />
+          </Stack>
+        </ChromeProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );

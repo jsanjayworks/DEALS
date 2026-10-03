@@ -17,18 +17,40 @@ export const LOCALITIES: Locality[] = [
 export const DEFAULT_LOCALITY_ID = 'loc-kor';
 
 /**
+ * Facet attributes per top-level category, as categories.attribute_schema.
+ * A property marked x-facet becomes a row of subheadings on that category's
+ * page, built from the values live deals actually carry. Adding "cuisine:
+ * Korean" to a deal is enough to make Korean appear under Food.
+ */
+const FOOD_SCHEMA = {
+  properties: { cuisine: { type: 'string', title: 'Cuisine', 'x-facet': true } },
+} as const;
+const PROPERTY_SCHEMA = {
+  properties: {
+    bhk: { type: 'integer', title: 'Size', 'x-facet': true, 'x-label': '{value} BHK' },
+    furnishing: { type: 'string', title: 'Furnishing', 'x-facet': true },
+    area_sqft: { type: 'integer', title: 'Area (sq ft)' },
+  },
+} as const;
+const MOBILITY_SCHEMA = {
+  properties: { vehicle: { type: 'string', title: 'Vehicle', 'x-facet': true } },
+} as const;
+
+/**
  * Top-level verticals plus leaf subcategories. Adding a category is a data
  * change, not a code change — the PRD taxonomy principle.
+ *
+ * Top-level icons name glyphs in components/Icon, so the Home grid draws them
+ * from data. Leaves keep their Ionicons names for the admin console.
  */
 export const CATEGORIES: Category[] = [
-  { id: 'cat-food', slug: 'food', name: 'Food', vertical: 'food', icon: 'restaurant-outline', parent_id: null },
-  { id: 'cat-retail', slug: 'retail', name: 'Retail', vertical: 'retail', icon: 'pricetags-outline', parent_id: null },
-  { id: 'cat-events', slug: 'events', name: 'Events', vertical: 'events', icon: 'ticket-outline', parent_id: null },
-  { id: 'cat-mobility', slug: 'mobility', name: 'Mobility', vertical: 'mobility', icon: 'car-outline', parent_id: null },
-  { id: 'cat-property', slug: 'property', name: 'Property', vertical: 'property', icon: 'home-outline', parent_id: null },
-  { id: 'cat-services', slug: 'services', name: 'Services', vertical: 'services', icon: 'construct-outline', parent_id: null },
-  { id: 'cat-business', slug: 'business', name: 'Business', vertical: 'business', icon: 'briefcase-outline', parent_id: null },
-  { id: 'cat-community', slug: 'community', name: 'Local', vertical: 'community', icon: 'people-outline', parent_id: null },
+  { id: 'cat-food', slug: 'food', name: 'Food', vertical: 'food', icon: 'utensils', parent_id: null, attribute_schema: FOOD_SCHEMA },
+  { id: 'cat-retail', slug: 'retail', name: 'Retail', vertical: 'retail', icon: 'bag', parent_id: null },
+  { id: 'cat-events', slug: 'events', name: 'Events', vertical: 'events', icon: 'calendarStar', parent_id: null },
+  { id: 'cat-mobility', slug: 'mobility', name: 'Mobility', vertical: 'mobility', icon: 'car', parent_id: null, attribute_schema: MOBILITY_SCHEMA },
+  { id: 'cat-property', slug: 'property', name: 'Property', vertical: 'property', icon: 'building', parent_id: null, attribute_schema: PROPERTY_SCHEMA },
+  { id: 'cat-services', slug: 'services', name: 'Services', vertical: 'services', icon: 'sparkles', parent_id: null },
+  { id: 'cat-business', slug: 'business', name: 'Business', vertical: 'business', icon: 'briefcase', parent_id: null },
 
   { id: 'cat-food-lunch', slug: 'lunch', name: 'Lunch', vertical: 'food', icon: 'restaurant-outline', parent_id: 'cat-food' },
   { id: 'cat-food-brunch', slug: 'brunch', name: 'Brunch', vertical: 'food', icon: 'cafe-outline', parent_id: 'cat-food' },
@@ -38,20 +60,25 @@ export const CATEGORIES: Category[] = [
   { id: 'cat-retail-fashion', slug: 'fashion', name: 'Fashion', vertical: 'retail', icon: 'shirt-outline', parent_id: 'cat-retail' },
   { id: 'cat-retail-electronics', slug: 'electronics', name: 'Electronics', vertical: 'retail', icon: 'phone-portrait-outline', parent_id: 'cat-retail' },
   { id: 'cat-retail-grocery', slug: 'grocery', name: 'Grocery', vertical: 'retail', icon: 'basket-outline', parent_id: 'cat-retail' },
-  { id: 'cat-events-comedy', slug: 'comedy', name: 'Comedy', vertical: 'events', icon: 'mic-outline', parent_id: 'cat-events' },
-  { id: 'cat-events-music', slug: 'music', name: 'Music', vertical: 'events', icon: 'musical-notes-outline', parent_id: 'cat-events' },
+  { id: 'cat-events-comedy', slug: 'comedy', name: 'Comedy and Stand-up', vertical: 'events', icon: 'mic-outline', parent_id: 'cat-events' },
+  { id: 'cat-events-music', slug: 'music', name: 'Live Music', vertical: 'events', icon: 'musical-notes-outline', parent_id: 'cat-events' },
+  { id: 'cat-events-nightlife', slug: 'nightlife', name: 'Nightlife', vertical: 'events', icon: 'moon-outline', parent_id: 'cat-events' },
   { id: 'cat-events-workshop', slug: 'workshop', name: 'Workshops', vertical: 'events', icon: 'color-palette-outline', parent_id: 'cat-events' },
+  { id: 'cat-events-classes', slug: 'classes', name: 'Classes', vertical: 'events', icon: 'school-outline', parent_id: 'cat-events' },
+  { id: 'cat-events-volunteer', slug: 'volunteer', name: 'Volunteering', vertical: 'events', icon: 'heart-outline', parent_id: 'cat-events' },
   { id: 'cat-mobility-cab', slug: 'cab', name: 'Cabs', vertical: 'mobility', icon: 'car-outline', parent_id: 'cat-mobility' },
-  { id: 'cat-mobility-rental', slug: 'bike-rental', name: 'Bike Rental', vertical: 'mobility', icon: 'bicycle-outline', parent_id: 'cat-mobility' },
-  { id: 'cat-property-rent', slug: 'rent', name: 'For Rent', vertical: 'property', icon: 'home-outline', parent_id: 'cat-property' },
-  { id: 'cat-property-coliving', slug: 'coliving', name: 'Co-living', vertical: 'property', icon: 'bed-outline', parent_id: 'cat-property' },
-  { id: 'cat-services-fitness', slug: 'fitness', name: 'Fitness', vertical: 'services', icon: 'barbell-outline', parent_id: 'cat-services' },
+  { id: 'cat-mobility-rental', slug: 'bike-rental', name: 'Bike and Scooty Rental', vertical: 'mobility', icon: 'bicycle-outline', parent_id: 'cat-mobility' },
+  { id: 'cat-property-rent', slug: 'rent', name: 'Flats', vertical: 'property', icon: 'home-outline', parent_id: 'cat-property' },
+  { id: 'cat-property-villa', slug: 'villa', name: 'Villas', vertical: 'property', icon: 'home-outline', parent_id: 'cat-property' },
+  { id: 'cat-property-coliving', slug: 'coliving', name: 'Rooms and PG', vertical: 'property', icon: 'bed-outline', parent_id: 'cat-property' },
   { id: 'cat-services-salon', slug: 'salon', name: 'Salon and Spa', vertical: 'services', icon: 'cut-outline', parent_id: 'cat-services' },
+  { id: 'cat-services-makeup', slug: 'makeup', name: 'Makeup', vertical: 'services', icon: 'brush-outline', parent_id: 'cat-services' },
+  { id: 'cat-services-facials', slug: 'facials', name: 'Facials and Skin', vertical: 'services', icon: 'flower-outline', parent_id: 'cat-services' },
+  { id: 'cat-services-cleaning', slug: 'cleaning', name: 'Home Cleaning', vertical: 'services', icon: 'sparkles-outline', parent_id: 'cat-services' },
   { id: 'cat-services-repair', slug: 'repair', name: 'Home Repair', vertical: 'services', icon: 'hammer-outline', parent_id: 'cat-services' },
+  { id: 'cat-services-fitness', slug: 'fitness', name: 'Fitness', vertical: 'services', icon: 'barbell-outline', parent_id: 'cat-services' },
   { id: 'cat-business-coworking', slug: 'coworking', name: 'Coworking', vertical: 'business', icon: 'business-outline', parent_id: 'cat-business' },
   { id: 'cat-business-b2b', slug: 'b2b', name: 'B2B Offers', vertical: 'business', icon: 'briefcase-outline', parent_id: 'cat-business' },
-  { id: 'cat-community-class', slug: 'classes', name: 'Classes', vertical: 'community', icon: 'school-outline', parent_id: 'cat-community' },
-  { id: 'cat-community-volunteer', slug: 'volunteer', name: 'Volunteer', vertical: 'community', icon: 'heart-outline', parent_id: 'cat-community' },
 ];
 
 export const TOP_CATEGORIES = CATEGORIES.filter((c) => c.parent_id === null);
@@ -112,8 +139,8 @@ const BIZ: BizSeed[] = [
   ['biz-propkart', 'PropKart Realty', 'cat-property-rent', 'loc-jpn', '7th Phase, JP Nagar', false, 3.9, 142, 0.001, -0.002],
   ['biz-hivedesk', 'HiveDesk Coworking', 'cat-business-coworking', 'loc-ind', 'CMH Road, Indiranagar', true, 4.6, 874, 0.002, 0.003],
   ['biz-printhub', 'PrintHub Business Services', 'cat-business-b2b', 'loc-bel', 'Bellandur Main Road', false, 4.1, 203, -0.001, 0.001],
-  ['biz-skillcamp', 'SkillCamp Bengaluru', 'cat-community-class', 'loc-kor', '4th Block, Koramangala', true, 4.5, 661, 0.001, 0.003],
-  ['biz-greencity', 'Green City Volunteers', 'cat-community-volunteer', 'loc-jay', 'Jayanagar East', true, 4.9, 87, -0.002, -0.002],
+  ['biz-skillcamp', 'SkillCamp Bengaluru', 'cat-events-classes', 'loc-kor', '4th Block, Koramangala', true, 4.5, 661, 0.001, 0.003],
+  ['biz-greencity', 'Green City Volunteers', 'cat-events-volunteer', 'loc-jay', 'Jayanagar East', true, 4.9, 87, -0.002, -0.002],
 ];
 
 export const BUSINESSES: Business[] = BIZ.map(

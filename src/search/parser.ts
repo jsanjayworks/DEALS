@@ -80,9 +80,9 @@ const VERTICAL_SYNONYMS: Record<string, Vertical> = {
   business: 'business', office: 'business', coworking: 'business', desk: 'business',
   printing: 'business', b2b: 'business', signage: 'business', cabin: 'business',
 
-  community: 'community', class: 'community', classes: 'community', course: 'community',
-  learn: 'community', learning: 'community', volunteer: 'community',
-  volunteering: 'community', guitar: 'community', kannada: 'community',
+  community: 'events', class: 'events', classes: 'events', course: 'events',
+  learn: 'events', learning: 'events', volunteer: 'events',
+  volunteering: 'events', guitar: 'events', kannada: 'events',
 };
 
 /** Subcategory slugs reachable by a single word. */
@@ -354,6 +354,14 @@ export function parseQuery(input: string): ParseResult {
   return { filters, chips: describeFilters(filters) };
 }
 
+/** Distinct from the Lunch and Dinner categories, which often appear alongside. */
+const TIME_OF_DAY_LABEL: Record<NonNullable<SearchFilters['time_of_day']>, string> = {
+  morning: 'Mornings',
+  lunch: 'Lunchtime',
+  evening: 'Evenings',
+  night: 'Late night',
+};
+
 /** The removable chips under the search bar: how the query was understood. */
 export function describeFilters(f: SearchFilters): ParseResult['chips'] {
   const chips: ParseResult['chips'] = [];
@@ -377,7 +385,7 @@ export function describeFilters(f: SearchFilters): ParseResult['chips'] {
   if (f.price_min != null) {
     chips.push({ key: 'price_min', label: 'Min ₹' + f.price_min.toLocaleString('en-IN') });
   }
-  if (f.time_of_day) chips.push({ key: 'time_of_day', label: cap(f.time_of_day) });
+  if (f.time_of_day) chips.push({ key: 'time_of_day', label: TIME_OF_DAY_LABEL[f.time_of_day] });
   if (f.day_of_week.length > 0) {
     const names = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
     const label =

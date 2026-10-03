@@ -1,47 +1,65 @@
 /**
  * Home.
  *
- * Every rail here is a real feed_nearby() call against the data layer, so what
- * renders is the same ranked, radius-filtered, age-gated result the database
- * returns — not a hand-picked array. Changing the radius chip re-queries.
+ * The top of the page carries everything needed in the first second: where they
+ * are, how many deals are live there, a search box, and every category, all
+ * without scrolling. The hero takes the theme's colour family (see
+ * theme/tokens), and the deal photos below carry the rest.
+ *
+ * "Good evening, Aarav" greets once per app launch and folds away after a
+ * couple of seconds, leaving the deal count highlighted beside the address.
+ * The header and the tab bar get out of the way while scrolling down and come
+ * back on the way up.
+ *
+ * Every rail is a real feed_nearby() call, so what renders is the same ranked,
+ * radius-filtered, age-gated result the database returns. On a phone the rails
+ * scroll sideways; on a wide screen they become grids, so the website needs no
+ * separate build.
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { router } from 'expo-router';
+import { LinearGradient } from 'expo-linear-gradient';
+import { StatusBar } from 'expo-status-bar';
+import { router, useIsFocused } from 'expo-router';
+import Animated, {
+  FadeInDown,
+  FadeOutUp,
+  useAnimatedStyle,
+  useSharedValue,
+  withDelay,
+  withTiming,
+} from 'react-native-reanimated';
 import { LOCALITIES, TOP_CATEGORIES } from '../../data/seed-reference';
 import { db } from '../../data';
-import type { DealCardModel, FeedSection, LatLng } from '../../data/types';
-import { color, font, radius as r, space, type } from '../../theme/tokens';
+import type { Category, DealCardModel, FeedSection } from '../../data/types';
+import { useQuery } from '../../lib/useQuery';
+import { SUGGESTED_QUERIES } from '../../search/parser';
+import {
+  useDisplayName,
+  RADIUS_OPTIONS,
+  radiusLabel,
+  useLocality,
+  useSession,
+  useViewer,
+} from '../../state/session';
+import { color, font, radius, space, theme, type } from '../../theme/tokens';
 import {
   Chip,
   DealCard,
   DealCardSkeleton,
   DEAL_CARD_LARGE_WIDTH,
   Icon,
-  Section,
+  LocalityPicker,
+  useHoverPress,
 } from '../../components';
-
-const RADII = [
-  { label: '500m', m: 500 },
-  { label: '1km', m: 1000 },
-  { label: '3km', m: 3000 },
-  { label: '5km', m: 5000 },
-  { label: '10km', m: 10000 },
-];
-
-/** The design uses emoji for the category row rather than line icons. */
-const CATEGORY_EMOJI: Record<string, string> = {
-  food: '🍽',
-  retail: '🛍',
-  events: '🎟',
-  mobility: '🚕',
-  property: '🏠',
-  services: '✂️',
-  business: '💼',
-  community: '📍',
-};
+import { CategoryGrid } from '../../home/CategoryGrid';
+import { HomeHeader, useHeaderHeight } from '../../home/HomeHeader';
+import { RadiusSelector } from '../../home/RadiusSelector';
+import { Spotlight } from '../../home/Spotlight';
+import { useHideOnScroll } from '../../ui/chrome';
+import { useTabBarSpace } from '../../ui/FloatingTabBar';
+import { Container, cellWidth, useLayout } from '../../ui/layout';
 
 function greeting(now = new Date()): string {
   const h = now.getHours();
@@ -50,176 +68,383 @@ function greeting(now = new Date()): string {
   return 'Good evening';
 }
 
-type Rails = Record<FeedSection, DealCardModel[]>;
+/** Hold the greeting this long, then fold it over FOLD_MS. */
+const GREET_HOLD_MS = 2200;
+const GREET_FOLD_MS = 700;
 
-const EMPTY_RAILS: Rails = {
-  near_you: [],
-  today: [],
-  trending: [],
-  new: [],
-  ending_soon: [],
-};
+/** Once per launch: coming back to Home should not replay the welcome. */
+let greetedThisLaunch = false;
+
+/** Once per launch: a merchant who left the app in merchant mode reopens there. */
+let resumedThisLaunch = false;
+
+const NO_COUNTS: Record<string, number> = {};
+
+const SECTIONS = ['near_you', 'trending', 'ending_soon', 'new'] as const;
+type Rails = Record<(typeof SECTIONS)[number], DealCardModel[]>;
+
+interface HomeData {
+  rails: Rails;
+  nearbyCount: number;
+  byVertical: Record<string, number>;
+  unread: number;
+}
 
 export default function HomeScreen() {
-  const insets = useSafeAreaInsets();
-  const [localityId, setLocalityId] = useState('loc-kor');
-  const [radiusM, setRadiusM] = useState(3000);
-  const [rails, setRails] = useState<Rails>(EMPTY_RAILS);
-  const [loading, setLoading] = useState(true);
-  const [nearbyCount, setNearbyCount] = useState(0);
+  const layout = useLayout();
+  const headerHeight = useHeaderHeight();
+  const tabSpace = useTabBarSpace();
+  const focused = useIsFocused();
+  const { onScroll } = useHideOnScroll();
 
-  const locality = useMemo(
-    () => LOCALITIES.find((l) => l.id === localityId) ?? LOCALITIES[0],
-    [localityId],
-  );
-  const origin: LatLng = locality.centroid;
+  const locality = useLocality();
+  const setLocality = useSession((s) => s.setLocality);
+  const radiusM = useSession((s) => s.radiusM);
+  const setRadius = useSession((s) => s.setRadius);
+  const account = useSession((s) => s.account);
+  const displayName = useDisplayName();
+  const viewer = useViewer();
+  const mode = useSession((s) => s.mode);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [greet] = useState(() => !greetedThisLaunch);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    const sections: FeedSection[] = ['near_you', 'trending', 'ending_soon', 'new'];
-    const [all, ...lists] = await Promise.all([
+  const origin = locality.centroid;
+
+  // account is a dependency on purpose: switching demo accounts changes what
+  // the feed may show, because age-restricted deals are hidden, not blocked.
+  const fetchHome = useCallback(async (): Promise<HomeData> => {
+    void account;
+    const [all, notifications, ...lists] = await Promise.all([
       db.feedNearby({ origin, radius_m: radiusM, section: 'near_you', limit: 200 }),
-      ...sections.map((section) =>
+      db.listNotifications(),
+      ...SECTIONS.map((section: FeedSection) =>
         db.feedNearby({ origin, radius_m: radiusM, section, limit: 12 }),
       ),
     ]);
+    const [near_you, trending, ending_soon, fresh] = lists as DealCardModel[][];
+    const byVertical: Record<string, number> = {};
+    for (const d of all as DealCardModel[]) {
+      byVertical[d.category.vertical] = (byVertical[d.category.vertical] ?? 0) + 1;
+    }
+    return {
+      rails: { near_you, trending, ending_soon, new: fresh },
+      nearbyCount: (all as DealCardModel[]).length,
+      byVertical,
+      unread: notifications.filter((n) => n.read_at === null).length,
+    };
+  }, [origin, radiusM, account]);
 
-    const next: Rails = { ...EMPTY_RAILS };
-    sections.forEach((section, i) => {
-      next[section] = lists[i];
-    });
-    setRails(next);
-    setNearbyCount(all.length);
-    setLoading(false);
-  }, [origin, radiusM]);
+  const { data, loading } = useQuery(fetchHome);
+
+  // Wait for the saved session (mode) and the viewer (sign-in) before deciding,
+  // and only when Home itself is on screen, not under a deep-linked deal.
+  useEffect(() => {
+    if (resumedThisLaunch || !focused || !viewer || !useSession.persist.hasHydrated()) return;
+    resumedThisLaunch = true;
+    if (mode === 'merchant' && viewer.business_ids.length > 0) router.push('/merchant');
+  }, [focused, viewer, mode]);
+  const rails = data?.rails;
+  const spotlight = useMemo(() => rails?.near_you.slice(0, 6) ?? [], [rails]);
+
+  // Stable callbacks: the rails, spotlight and grid are memoised, and a new
+  // function every render would make every one of them re-render on a tap.
+  const openDeal = useCallback((deal: DealCardModel, source = 'home') => {
+    void db.recordEvents([{ deal_id: deal.id, event_type: 'view', source }]);
+    router.push({ pathname: '/deal/[id]', params: { id: deal.id } });
+  }, []);
+  const openSpotlight = useCallback((d: DealCardModel) => openDeal(d, 'spotlight'), [openDeal]);
+
+  const openCategory = useCallback(
+    (c: Category) => router.push({ pathname: '/category/[vertical]', params: { vertical: c.vertical } }),
+    [],
+  );
+
+  // The radius is read when tapped, not captured, so these never go stale.
+  const seeAllNear = useCallback(
+    () => router.push({ pathname: '/results', params: { radius: String(useSession.getState().radiusM) } }),
+    [],
+  );
+  const seeAllEnding = useCallback(
+    () =>
+      router.push({
+        pathname: '/results',
+        params: { sort: 'ending_soon', radius: String(useSession.getState().radiusM) },
+      }),
+    [],
+  );
+
+  const empty = !loading && data !== undefined && data.nearbyCount === 0;
+  const categoryColumns = layout.isCompact ? 4 : 8;
+
+  return (
+    <View style={styles.screen}>
+      {focused ? <StatusBar style={theme.hero.light ? 'dark' : 'light'} /> : null}
+
+      <Animated.ScrollView
+        onScroll={onScroll}
+        scrollEventThrottle={16}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingBottom: tabSpace + space.lg }}
+      >
+        {/* ---------- Hero ---------- */}
+        <View style={[styles.hero, { paddingTop: headerHeight + space.sm }]}>
+          <LinearGradient colors={theme.hero.colors} style={StyleSheet.absoluteFill} pointerEvents="none" />
+          <Container>
+            {greet ? (
+              <Greeting
+                name={displayName}
+                subtitle={
+                  data
+                    ? data.nearbyCount + ' deals live within ' + radiusLabel(radiusM) + ' of ' + locality.name
+                    : 'Finding deals near you'
+                }
+              />
+            ) : null}
+
+            <RadiusSelector options={RADIUS_OPTIONS} value={radiusM} onChange={setRadius} />
+
+            <SearchPill onPress={() => router.push('/search')} />
+
+            <View style={styles.categories}>
+              <CategoryGrid
+                categories={TOP_CATEGORIES}
+                counts={data?.byVertical ?? NO_COUNTS}
+                width={layout.contentWidth}
+                columns={categoryColumns}
+                onPress={openCategory}
+              />
+            </View>
+          </Container>
+        </View>
+
+        {/* ---------- Spotlight ---------- */}
+        <Container flush style={styles.spotlightWrap}>
+          {loading ? (
+            <View style={{ paddingHorizontal: layout.gutter }}>
+              <View style={styles.spotSkeleton} />
+            </View>
+          ) : (
+            <Spotlight
+              deals={spotlight}
+              width={layout.contentWidth}
+              gutter={layout.gutter}
+              perPage={layout.isCompact ? 1 : 2}
+              onOpen={openSpotlight}
+            />
+          )}
+        </Container>
+
+        {empty ? (
+          <Container>
+            <View style={styles.emptyBox}>
+              <Text style={styles.emptyTitle}>Nothing live within {radiusLabel(radiusM)}</Text>
+              <Text style={styles.emptyBody}>Widen the radius or pick another locality.</Text>
+              {radiusM < 10000 ? <Chip onPress={() => setRadius(10000)}>Show 10km</Chip> : null}
+            </View>
+          </Container>
+        ) : (
+          <>
+            <Rail
+              title="Deals near you"
+              deals={rails?.near_you}
+              loading={loading}
+              onOpen={openDeal}
+              onSeeAll={seeAllNear}
+            />
+            <Rail title="Trending" ranked deals={rails?.trending} loading={loading} onOpen={openDeal} />
+            <Rail
+              title="Ending soon"
+              deals={rails?.ending_soon}
+              loading={loading}
+              onOpen={openDeal}
+              onSeeAll={seeAllEnding}
+            />
+            <Rail title="New this week" compact deals={rails?.new} loading={loading} onOpen={openDeal} />
+          </>
+        )}
+      </Animated.ScrollView>
+
+      <HomeHeader
+        locality={locality.name}
+        city={locality.city}
+        count={data ? data.nearbyCount : null}
+        unread={data?.unread ?? 0}
+        initial={displayName.charAt(0)}
+        gutter={layout.gutter}
+        pulseAfterMs={greet ? GREET_HOLD_MS + GREET_FOLD_MS : null}
+        onLocality={() => setPickerOpen(true)}
+        onBell={() => router.push('/notifications')}
+        onProfile={() => router.push('/profile')}
+      />
+
+      <LocalityPicker
+        visible={pickerOpen}
+        localities={LOCALITIES}
+        selectedId={locality.id}
+        onSelect={setLocality}
+        onClose={() => setPickerOpen(false)}
+      />
+    </View>
+  );
+}
+
+/** The welcome line. Holds, then folds its height to zero so the page closes up under it. */
+function Greeting({ name, subtitle }: { name: string; subtitle: string }) {
+  const open = useSharedValue(1);
+  const measured = useSharedValue(0);
 
   useEffect(() => {
-    void load();
-  }, [load]);
+    open.set(withDelay(GREET_HOLD_MS, withTiming(0, { duration: GREET_FOLD_MS })));
+    const t = setTimeout(() => {
+      greetedThisLaunch = true;
+    }, GREET_HOLD_MS);
+    return () => clearTimeout(t);
+  }, [open]);
 
-  const openDeal = (deal: DealCardModel) => {
-    void db.recordEvents([{ deal_id: deal.id, event_type: 'view', source: 'home' }]);
-    router.push({ pathname: '/deal/[id]', params: { id: deal.id } });
-  };
+  const fold = useAnimatedStyle(() => ({
+    opacity: open.get(),
+    height: measured.get() > 0 ? measured.get() * open.get() : undefined,
+    transform: [{ translateY: (1 - open.get()) * -12 }],
+  }));
 
-  const rail = (deals: DealCardModel[]) => (
-    <ScrollView
-      horizontal
-      showsHorizontalScrollIndicator={false}
-      contentContainerStyle={styles.railContent}
-    >
-      {loading
-        ? [0, 1].map((k) => (
-            <View key={k} style={{ width: DEAL_CARD_LARGE_WIDTH }}>
-              <DealCardSkeleton variant="large" />
-            </View>
-          ))
-        : deals.map((d) => (
-            <DealCard key={d.id} deal={d} variant="large" onPress={() => openDeal(d)} />
-          ))}
-    </ScrollView>
+  return (
+    <Animated.View style={[styles.greetWrap, fold]}>
+      <View
+        onLayout={(e) => {
+          if (measured.get() === 0) measured.set(e.nativeEvent.layout.height);
+        }}
+      >
+        <Text style={styles.greeting} accessibilityRole="header">
+          {greeting()}, {name}.
+        </Text>
+        <Text style={styles.greetingSub}>{subtitle}</Text>
+      </View>
+    </Animated.View>
+  );
+}
+
+/** The search field; the hint cycles through real example queries. */
+function SearchPill({ onPress }: { onPress: () => void }) {
+  const [hint, setHint] = useState(0);
+  const { handlers, liftStyle } = useHoverPress({ lift: 2, pressScale: 0.99 });
+
+  useEffect(() => {
+    const id = setInterval(() => setHint((h) => (h + 1) % SUGGESTED_QUERIES.length), 3200);
+    return () => clearInterval(id);
+  }, []);
+
+  return (
+    <Pressable onPress={onPress} {...handlers} accessibilityRole="search" accessibilityLabel="Search deals">
+      <Animated.View style={[styles.search, liftStyle]}>
+        <Icon name="search" size={20} color={theme.heroSearch.icon} strokeWidth={2} />
+        <View style={styles.searchText}>
+          <Text style={styles.searchLabel}>Search deals, dishes, places</Text>
+          <View style={styles.hintClip}>
+            <Animated.Text
+              key={hint}
+              entering={FadeInDown.duration(260)}
+              exiting={FadeOutUp.duration(200)}
+              style={styles.searchHint}
+              numberOfLines={1}
+            >
+              Try “{SUGGESTED_QUERIES[hint]}”
+            </Animated.Text>
+          </View>
+        </View>
+      </Animated.View>
+    </Pressable>
+  );
+}
+
+/**
+ * A section of deals. Sideways-scrolling cards on a phone; a grid of up to two
+ * rows on wider screens, where sideways scrolling with a mouse is a chore.
+ */
+const Rail = memo(RailSection);
+
+function RailSection({
+  title,
+  deals,
+  loading,
+  onOpen,
+  onSeeAll,
+  ranked,
+  compact,
+}: {
+  title: string;
+  deals: DealCardModel[] | undefined;
+  loading: boolean;
+  onOpen: (d: DealCardModel) => void;
+  onSeeAll?: () => void;
+  ranked?: boolean;
+  compact?: boolean;
+}) {
+  const layout = useLayout();
+  if (!loading && (!deals || deals.length === 0)) return null;
+
+  const gap = space.md;
+  const asGrid = compact || !layout.isCompact;
+  const columns = layout.gridColumns;
+  const cell = cellWidth(layout.contentWidth, columns, gap);
+  const shown = asGrid ? (deals ?? []).slice(0, columns * (compact ? 1 : 2)) : (deals ?? []);
+
+  const card = (d: DealCardModel, i: number, width: number) => (
+    <View key={d.id} style={{ width }}>
+      <DealCard deal={d} variant={compact ? 'compact' : 'large'} style={{ width }} onPress={() => onOpen(d)} />
+      {ranked ? (
+        <View style={styles.rank} pointerEvents="none">
+          <Text style={styles.rankText}>{i + 1}</Text>
+        </View>
+      ) : null}
+    </View>
   );
 
   return (
-    <ScrollView
-      style={styles.screen}
-      contentContainerStyle={{ paddingBottom: space.xxxl }}
-      showsVerticalScrollIndicator={false}
-    >
-      <View style={[styles.head, { paddingTop: insets.top + space.lg }]}>
-        <View style={styles.headRow}>
-          <Pressable accessibilityRole="button" style={styles.localityButton}>
-            <Text style={styles.overline}>Deals around</Text>
-            <View style={styles.localityRow}>
-              <Text style={styles.localityName}>{locality.name}, {locality.city}</Text>
-              <Icon name="down" size={16} color={color.text} />
-            </View>
-          </Pressable>
-
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Notifications"
-            style={styles.bell}
-          >
-            <Icon name="bell" size={20} color={color.text} />
-            <View style={styles.bellDot} />
-          </Pressable>
-        </View>
-
-        <Text style={styles.greeting}>
-          {greeting()}, Aarav.{'\n'}
-          <Text style={styles.greetingMuted}>
-            {loading ? 'Finding deals' : nearbyCount + ' deals nearby'}.
+    <View style={styles.section}>
+      <Container>
+        <View style={styles.sectionHead}>
+          <Text style={styles.sectionTitle} accessibilityRole="header">
+            {title}
           </Text>
-        </Text>
-
-        <Pressable
-          accessibilityRole="search"
-          onPress={() => router.push('/search')}
-          style={({ pressed }) => [styles.searchBar, pressed && styles.pressed]}
-        >
-          <Icon name="spark" size={22} color={color.interactive} />
-          <View style={styles.searchTextWrap}>
-            <Text style={styles.searchPlaceholder}>What are you looking for?</Text>
-            <Text style={styles.searchHint}>Try "Lunch under {'₹'}300 near me"</Text>
-          </View>
-          <Icon name="search" size={20} color={color.textSecondary} />
-        </Pressable>
-      </View>
-
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.categoryRow}
-      >
-        {TOP_CATEGORIES.map((c) => (
-          <Pressable
-            key={c.id}
-            accessibilityRole="button"
-            onPress={() =>
-              router.push({ pathname: '/results', params: { vertical: c.vertical } })
-            }
-            style={styles.category}
-          >
-            <View style={styles.categoryTile}>
-              <Text style={styles.categoryEmoji}>{CATEGORY_EMOJI[c.vertical]}</Text>
-            </View>
-            <Text style={styles.categoryLabel}>{c.name}</Text>
-          </Pressable>
-        ))}
-      </ScrollView>
-
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.radiusRow}
-      >
-        <Text style={styles.withinLabel}>Within</Text>
-        {RADII.map((x) => (
-          <Chip key={x.m} selected={radiusM === x.m} onPress={() => setRadiusM(x.m)}>
-            {x.label}
-          </Chip>
-        ))}
-      </ScrollView>
-
-      <Section title="Deals near you" action="See all" onAction={() => router.push('/results')}>
-        {rail(rails.near_you)}
-      </Section>
-
-      <Section title="Trending">{rail(rails.trending)}</Section>
-
-      <Section title="Ending soon">{rail(rails.ending_soon)}</Section>
-
-      <Section title="New this week">
-        <View style={styles.grid}>
-          {rails.new.slice(0, 4).map((d) => (
-            <View key={d.id} style={styles.gridCell}>
-              <DealCard deal={d} variant="compact" onPress={() => openDeal(d)} />
-            </View>
-          ))}
+          {onSeeAll ? (
+            <Pressable onPress={onSeeAll} accessibilityRole="button" hitSlop={8} style={styles.seeAll}>
+              <Text style={styles.seeAllText}>See all</Text>
+              <Icon name="chev" size={14} color={color.text} strokeWidth={2} />
+            </Pressable>
+          ) : null}
         </View>
-      </Section>
-    </ScrollView>
+      </Container>
+
+      {asGrid ? (
+        <Container>
+          <View style={[styles.grid, { gap }]}>
+            {loading
+              ? Array.from({ length: columns }, (_, k) => (
+                  <View key={k} style={{ width: cell }}>
+                    <DealCardSkeleton variant="compact" />
+                  </View>
+                ))
+              : shown.map((d, i) => card(d, i, cell))}
+          </View>
+        </Container>
+      ) : (
+        <Container flush>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={{ paddingHorizontal: layout.gutter, gap, paddingBottom: 6, paddingTop: 4 }}
+          >
+            {loading
+              ? [0, 1].map((k) => (
+                  <View key={k} style={{ width: DEAL_CARD_LARGE_WIDTH }}>
+                    <DealCardSkeleton variant="large" />
+                  </View>
+                ))
+              : shown.map((d, i) => card(d, i, DEAL_CARD_LARGE_WIDTH))}
+          </ScrollView>
+        </Container>
+      )}
+    </View>
   );
 }
 
@@ -228,138 +453,139 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: color.background,
   },
-  head: {
-    backgroundColor: color.surface,
-    paddingHorizontal: space.xl,
-    paddingBottom: space.xl,
-    borderBottomWidth: 1,
-    borderBottomColor: color.border,
+  hero: {
+    paddingBottom: space.xxl,
+    marginBottom: space.lg,
+    overflow: 'hidden',
+    borderBottomLeftRadius: theme.hero.light ? 0 : 28,
+    borderBottomRightRadius: theme.hero.light ? 0 : 28,
   },
-  headRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  localityButton: {
-    flex: 1,
-  },
-  overline: {
-    ...type.overline,
-    color: color.textSecondary,
-  },
-  localityRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  localityName: {
-    ...type.h3,
-    color: color.text,
-  },
-  bell: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    borderWidth: 1,
-    borderColor: color.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  bellDot: {
-    position: 'absolute',
-    top: 10,
-    right: 12,
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: color.alertSoft,
+  greetWrap: {
+    overflow: 'hidden',
   },
   greeting: {
     ...type.display,
-    color: color.text,
-    marginTop: space.xl,
+    fontSize: 34,
+    lineHeight: 42,
+    color: theme.hero.text,
+    paddingTop: space.sm,
   },
-  greetingMuted: {
-    color: color.textMuted,
+  greetingSub: {
+    ...type.body,
+    color: theme.hero.muted,
+    marginTop: 2,
+    marginBottom: space.lg,
   },
-  searchBar: {
-    marginTop: space.xl,
+  search: {
+    marginTop: space.xs,
     height: 56,
-    borderRadius: r.xl,
-    backgroundColor: color.background,
+    borderRadius: 28,
+    backgroundColor: theme.heroSearch.bg,
     borderWidth: 1,
-    borderColor: 'transparent',
+    borderColor: theme.heroSearch.border,
+    shadowColor: '#000',
+    shadowOpacity: theme.hero.light ? 0.05 : 0.2,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 6 },
     flexDirection: 'row',
     alignItems: 'center',
     gap: space.md,
-    paddingHorizontal: space.lg,
+    paddingHorizontal: space.lg + 2,
   },
-  searchTextWrap: {
+  searchText: {
     flex: 1,
+    minWidth: 0,
   },
-  searchPlaceholder: {
-    ...type.body,
-    color: color.text,
+  searchLabel: {
+    ...type.bodySemibold,
+    color: theme.heroSearch.text,
+  },
+  hintClip: {
+    height: 16,
+    overflow: 'hidden',
   },
   searchHint: {
     ...type.small,
-    color: color.textSecondary,
+    color: theme.heroSearch.hint,
   },
-  pressed: {
-    opacity: 0.8,
+  categories: {
+    marginTop: space.xl,
   },
-  categoryRow: {
-    paddingHorizontal: space.xl,
-    paddingTop: space.xl,
-    gap: space.sm,
+  spotlightWrap: {
+    marginTop: 0,
   },
-  category: {
-    width: 72,
+  spotSkeleton: {
+    width: '100%',
+    aspectRatio: 16 / 10,
+    maxHeight: 360,
+    borderRadius: 24,
+    backgroundColor: color.surfaceSoftAlt,
+  },
+  section: {
+    marginTop: space.xxl,
+  },
+  sectionHead: {
+    flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    justifyContent: 'space-between',
+    marginBottom: space.md,
   },
-  categoryTile: {
-    width: 56,
-    height: 56,
-    borderRadius: r.xl,
-    backgroundColor: color.surface,
-    borderWidth: 1,
-    borderColor: color.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  categoryEmoji: {
-    fontSize: 24,
-  },
-  categoryLabel: {
-    ...type.small,
-    fontFamily: font.medium,
+  sectionTitle: {
+    fontFamily: font.display,
+    fontSize: 23,
+    lineHeight: 30,
+    letterSpacing: -0.4,
     color: color.text,
   },
-  radiusRow: {
-    paddingHorizontal: space.xl,
-    paddingTop: space.xl,
+  seeAll: {
+    flexDirection: 'row',
     alignItems: 'center',
-    gap: space.sm,
+    gap: 2,
+    minHeight: 32,
   },
-  withinLabel: {
-    ...type.caption,
-    color: color.textSecondary,
-    marginRight: 2,
-  },
-  railContent: {
-    paddingHorizontal: space.xl,
-    gap: space.md,
-    paddingBottom: 4,
+  seeAllText: {
+    ...type.captionMedium,
+    color: color.text,
   },
   grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    paddingHorizontal: space.xl,
-    gap: space.md,
   },
-  gridCell: {
-    width: '48%',
-    flexGrow: 1,
+  rank: {
+    position: 'absolute',
+    top: 144,
+    right: 10,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: color.brand,
+    borderWidth: 3,
+    borderColor: color.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  rankText: {
+    fontFamily: font.bold,
+    fontSize: 17,
+    color: color.white,
+  },
+  emptyBox: {
+    marginTop: space.xxl,
+    padding: space.xl,
+    borderRadius: radius.xl,
+    backgroundColor: color.surfaceSoftAlt,
+    alignItems: 'center',
+    gap: space.sm,
+  },
+  emptyTitle: {
+    ...type.h3,
+    color: color.text,
+    textAlign: 'center',
+  },
+  emptyBody: {
+    ...type.body,
+    color: color.textSecondary,
+    textAlign: 'center',
+    marginBottom: space.sm,
   },
 });

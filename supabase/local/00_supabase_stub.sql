@@ -42,12 +42,40 @@ alter default privileges in schema public
 create schema if not exists auth;
 grant usage on schema auth to anon, authenticated, service_role;
 
+-- The columns seed.sql writes, matching real Supabase Auth closely enough for it.
 create table if not exists auth.users (
+  instance_id   uuid,
   id            uuid primary key default gen_random_uuid(),
+  aud           text,
+  role          text,
   email         text,
   phone         text,
+  email_confirmed_at timestamptz,
+  phone_confirmed_at timestamptz,
+  raw_app_meta_data  jsonb,
   raw_user_meta_data jsonb not null default '{}',
-  created_at    timestamptz not null default now()
+  created_at    timestamptz not null default now(),
+  updated_at    timestamptz,
+  confirmation_token text,
+  recovery_token text,
+  email_change text,
+  email_change_token_new text,
+  email_change_token_current text,
+  phone_change text,
+  phone_change_token text,
+  reauthentication_token text
+);
+
+create table if not exists auth.identities (
+  id            uuid primary key default gen_random_uuid(),
+  provider_id   text not null,
+  user_id       uuid not null references auth.users(id) on delete cascade,
+  identity_data jsonb not null,
+  provider      text not null,
+  last_sign_in_at timestamptz,
+  created_at    timestamptz,
+  updated_at    timestamptz,
+  unique (provider_id, provider)
 );
 
 /**

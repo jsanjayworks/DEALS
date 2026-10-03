@@ -43,10 +43,10 @@ end $$;
 do $$
 begin
   perform assert((select count(*) from localities) = 10, 'localities seeded (10)');
-  perform assert((select count(*) from categories) = 30, 'categories seeded (30)');
+  perform assert((select count(*) from categories) = 34, 'categories seeded (34)');
   perform assert((select count(*) from businesses) = 32, 'businesses seeded (32)');
-  perform assert((select count(*) from deals where status = 'ACTIVE') = 56,
-                 '56 ACTIVE deals');
+  perform assert((select count(*) from deals where status = 'ACTIVE') = 59,
+                 '59 ACTIVE deals');
   perform assert((select count(*) from deals where status = 'SUBMITTED') = 3,
                  '3 deals awaiting review');
   perform assert((select count(*) from deals where status = 'REJECTED') = 1,
@@ -58,6 +58,19 @@ begin
                  'every deal has availability rows');
   perform assert((select count(*) from deals where discount_pct is not null) > 40,
                  'discount_pct generated column computed');
+  perform assert((select date_of_birth is not null and is_yolo_verified
+                  from profiles where email = 'customer@yolodeals.in'),
+                 'the demo customer keeps their birth date and verification');
+end $$;
+
+-- A first sign-in creates the profile everything else hangs off.
+do $$
+declare v_id uuid := gen_random_uuid();
+begin
+  insert into auth.users (id, phone) values (v_id, '919876500001');
+  perform assert((select phone from profiles where id = v_id) = '+919876500001',
+                 'a new auth user gets a profile, phone in E.164');
+  delete from auth.users where id = v_id;
 end $$;
 
 -- ---------------------------------------------------------------------------
@@ -180,6 +193,17 @@ begin
      from search_deals('{"vertical":"property","attributes":{"bhk":2},"radius_km":30}'::jsonb,
                        12.9352, 77.6245, 50)),
     'search: attribute filter is exact');
+
+  -- Category pages build their subheadings from attribute_schema facets.
+  perform assert(
+    (select (attribute_schema #>> '{properties,cuisine,x-facet}')::boolean
+     from categories where slug = 'food'),
+    'taxonomy: food declares cuisine as a facet');
+  perform assert(
+    (select count(*) > 0 and bool_and(attributes->>'cuisine' = 'South Indian')
+     from search_deals('{"vertical":"food","attributes":{"cuisine":"South Indian"},"radius_km":30}'::jsonb,
+                       12.9352, 77.6245, 50)),
+    'search: a cuisine subheading returns only that cuisine');
 
   -- verified_only
   perform assert(
@@ -435,6 +459,45 @@ begin
     'id', v_id, 'business_id', v_biz, 'title', 'Smoke Test Lunch Combo v2'));
   perform assert((select title from deals where id = v_id) = 'Smoke Test Lunch Combo v2',
                  'a draft can be edited in place');
+
+  -- The wizard saves on every step, so later steps must be able to change what
+  -- earlier ones wrote.
+  perform save_deal_draft(jsonb_build_object(
+    'id', v_id, 'business_id', v_biz,
+    'category_slug', 'dinner',
+    'capacity_total', 40,
+    'eligibility', jsonb_build_object('audience','everyone','min_age',21),
+    'actions', jsonb_build_array(
+      jsonb_build_object('action_type','reserve','is_primary',true),
+      jsonb_build_object('action_type','directions','is_primary',false))));
+  perform assert((select capacity_remaining from deals where id = v_id) = 40,
+                 'raising a draft''s capacity raises what is left');
+  perform assert((select c.slug from deals d join categories c on c.id = d.category_id
+                  where d.id = v_id) = 'dinner',
+                 'a draft edit can change the category');
+  perform assert((select min_age from deal_eligibility where deal_id = v_id) = 21,
+                 'a draft edit replaces eligibility');
+  perform assert((select action_type from deal_actions
+                  where deal_id = v_id and is_primary) = 'reserve',
+                 'a draft edit replaces the primary CTA');
+  perform assert((select count(*) from deal_actions where deal_id = v_id) = 2,
+                 'a draft edit replaces the CTA set rather than appending');
+
+  -- Clearing an optional field sticks; leaving a key out keeps the value.
+  perform save_deal_draft(jsonb_build_object(
+    'id', v_id, 'business_id', v_biz,
+    'original_price', null, 'capacity_total', null));
+  perform assert((select original_price from deals where id = v_id) is null,
+                 'posting null clears the usual price');
+  perform assert((select capacity_total is null and capacity_remaining is null
+                  from deals where id = v_id),
+                 'posting null removes the capacity limit');
+  perform assert((select deal_price from deals where id = v_id) = 249,
+                 'a key left out is not touched');
+
+  -- Put the price and capacity back for the steps that follow.
+  perform save_deal_draft(jsonb_build_object(
+    'id', v_id, 'business_id', v_biz, 'original_price', 400, 'capacity_total', 25));
 
   -- Submit it.
   perform assert(transition_deal(v_id, 'SUBMITTED') = 'SUBMITTED',

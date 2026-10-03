@@ -10,6 +10,7 @@
  * has to move. Screens must import from './data', never from an adapter.
  */
 
+import type { Constitution, LicenceType } from '../lib/india-ids';
 import type {
   Business,
   Category,
@@ -25,6 +26,35 @@ import type {
   Notification,
   SearchFilters,
 } from './types';
+import type { Viewer } from '../domain/rules';
+
+/**
+ * The signed-in person as the app needs them: what the eligibility rules read,
+ * plus the two gates (admin, business membership) that unlock admin and
+ * merchant mode. Built from the session on Supabase; one of the demo accounts
+ * locally.
+ */
+export interface AppViewer extends Viewer {
+  is_admin: boolean;
+  /** Businesses this account is a member of — the merchant-mode gate. */
+  business_ids: string[];
+  full_name?: string | null;
+  phone?: string | null;
+  email?: string | null;
+}
+
+/** Where a one-time code is sent: a phone in E.164, or an email address. */
+export type OtpTarget = { phone: string } | { email: string };
+
+/**
+ * Sign-in by one-time code. Only the Supabase backend has one; the local
+ * demo switches accounts instead.
+ */
+export interface AuthApi {
+  sendCode(target: OtpTarget): Promise<void>;
+  verifyCode(target: OtpTarget, code: string): Promise<void>;
+  signOut(): Promise<void>;
+}
 
 export interface FeedQuery {
   origin: LatLng;
@@ -116,6 +146,66 @@ export interface ActionWithDeal extends CustomerAction {
   deal: DealCardModel;
 }
 
+/** What a new merchant fills in to list their business; see create_business(). */
+export interface NewBusinessInput {
+  name: string;
+  primary_category_id: string;
+  locality_id: string;
+  address_line: string;
+  phone?: string;
+  email?: string;
+}
+
+/**
+ * What an owner submits for the YOLO Verified badge; see
+ * submit_business_verification(). Either a GSTIN, or a PAN plus a
+ * registration (licence_type and licence_number). FSSAI is required for food.
+ */
+export interface VerificationInput {
+  legal_name: string;
+  constitution: Constitution;
+  gstin?: string;
+  pan?: string;
+  licence_type?: LicenceType;
+  licence_number?: string;
+  fssai?: string;
+  registered_address: string;
+  owner_name: string;
+  owner_role: 'owner' | 'partner' | 'director' | 'manager';
+  declared: boolean;
+}
+
+/** The owner's latest request and how it went, for the dashboard card and the form. */
+export interface BusinessVerification extends VerificationInput {
+  status: 'submitted' | 'approved' | 'rejected';
+  rejection_reason: string | null;
+  submitted_at: string;
+}
+
+/** A business waiting for the YOLO Verified badge, as the admin queue shows it. */
+export interface VerificationRequest {
+  business_id: string;
+  name: string;
+  category_name: string;
+  locality_name: string;
+  address_line: string;
+  phone: string;
+  email: string;
+  legal_name: string;
+  constitution: Constitution;
+  gstin: string | null;
+  pan: string;
+  licence_type: LicenceType | null;
+  licence_number: string | null;
+  fssai: string | null;
+  registered_address: string;
+  owner_name: string;
+  owner_role: string;
+  /** Other businesses that used the same GSTIN or PAN in a request not turned down. */
+  same_id_elsewhere: number;
+  submitted_at: string;
+}
+
 /**
  * A failure the UI is expected to show verbatim — "only 2 left", "this deal is
  * restricted to 21 and above". Anything else is a bug and should surface as a
@@ -156,6 +246,12 @@ export interface DataSource {
   ): Promise<string>;
 
   // ---- merchant ----
+  /** Lists a business owned by the caller; the caller becomes a merchant. Returns its id. */
+  createBusiness(input: NewBusinessInput): Promise<string>;
+  /** Owner asks for the YOLO Verified badge; the business moves to 'pending'. */
+  submitBusinessVerification(businessId: string, input: VerificationInput): Promise<'pending'>;
+  /** The latest request for a business the caller belongs to, or null if none. */
+  getBusinessVerification(businessId: string): Promise<BusinessVerification | null>;
   listBusinessDeals(businessId: string): Promise<DealCardModel[]>;
   saveDealDraft(input: DealDraftInput): Promise<string>;
   submitDeal(dealId: string): Promise<DealStatus>;
@@ -169,6 +265,8 @@ export interface DataSource {
   // ---- admin ----
   listReviewQueue(): Promise<DealCardModel[]>;
   reviewDeal(dealId: string, approve: boolean, reason?: string): Promise<DealStatus>;
+  listVerificationQueue(): Promise<VerificationRequest[]>;
+  reviewBusiness(businessId: string, approve: boolean, reason?: string): Promise<'verified' | 'rejected'>;
 
   // ---- notifications and analytics ----
   listNotifications(): Promise<Notification[]>;

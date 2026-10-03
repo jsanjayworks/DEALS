@@ -2,7 +2,12 @@
  * Display formatting. Pure functions, no React, so screens and tests share them.
  */
 
-import type { DealAvailability, DealCardModel } from '../data/types';
+import type {
+  CustomerActionStatus,
+  CustomerActionType,
+  DealAvailability,
+  DealCardModel,
+} from '../data/types';
 
 const DAY_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
@@ -108,4 +113,38 @@ export function capacityLabel(remaining: number | null, total: number | null): s
 export function capacityFraction(remaining: number | null, total: number | null): number {
   if (remaining == null || total == null || total <= 0) return 0;
   return Math.min(1, Math.max(0, 1 - remaining / total));
+}
+
+/** What the customer did, in the past tense My Deals uses. */
+export const ACTION_LABEL: Record<CustomerActionType, string> = {
+  claim: 'Claimed',
+  booking: 'Booked',
+  reserve: 'Reserved',
+  enquiry: 'Enquiry sent',
+  registration: 'Registered',
+  purchase_intent: 'Purchase started',
+};
+
+/** Action status as the StatusPill vocabulary spells it. */
+export const ACTION_STATUS_LABEL: Record<CustomerActionStatus, string> = {
+  pending: 'Pending',
+  confirmed: 'Confirmed',
+  redeemed: 'Redeemed',
+  cancelled: 'Cancelled',
+  expired: 'Expired',
+};
+
+/** "Sat 4 Oct · 7 PM" for a booked slot. */
+export function slotLabel(iso: string): string {
+  const d = new Date(iso);
+  const day = DAY_SHORT[d.getDay()] + ' ' + d.getDate() + ' ' + MONTH_SHORT[d.getMonth()];
+  return day + ' · ' + timeLabel(d.getHours() + ':' + String(d.getMinutes()).padStart(2, '0'));
+}
+
+const MONTH_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+/** "4 Oct" for dates in lists. */
+export function dateLabel(iso: string): string {
+  const d = new Date(iso);
+  return d.getDate() + ' ' + MONTH_SHORT[d.getMonth()];
 }

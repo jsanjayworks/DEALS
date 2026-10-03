@@ -1,5 +1,5 @@
 /** Barrel for the component library. Screens import from '../components'. */
-export { Icon, ICON_PATHS, type IconName, type IconProps } from './Icon';
+export { Icon, ICON_PATHS, categoryIcon, type IconName, type IconProps } from './Icon';
 export { Button, Chip, type ButtonProps, type ButtonVariant, type ChipProps } from './Button';
 export {
   Badge,
@@ -28,3 +28,8 @@ export {
   type SectionProps,
   type FieldProps,
 } from './Layout';
+export { Sheet, type SheetProps } from './Sheet';
+export { LocalityPicker, type LocalityPickerProps } from './LocalityPicker';
+export { Glass, type GlassProps } from './Glass';
+export { useHoverPress } from './useHoverPress';
+export { RollingNumber, type RollingNumberProps } from './RollingNumber';

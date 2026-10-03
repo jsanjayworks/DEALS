@@ -1,18 +1,27 @@
 /**
  * The deal card, from `DealCard` in docs/design/figma-make/ui.tsx.
  *
- * Three variants, matching the design:
- *   large    270pt wide, for the horizontal rails on Home
- *   list     full width, image left, for search results
- *   compact  full width inside a two-column grid
+ * Four variants:
+ *   large      270pt wide, for the horizontal rails on Home
+ *   list       full width, image left, for search results
+ *   compact    fills a grid cell
+ *   spotlight  photo-first, text over a gradient, for the Home carousel
+ *
+ * Photo first, type underneath, no box around it: the photo is the colour on
+ * the page and everything else stays ink and grey. Every variant lifts and
+ * pushes its photo in on hover, so the web build feels like a website rather
+ * than a phone screen in a browser; touch gets the press.
  *
  * It takes a DealCardModel straight from the data layer, so the same component
  * renders a seeded deal and a live one with no adapter in between.
  */
 
+import type { ReactNode } from 'react';
 import { Image } from 'expo-image';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { color, font, radius, shadow, type } from '../theme/tokens';
+import { LinearGradient } from 'expo-linear-gradient';
+import { Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
+import Animated from 'react-native-reanimated';
+import { alpha, color, distanceLabel, font, inr, radius, shadow, type } from '../theme/tokens';
 import {
   DEAL_TYPE_LABEL,
   availabilityLabel,
@@ -24,8 +33,9 @@ import { ctaLabel } from '../data/mapping';
 import { Badge, DiscountBadge, VerifiedBadge } from './Badges';
 import { Icon } from './Icon';
 import { Meta, Price } from './Price';
+import { useHoverPress } from './useHoverPress';
 
-export type DealCardVariant = 'large' | 'list' | 'compact';
+export type DealCardVariant = 'large' | 'list' | 'compact' | 'spotlight';
 
 export interface DealCardProps {
   deal: DealCardModel;
@@ -33,30 +43,93 @@ export interface DealCardProps {
   onPress?: () => void;
   /** Overrides the derived badge; pass null to suppress it entirely. */
   badge?: CardBadge | null;
+  /** Sizing from the parent, e.g. a grid cell width. */
+  style?: StyleProp<ViewStyle>;
 }
 
-const BLUR_PLACEHOLDER = 'L6Pj0^i_.AyE_3t7t7R**0o#DgR4';
+// expo-image reads a bare string as a URL, so the blurhash must be wrapped.
+const PLACEHOLDER = { blurhash: 'L6Pj0^i_.AyE_3t7t7R**0o#DgR4' };
 
-export function DealCard({ deal, variant = 'large', onPress, badge }: DealCardProps) {
+export function DealCard({ deal, variant = 'large', onPress, badge, style }: DealCardProps) {
   const flag = badge === undefined ? badgeFor(deal) : badge;
-  const discount = Math.round(deal.discount_pct ?? 0);
+  // A free deal says Free once; "100% OFF" beside it is noise.
+  const discount = deal.deal_price === 0 ? 0 : Math.round(deal.discount_pct ?? 0);
+  const { handlers, liftStyle, zoomStyle } = useHoverPress({
+    lift: variant === 'list' ? 2 : 6,
+  });
+
+  const photo = (
+    <Animated.View style={[styles.fill, zoomStyle]}>
+      <Image
+        source={{ uri: deal.image }}
+        style={styles.fill}
+        contentFit="cover"
+        placeholder={PLACEHOLDER}
+        transition={180}
+      />
+    </Animated.View>
+  );
+
+  const shell = (cardStyle: StyleProp<ViewStyle>, children: ReactNode) => (
+    <Pressable
+      onPress={onPress}
+      {...handlers}
+      accessibilityRole="button"
+      accessibilityLabel={deal.title + ', ' + deal.business.name}
+      style={[variant === 'large' && { width: DEAL_CARD_LARGE_WIDTH }, style]}
+    >
+      <Animated.View style={[styles.shadowWrap, variant === 'spotlight' && styles.shadowWrapSpot, liftStyle]}>
+        <View style={cardStyle}>{children}</View>
+      </Animated.View>
+    </Pressable>
+  );
+
+  if (variant === 'spotlight') {
+    return shell(
+      [styles.spot],
+      <>
+        {photo}
+        <LinearGradient
+          colors={[alpha(color.text, 0.05), alpha(color.text, 0.25), alpha(color.text, 0.9)]}
+          locations={[0, 0.4, 1]}
+          style={StyleSheet.absoluteFill}
+        />
+        <View style={styles.spotTop}>
+          <DiscountBadge percent={discount} />
+          {flag ? <Badge kind={flag} /> : null}
+        </View>
+        <View style={styles.spotBottom}>
+          <Text style={styles.spotBiz} numberOfLines={1}>
+            {deal.business.name + ' · ' + distanceLabel(deal.distance_km)}
+          </Text>
+          <Text style={styles.spotTitle} numberOfLines={2}>
+            {deal.title}
+          </Text>
+          <View style={styles.spotRow}>
+            <Text style={styles.spotPrice}>
+              {deal.deal_price === 0 ? 'Free' : inr(deal.deal_price ?? 0)}
+              {deal.price_unit ? <Text style={styles.spotUnit}>{deal.price_unit}</Text> : null}
+            </Text>
+            {deal.original_price != null && (deal.deal_price ?? 0) < deal.original_price ? (
+              <Text style={styles.spotWas}>{inr(deal.original_price)}</Text>
+            ) : null}
+            <View style={styles.flex} />
+            <View style={styles.spotCta}>
+              <Text style={styles.spotCtaText}>{ctaLabel(deal.primary_cta)}</Text>
+              <Icon name="chev" size={14} color={color.text} strokeWidth={2.2} />
+            </View>
+          </View>
+        </View>
+      </>,
+    );
+  }
 
   if (variant === 'list') {
-    return (
-      <Pressable
-        onPress={onPress}
-        accessibilityRole="button"
-        accessibilityLabel={deal.title + ', ' + deal.business.name}
-        style={({ pressed }) => [styles.card, styles.listCard, pressed && styles.pressed]}
-      >
+    return shell(
+      [styles.card, styles.listCard],
+      <>
         <View style={styles.listImageWrap}>
-          <Image
-            source={{ uri: deal.image }}
-            style={styles.fill}
-            contentFit="cover"
-            placeholder={BLUR_PLACEHOLDER}
-            transition={180}
-          />
+          {photo}
           <View style={styles.badgeTopLeft}>
             <DiscountBadge percent={discount} />
           </View>
@@ -83,30 +156,16 @@ export function DealCard({ deal, variant = 'large', onPress, badge }: DealCardPr
             </Text>
           </View>
         </View>
-      </Pressable>
+      </>,
     );
   }
 
   const isLarge = variant === 'large';
-  return (
-    <Pressable
-      onPress={onPress}
-      accessibilityRole="button"
-      accessibilityLabel={deal.title + ', ' + deal.business.name}
-      style={({ pressed }) => [
-        styles.card,
-        isLarge ? styles.largeCard : styles.compactCard,
-        pressed && styles.pressed,
-      ]}
-    >
-      <View style={[styles.imageWrap, { height: isLarge ? 144 : 112 }]}>
-        <Image
-          source={{ uri: deal.image }}
-          style={styles.fill}
-          contentFit="cover"
-          placeholder={BLUR_PLACEHOLDER}
-          transition={180}
-        />
+  return shell(
+    [styles.card, isLarge ? styles.largeCard : styles.compactCard],
+    <>
+      <View style={[styles.imageWrap, { height: isLarge ? 176 : 132 }]}>
+        {photo}
         <View style={[styles.badgeTopLeft, styles.badgeRow]}>
           <DiscountBadge percent={discount} />
           {isLarge && flag ? <Badge kind={flag} /> : null}
@@ -114,25 +173,26 @@ export function DealCard({ deal, variant = 'large', onPress, badge }: DealCardPr
       </View>
 
       <View style={styles.body}>
-        {isLarge && deal.is_verified ? <VerifiedBadge /> : null}
-        <Text style={styles.title} numberOfLines={1}>
-          {deal.title}
-        </Text>
+        <View style={styles.titleRow}>
+          <Text style={[styles.title, styles.flexShrink]} numberOfLines={1}>
+            {deal.title}
+          </Text>
+          {isLarge && deal.is_verified ? <VerifiedBadge compact /> : null}
+        </View>
         <Text style={styles.business} numberOfLines={1}>
           {deal.business.name}
         </Text>
-        <Price now={deal.deal_price} was={deal.original_price} unit={deal.price_unit} />
         <Meta distanceKm={deal.distance_km} rating={deal.rating_avg} />
+        <View style={styles.priceGap}>
+          <Price now={deal.deal_price} was={deal.original_price} unit={deal.price_unit} />
+        </View>
         {isLarge ? (
-          <View style={styles.whenRow}>
-            <Icon name="clock" size={13} color={color.textSecondary} />
-            <Text style={styles.when} numberOfLines={1}>
-              {availabilityLabel(deal.availability)}
-            </Text>
-          </View>
+          <Text style={styles.when} numberOfLines={1}>
+            {availabilityLabel(deal.availability)}
+          </Text>
         ) : null}
       </View>
-    </Pressable>
+    </>,
   );
 }
 
@@ -152,8 +212,13 @@ export function DealCardSkeleton({ variant = 'list' }: { variant?: DealCardVaria
     );
   }
   return (
-    <View style={[styles.card, variant === 'large' ? styles.largeCard : styles.compactCard]}>
-      <View style={[styles.imageWrap, styles.skeleton, { height: variant === 'large' ? 144 : 112 }]} />
+    <View
+      style={[
+        styles.card,
+        variant === 'large' ? [styles.largeCard, { width: DEAL_CARD_LARGE_WIDTH }] : styles.compactCard,
+      ]}
+    >
+      <View style={[styles.imageWrap, styles.skeleton, { height: variant === 'large' ? 176 : 132 }]} />
       <View style={[styles.body, { gap: 8 }]}>
         <View style={[styles.skeleton, { height: 14, width: '80%' }]} />
         <View style={[styles.skeleton, { height: 10, width: '55%' }]} />
@@ -165,39 +230,116 @@ export function DealCardSkeleton({ variant = 'list' }: { variant?: DealCardVaria
 
 export const DEAL_CARD_LARGE_WIDTH = 270;
 
+const CARD_RADIUS = 16;
+
 const styles = StyleSheet.create({
-  card: {
-    backgroundColor: color.surface,
-    borderRadius: radius.xl,
-    borderWidth: 1,
-    borderColor: color.border,
-    overflow: 'hidden',
+  flex: {
+    flex: 1,
+  },
+  // The shadow sits on a wrapper: iOS clips shadows on a view with overflow hidden.
+  shadowWrap: {
+    borderRadius: CARD_RADIUS,
+  },
+  shadowWrapSpot: {
+    borderRadius: 24,
     ...shadow.card,
   },
+  card: {
+    backgroundColor: color.surface,
+  },
   largeCard: {
-    width: DEAL_CARD_LARGE_WIDTH,
+    width: '100%',
   },
   compactCard: {
-    flex: 1,
+    width: '100%',
   },
   listCard: {
     flexDirection: 'row',
-    gap: 12,
-    padding: 12,
+    gap: 14,
+    paddingVertical: 6,
   },
-  pressed: {
-    opacity: 0.9,
-    transform: [{ scale: 0.995 }],
+  spot: {
+    width: '100%',
+    aspectRatio: 16 / 10,
+    borderRadius: 24,
+    overflow: 'hidden',
+    backgroundColor: color.text,
+  },
+  spotTop: {
+    position: 'absolute',
+    top: 12,
+    left: 12,
+    right: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  spotBottom: {
+    position: 'absolute',
+    left: 16,
+    right: 16,
+    bottom: 14,
+    gap: 2,
+  },
+  spotBiz: {
+    ...type.smallMedium,
+    color: 'rgba(255,255,255,0.8)',
+  },
+  spotTitle: {
+    fontFamily: font.bold,
+    fontSize: 22,
+    lineHeight: 27,
+    letterSpacing: -0.3,
+    color: color.white,
+  },
+  spotRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: 8,
+    marginTop: 6,
+  },
+  spotPrice: {
+    fontFamily: font.bold,
+    fontSize: 20,
+    color: color.white,
+    fontVariant: ['tabular-nums'],
+  },
+  spotUnit: {
+    fontFamily: font.medium,
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.8)',
+  },
+  spotWas: {
+    ...type.caption,
+    color: 'rgba(255,255,255,0.6)',
+    textDecorationLine: 'line-through',
+  },
+  spotCta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    paddingHorizontal: 12,
+    height: 34,
+    borderRadius: radius.pill,
+    backgroundColor: color.white,
+    alignSelf: 'center',
+  },
+  spotCtaText: {
+    fontFamily: font.semibold,
+    fontSize: 13,
+    color: color.text,
   },
   imageWrap: {
-    backgroundColor: color.background,
+    borderRadius: CARD_RADIUS,
+    overflow: 'hidden',
+    backgroundColor: color.surfaceSoftAlt,
   },
   listImageWrap: {
     width: 112,
     height: 112,
     borderRadius: radius.lg,
     overflow: 'hidden',
-    backgroundColor: color.background,
+    backgroundColor: color.surfaceSoftAlt,
   },
   fill: {
     width: '100%',
@@ -213,8 +355,20 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   body: {
-    padding: 12,
-    gap: 4,
+    paddingTop: 10,
+    paddingHorizontal: 2,
+    gap: 2,
+  },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  flexShrink: {
+    flexShrink: 1,
+  },
+  priceGap: {
+    marginTop: 4,
   },
   listBody: {
     flex: 1,
@@ -250,18 +404,12 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: color.brand,
   },
-  whenRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
   when: {
     ...type.small,
-    color: color.textSecondary,
-    flexShrink: 1,
+    color: color.textMuted,
   },
   skeleton: {
-    backgroundColor: color.background,
+    backgroundColor: color.surfaceSoftAlt,
     borderRadius: radius.md,
   },
 });

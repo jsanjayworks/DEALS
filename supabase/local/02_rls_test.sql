@@ -266,4 +266,373 @@ begin
     'merchant_stats is callable but reveals nothing useful to outsiders');
 end $$;
 
+-- ---------------------------------------------------------------------------
+-- Card reads respect visibility
+--
+-- deal_card_base used to run with its owner's rights, which skipped RLS, and
+-- get_deal returned any deal to anyone holding its id. Both leaked drafts,
+-- submissions and rejection reasons.
+-- ---------------------------------------------------------------------------
+do $$
+declare
+  i record;
+  v_submitted uuid;
+begin
+  select * into i from ids;
+  select id into v_submitted from deals where status = 'SUBMITTED' order by id limit 1;
+
+  perform assert(
+    visible_count('anon', null,
+      'select 1 from deal_card_base where status not in (''ACTIVE'',''PUBLISHED'')') = 0,
+    'anon cannot read unpublished deals through deal_card_base');
+
+  perform assert(
+    visible_count('anon', null, format('select 1 from get_deal(%L)', v_submitted)) = 0,
+    'get_deal hides a submitted deal from anon');
+
+  perform assert(
+    visible_count('authenticated', i.customer, format('select 1 from get_deal(%L)', i.draft_deal)) = 0,
+    'get_deal hides another business''s draft from a customer');
+
+  perform assert(
+    visible_count('authenticated', i.merchant, format('select 1 from get_deal(%L)', i.draft_deal)) = 1,
+    'get_deal shows a merchant their own draft');
+
+  perform assert(
+    visible_count('authenticated', i.admin, format('select 1 from get_deal(%L)', v_submitted)) = 1,
+    'get_deal shows an admin a submitted deal');
+
+  perform assert(
+    visible_count('anon', null, format('select 1 from get_deal(%L)', i.active_deal)) = 1,
+    'get_deal still shows an active deal to anyone');
+
+  perform assert(
+    refused('authenticated', i.admin, 'select deal_cards(array[gen_random_uuid()])'),
+    'deal_cards, which skips visibility, is not callable by any client');
+
+  perform assert(
+    refused('authenticated', i.customer,
+            format('select 1 from business_deals(%L)', i.merchant_business)),
+    'business_deals refuses a non-member');
+
+  perform assert(
+    visible_count('authenticated', i.merchant,
+      format('select 1 from business_deals(%L) where status = ''DRAFT''', i.merchant_business)) > 0,
+    'business_deals gives a member their drafts');
+
+  perform assert(
+    refused('authenticated', i.customer, 'select 1 from review_queue()'),
+    'review_queue refuses a non-admin');
+
+  perform assert(
+    visible_count('authenticated', i.admin, 'select 1 from review_queue()') > 0,
+    'review_queue lists submissions for an admin');
+
+  perform assert(
+    refused('authenticated', i.customer,
+            format('select 1 from merchant_stats(%L, 7)', i.merchant_business)),
+    'merchant_stats refuses an outsider');
+
+  perform assert(
+    visible_count('anon', null, 'select 1 from list_localities() where lat between 12 and 14') = 10,
+    'list_localities returns plain lat/lng to anyone');
+end $$;
+
+-- Nobody can make themselves a member of a business.
+do $$
+declare i record;
+begin
+  select * into i from ids;
+  perform assert(
+    refused('authenticated', i.customer,
+            format('insert into business_members (business_id, profile_id) values (%L, %L)',
+                   i.merchant_business, i.customer)),
+    'a customer cannot add themselves to a business');
+  perform assert(
+    refused('authenticated', i.customer,
+            format('insert into business_members (business_id, profile_id)
+                    select id, %L from businesses
+                    where id not in (select business_id from business_members) limit 1',
+                   i.customer)),
+    'nor claim a business that has no members yet');
+end $$;
+
+-- The merchant sees why a deal was sent back, through the same read the app uses.
+do $$
+declare
+  i record;
+  v_reason text;
+begin
+  select * into i from ids;
+  perform set_config('app.current_user_id', i.merchant::text, true);
+  set local role authenticated;
+  select c.rejection_reason into v_reason
+  from business_deals(i.merchant_business) c
+  where c.status = 'REJECTED' limit 1;
+  reset role;
+  perform assert(v_reason is not null and length(v_reason) > 10,
+                 'a merchant reads the rejection reason on their own deal');
+end $$;
+
+-- ---------------------------------------------------------------------------
+-- Merchant onboarding (0006): one sign-in, a business makes you a merchant.
+-- ---------------------------------------------------------------------------
+do $$
+declare
+  i          record;
+  v_locality uuid;
+  v_far      uuid;
+  v_category uuid;
+  v_biz      uuid;
+  v_input    text;
+  v_state    text;
+begin
+  select * into i from ids;
+  select id into v_locality from localities where name = 'Koramangala';
+  select id into v_category from categories where slug = 'food';
+  v_input := jsonb_build_object(
+    'name', 'Test Dosa Corner', 'phone', '+91 98450 00000',
+    'primary_category_id', v_category, 'locality_id', v_locality,
+    'address_line', '12, 5th Block, Koramangala')::text;
+
+  perform assert(
+    refused('anon', null, format('select create_business(%L::jsonb)', v_input)),
+    'anon cannot create a business');
+
+  perform assert(
+    refused('authenticated', i.customer,
+            format('select create_business(%L::jsonb)',
+                   (v_input::jsonb || '{"name": "x"}')::text)),
+    'create_business refuses a one-letter name');
+
+  perform assert(
+    refused('authenticated', i.customer,
+            format('select create_business(%L::jsonb)',
+                   (v_input::jsonb || jsonb_build_object('locality_id', gen_random_uuid()))::text)),
+    'create_business refuses an unknown locality');
+
+  perform assert(
+    refused('authenticated', i.customer,
+            format('select create_business(%L::jsonb)',
+                   (v_input::jsonb || '{"lat": 13.35, "lng": 77.10}')::text)),
+    'create_business refuses a pin far from the chosen locality');
+
+  -- The happy path, as the customer.
+  perform set_config('app.current_user_id', i.customer::text, true);
+  set local role authenticated;
+  v_biz := create_business(v_input::jsonb);
+  reset role;
+
+  perform assert(
+    exists (select 1 from business_members
+             where business_id = v_biz and profile_id = i.customer and member_role = 'owner'),
+    'create_business makes the caller the owner');
+  perform assert(
+    (select verification_status::text from businesses where id = v_biz) = 'unverified',
+    'a new business starts unverified');
+  perform assert(
+    exists (select 1 from business_locations
+             where business_id = v_biz and is_primary and locality_id = v_locality),
+    'a new business gets a primary location in the chosen locality');
+  perform assert(
+    visible_count('authenticated', i.customer,
+                  format('select 1 from business_deals(%L)', v_biz)) = 0
+    and not refused('authenticated', i.customer, format('select 1 from business_deals(%L)', v_biz)),
+    'the new owner can open their (empty) merchant view');
+
+  -- Direct writes that would skip the rules.
+  perform assert(
+    refused('authenticated', i.customer,
+            'insert into businesses (name, verification_status) values (''Fake'', ''verified'')'),
+    'nobody inserts a business directly, let alone a verified one');
+  perform assert(
+    refused('authenticated', i.customer,
+            format('update businesses set verification_status = ''verified'' where id = %L', v_biz)),
+    'an owner cannot verify their own business');
+  perform assert(
+    refused('authenticated', i.customer,
+            format('update businesses set rating_avg = 5 where id = %L', v_biz)),
+    'an owner cannot set their own rating');
+  perform assert(
+    not refused('authenticated', i.customer,
+                format('update businesses set phone = ''+91 98450 11111'' where id = %L', v_biz)),
+    'an owner can still edit their contact details');
+  perform assert(
+    refused('authenticated', i.customer,
+            format('insert into business_verifications (business_id, owner_name, status)
+                    values (%L, ''Me'', ''approved'')', v_biz)),
+    'nobody files an already-approved verification');
+
+  perform assert(
+    refused('authenticated', i.customer,
+            format('update businesses set legal_name = ''Someone Else Pvt Ltd'' where id = %L', v_biz))
+    and refused('authenticated', i.customer,
+                format('update businesses set registration_number = ''29AAAAA0000A1Z5'' where id = %L', v_biz)),
+    'the registered name and number are not editable by the owner');
+end $$;
+
+-- ---------------------------------------------------------------------------
+-- Verification with registration details (GSTIN, or PAN plus a licence).
+-- ---------------------------------------------------------------------------
+
+/** A GSTIN with the right check digit, from its first fourteen characters. */
+create or replace function test_gstin(p_first14 text) returns text
+language sql as $$
+  select p_first14 || c
+  from unnest(string_to_array('0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ', null)) c
+  where gstin_is_valid(p_first14 || c)
+  limit 1;
+$$;
+
+do $$
+declare
+  i        record;
+  v_food   uuid;   -- the customer's food business from the block above
+  v_salon  uuid;   -- a second, non-food business with no GST
+  v_gstin  text := test_gstin('29ABCPK1234F1Z');
+  v_good   jsonb;
+  v_nogst  jsonb;
+  v_state  text;
+begin
+  select * into i from ids;
+  select b.id into v_food from businesses b
+    join business_members m on m.business_id = b.id
+   where m.profile_id = i.customer and b.name = 'Test Dosa Corner';
+
+  perform assert(gstin_is_valid('27AAPFU0939F1ZV'), 'the GST example GSTIN passes the check digit');
+  perform assert(not gstin_is_valid('27AAPFU0939F1ZA'), 'one wrong check digit fails it');
+  perform assert(not gstin_is_valid('00AAPFU0939F1ZV'), 'state code 00 fails it');
+
+  v_good := jsonb_build_object(
+    'legal_name', 'Aarav Sharma', 'constitution', 'proprietorship', 'gstin', lower(v_gstin),
+    'fssai', '21223008000123', 'registered_address', '12, 5th Block, Koramangala, Bengaluru 560095',
+    'owner_name', 'Aarav Sharma', 'owner_role', 'owner', 'declared', true);
+
+  perform assert(
+    refused('authenticated', i.merchant,
+            format('select submit_business_verification(%L, %L::jsonb)', v_food, v_good)),
+    'only the owner can ask for verification');
+  perform assert(
+    refused('authenticated', i.customer,
+            format('select submit_business_verification(%L, %L::jsonb)', v_food,
+                   v_good || jsonb_build_object('gstin', substr(v_gstin, 1, 14) ||
+                     case when right(v_gstin, 1) = 'A' then 'B' else 'A' end))),
+    'a GSTIN with the wrong check digit is refused');
+  perform assert(
+    refused('authenticated', i.customer,
+            format('select submit_business_verification(%L, %L::jsonb)', v_food,
+                   v_good || '{"constitution": "private_limited"}'::jsonb)),
+    'a person''s GSTIN does not pass as a company');
+  perform assert(
+    refused('authenticated', i.customer,
+            format('select submit_business_verification(%L, %L::jsonb)', v_food, v_good - 'fssai')),
+    'a food business needs an FSSAI number');
+  perform assert(
+    refused('authenticated', i.customer,
+            format('select submit_business_verification(%L, %L::jsonb)', v_food,
+                   v_good || '{"declared": false}'::jsonb)),
+    'the declaration must be ticked');
+  perform assert(
+    refused('authenticated', i.customer,
+            format('select submit_business_verification(%L, %L::jsonb)', v_food,
+                   (v_good - 'gstin') || '{"pan": "ABCPK1234F"}'::jsonb)),
+    'without GST, a PAN alone is not enough');
+
+  perform set_config('app.current_user_id', i.customer::text, true);
+  set local role authenticated;
+  v_state := submit_business_verification(v_food, v_good)::text;
+  reset role;
+  perform assert(v_state = 'pending'
+                 and (select verification_status::text from businesses where id = v_food) = 'pending',
+                 'a complete GST request moves the business to pending');
+  perform assert(
+    (select pan from business_verifications where business_id = v_food) = 'ABCPK1234F'
+    and (select gstin from business_verifications where business_id = v_food) = v_gstin,
+    'the GSTIN is stored upper-case and its PAN is taken from it');
+  perform assert(
+    refused('authenticated', i.customer,
+            format('select submit_business_verification(%L, %L::jsonb)', v_food, v_good)),
+    'a pending request is not filed twice');
+
+  -- A small salon under the GST threshold: PAN plus a Udyam registration.
+  perform set_config('app.current_user_id', i.customer::text, true);
+  set local role authenticated;
+  v_salon := create_business(jsonb_build_object(
+    'name', 'Test Glow Studio',
+    'primary_category_id', (select id from categories where slug = 'services'),
+    'locality_id', (select id from localities where name = 'Koramangala'),
+    'address_line', '3rd Cross, 6th Block, Koramangala'));
+  reset role;
+  v_nogst := jsonb_build_object(
+    'legal_name', 'Aarav Sharma', 'constitution', 'proprietorship', 'pan', 'abcpk1234f',
+    'licence_type', 'udyam', 'licence_number', 'UDYAM-KR-03-0012345',
+    'registered_address', '3rd Cross, 6th Block, Koramangala, Bengaluru 560095',
+    'owner_name', 'Aarav Sharma', 'owner_role', 'owner', 'declared', true);
+  perform assert(
+    refused('authenticated', i.customer,
+            format('select submit_business_verification(%L, %L::jsonb)', v_salon,
+                   v_nogst || '{"licence_number": "KR-03-12345"}'::jsonb)),
+    'a Udyam number has to look like one');
+  perform set_config('app.current_user_id', i.customer::text, true);
+  set local role authenticated;
+  v_state := submit_business_verification(v_salon, v_nogst)::text;
+  reset role;
+  perform assert(v_state = 'pending', 'PAN plus Udyam works for a non-food business without GST');
+
+  -- Who can read a request.
+  perform assert(
+    visible_count('authenticated', i.customer,
+                  format('select 1 from business_verifications where business_id = %L', v_food)) = 1,
+    'the owner can read their own request');
+  perform assert(
+    visible_count('authenticated', i.merchant,
+                  format('select 1 from business_verifications where business_id = %L', v_food)) = 0,
+    'another merchant cannot');
+
+  -- The admin's view.
+  perform assert(
+    refused('authenticated', i.customer, 'select 1 from business_verification_queue()'),
+    'a customer cannot read the verification queue');
+  perform assert(
+    visible_count('authenticated', i.admin,
+                  format('select 1 from business_verification_queue() where business_id = %L
+                          and gstin = %L and legal_name = ''Aarav Sharma'' and fssai = ''21223008000123''
+                          and locality_name = ''Koramangala''', v_food, v_gstin)) = 1,
+    'an admin sees the registration details with the request');
+  perform assert(
+    visible_count('authenticated', i.admin,
+                  format('select 1 from business_verification_queue() where business_id = %L
+                          and same_id_elsewhere = 1', v_salon)) = 1,
+    'the queue flags the same PAN on two businesses');
+
+  perform assert(
+    refused('authenticated', i.admin, format('select review_business(%L, false, null)', v_salon)),
+    'declining needs a reason');
+
+  perform set_config('app.current_user_id', i.admin::text, true);
+  set local role authenticated;
+  perform review_business(v_salon, false, 'The Udyam certificate is for a different address');
+  perform review_business(v_food, true, null);
+  reset role;
+
+  perform assert(
+    (select verification_status::text from businesses where id = v_food) = 'verified'
+    and (select legal_name from businesses where id = v_food) = 'Aarav Sharma'
+    and (select registration_number from businesses where id = v_food) = v_gstin,
+    'approval verifies the business and records its registered name and GSTIN');
+  perform assert(
+    (select verification_status::text from businesses where id = v_salon) = 'rejected'
+    and (select rejection_reason from business_verifications where business_id = v_salon)
+        = 'The Udyam certificate is for a different address',
+    'a decline keeps the reason');
+  perform assert(
+    exists (select 1 from notifications where profile_id = i.customer and kind = 'business_verified')
+    and exists (select 1 from notifications where profile_id = i.customer and kind = 'business_rejected'
+                and body = 'The Udyam certificate is for a different address'),
+    'the owner is told either way, with the reason');
+  perform assert(
+    visible_count('authenticated', i.admin, 'select 1 from business_verification_queue()') = 0,
+    'and the queue is empty again');
+end $$;
+
 select '--- RLS assertions passed ---' as result;

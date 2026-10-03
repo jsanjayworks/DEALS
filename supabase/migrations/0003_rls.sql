@@ -105,8 +105,12 @@ create policy businesses_member_update on businesses for update
 create policy business_members_read on business_members for select
   using (profile_id = auth.uid() or is_business_member(business_id) or current_is_admin());
 
+-- Existing members add staff; admins add anyone. Nobody adds themselves: the
+-- earlier `profile_id = auth.uid()` clause let any signed-in user join any
+-- business and take over its deals and redemptions. Merchant sign-up must
+-- create a business and its first owner together in one SECURITY DEFINER RPC.
 create policy business_members_insert on business_members for insert
-  with check (profile_id = auth.uid() or is_business_member(business_id) or current_is_admin());
+  with check (is_business_member(business_id) or current_is_admin());
 
 create policy business_locations_read on business_locations for select using (true);
 
@@ -345,6 +349,19 @@ grant execute on function record_deal_events(jsonb)      to anon, authenticated;
 grant execute on function merchant_stats(uuid, int)      to authenticated;
 grant execute on function current_is_admin()             to anon, authenticated;
 grant execute on function is_business_member(uuid)       to anon, authenticated;
+
+-- Card reads for the app's own lists. Each checks who is asking.
+grant execute on function business_deals(uuid)                               to authenticated;
+grant execute on function review_queue()                                      to authenticated;
+grant execute on function saved_deal_cards(double precision, double precision) to authenticated;
+grant execute on function my_action_deals(double precision, double precision)  to authenticated;
+grant execute on function get_business(uuid)                                  to anon, authenticated;
+grant execute on function list_localities()                                   to anon, authenticated;
+
+-- deal_cards builds cards with no visibility check; only the readers above
+-- may call it.
+revoke execute on function deal_cards(uuid[], double precision, double precision)
+  from public, anon, authenticated;
 
 -- Workers only.
 --

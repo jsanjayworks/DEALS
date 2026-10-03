@@ -44,6 +44,20 @@ export const ICON_PATHS = {
   gear: 'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z',
   wifi: 'M3 3l18 18M8.5 16.5a5 5 0 0 1 7 0M5 12.5a10 10 0 0 1 4-2.3M19 12.5a10 10 0 0 0-2.5-1.8M12 20h.01',
   qr: 'M4 4h6v6H4zm10 0h6v6h-6zM4 14h6v6H4zm10 0h2v2h-2zm4 0h2v2h-2zm-4 4h2v2h-2zm4 0h2v2h-2z',
+
+  // Category glyphs, drawn to the same grid and stroke. Top-level categories
+  // name these in their `icon` column, so the Home grid reads them from data.
+  utensils: 'M5 3v5a3 3 0 0 0 6 0V3M8 3v18M17 21V3c2.2 1.3 3 3.8 3 7v4h-3',
+  bag: 'M5 8h14l-1.2 12.1a1 1 0 0 1-1 .9H7.2a1 1 0 0 1-1-.9zM9 8V6a3 3 0 0 1 6 0v2',
+  calendarStar:
+    'M5 5h14a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1Zm-1 5h16M8 3v4M16 3v4m-4 6 .9 1.8 2 .3-1.5 1.4.4 2-1.8-1-1.8 1 .4-2-1.5-1.4 2-.3z',
+  car: 'M4 16v-4l2-5a1.6 1.6 0 0 1 1.5-1h9a1.6 1.6 0 0 1 1.5 1l2 5v4M4 12h16M4 16h16v2a1 1 0 0 1-1 1h-1a1 1 0 0 1-1-1v-2M8 16v2a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1v-2M7.5 13.8h.01M16.5 13.8h.01',
+  building:
+    'M4 21V5a1 1 0 0 1 1-1h9a1 1 0 0 1 1 1v16m0-11h4a1 1 0 0 1 1 1v10M3 21h18M8 8h3M8 12h3M8 16h3',
+  sparkles:
+    'M10 3l1.6 4.4L16 9l-4.4 1.6L10 15l-1.6-4.4L4 9l4.4-1.6zM18 14l.9 2.1L21 17l-2.1.9L18 20l-.9-2.1L15 17l2.1-.9z',
+  briefcase: 'M4 8h16a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1Zm5 0V6a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2M3 13h18',
+  bolt: 'M13 3 5 13.5h6L10 21l8-10.5h-6z',
 } as const;
 
 export type IconName = keyof typeof ICON_PATHS;
@@ -76,4 +90,9 @@ export function Icon({
       />
     </Svg>
   );
+}
+
+/** The glyph a category names in its `icon` column, or a neutral fallback. */
+export function categoryIcon(icon: string): IconName {
+  return icon in ICON_PATHS ? (icon as IconName) : 'grid';
 }

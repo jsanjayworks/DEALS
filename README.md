@@ -3,23 +3,29 @@
 Hyperlocal deals marketplace for Bengaluru. One Expo app carries both the
 customer and merchant modes; a Next.js admin console comes later.
 
-Designs come from Figma Make; the token source is committed at
-`docs/design/figma-make/index.css` and `src/theme/tokens.ts` is derived from it.
-
-**A naming trap worth knowing about.** The Figma tokens kept their original
-teal-era *names* after the palette moved to plum, lilac and lime.
-`--color-aqua` is plum `#4B1D6B`. `--color-citrus` is lime `#C8EB2A`.
-`--color-seafoam` is lilac. Nothing in the palette is aqua or seafoam any more.
-`tokens.ts` renames them semantically (`brand`, `cta`, `surfaceSoft`) and notes
-the mapping on each one.
+Designs started from a Figma Make export (`docs/design/figma-make/index.css`,
+plum and lime). The app now ships **teal + marigold**: every colour resolves
+through `src/theme/tokens.ts`, which holds five main colours and six accents,
+selected by `ACTIVE_PALETTE` and `ACTIVE_ACCENT`. The Figma palette is kept as
+`plum`. In a development build on web, `?palette=blue&accent=coral` on the URL
+previews any pairing; comparisons are in `docs/design/palette-options*.png` and
+`docs/design/accent-options.png`.
 
 ---
 
 ## Where this is right now
 
-**Backend foundation and the mapping layer are in place. No UI yet** — screens
-are waiting on the Figma designs, and the data layer is built so they can be
-dropped straight on top.
+**The whole app works end to end on the local adapter**, on phones and in a
+desktop browser from one codebase:
+
+- **Customers** browse, search, filter by category and subheading, claim or book a deal, show the code at the counter, and cancel.
+- **Merchants** create deals in a seven-step wizard, submit them, redeem codes and read their insights.
+- **Admins** approve or reject submissions.
+
+The app runs on either backend: the in-memory seed (no setup) or Supabase, with
+sign-in by email or phone code. The remaining list, in build order, is
+[`docs/CHECKLIST.md`](docs/CHECKLIST.md), and UI/UX quality is scored in
+[`docs/UX-SCORECARD.md`](docs/UX-SCORECARD.md) (baseline 73/100).
 
 ### Done
 
@@ -27,23 +33,38 @@ dropped straight on top.
 |---|---|---|
 | Database schema | `supabase/migrations/0001_init.sql` | 30 tables, enums, indexes, partitioned `deal_events`, lifecycle transition table |
 | Business logic | `supabase/migrations/0002_functions.sql` | All five PRD engines as `SECURITY DEFINER` RPCs |
+| New-user profiles | `supabase/migrations/0004_new_user_profiles.sql` | Trigger on `auth.users` creates the `profiles` row at sign-up |
+| Merchant onboarding | `supabase/migrations/0006_merchant_onboarding.sql` | `create_business`; YOLO Verified requests with GSTIN (check digit), or PAN plus Udyam / Shop & Establishment / trade licence, FSSAI for food; admin queue; direct writes to `businesses` closed |
+| Scheduled jobs | `supabase/migrations/0005_cron.sql` | pg_cron: activate and expire deals every minute, analytics rollup, partitions. Skipped where pg_cron is absent |
 | Security | `supabase/migrations/0003_rls.sql` | RLS on every table, plus table-level write lockdown routing all writes through RPCs |
-| Seed SQL | `supabase/migrations/0004_seed.sql` | Generated from the TypeScript seed by `npm run gen:seed` |
-| Backend tests | `supabase/local/0{1,2}_*.sql` | **110 assertions, all passing** against Postgres 16.4 + PostGIS 3.4.3 |
+| Seed SQL | `supabase/seed.sql` | Generated from the TypeScript seed by `npm run gen:seed`. Not a migration, so Supabase never applies it to production |
+| Backend tests | `supabase/local/0{1,2}_*.sql` | **176 assertions, all passing** against Postgres 16.4 + PostGIS 3.4.3; the migrations and seed also apply cleanly on the Supabase CLI stack (Postgres 17) |
 | Domain types | `src/data/types.ts` | Field names mirror the SQL one-to-one |
 | Mapping layer | `src/data/mapping.ts` | SQL `deal_card` row ↔ nested `DealCardModel`, both directions |
 | Data contract | `src/data/api.ts` | The single interface every screen will call |
 | Local adapter | `src/data/local.ts` | In-memory, enforces the same rules as the SQL |
+| Supabase adapter | `src/data/supabase.ts` | Every `DataSource` method over the RPCs; `P0001`/`42501` errors become `RuleViolation`s |
+| Auth | `src/data/supabase.ts`, `src/app/sign-in.tsx` | Email or phone one-time code, session in AsyncStorage, refresh while foregrounded, sign-out |
+| Backend switch | `src/data/index.ts` | Supabase when `EXPO_PUBLIC_SUPABASE_URL` and `EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY` are set, otherwise the local seed |
 | Lifecycle | `src/domain/lifecycle.ts` | Mirror of `deal_transitions` |
 | Ranking | `src/domain/ranking.ts` | Mirror of `deal_score()` — same 8 weights |
 | Action rules | `src/domain/rules.ts` | Mirror of `take_deal_action()` eligibility |
 | NL search | `src/search/parser.ts` | Rule-based parser, no API key needed |
-| Seed content | `src/data/seed-*.ts` | 10 localities, 30 categories, 32 businesses, 56 live deals + pipeline/queue deals |
-| Design tokens | `src/theme/tokens.ts` | Plum / lilac / lime palette, Inter scale, derived from the Figma export |
-| Component library | `src/components/` | Icon set (30 paths ported 1:1), Button, Chip, Badges, StatusPill, Price, DealCard (3 variants), Header, Section, Field, EmptyState |
-| Navigation | `src/app/` | Expo Router: customer tabs, deal detail, results. Home reads live feed data |
+| Seed content | `src/data/seed-*.ts` | 10 localities, 34 categories (7 top-level), 32 businesses, 59 live deals + pipeline/queue deals |
+| Taxonomy facets | `categories.attribute_schema` | `x-facet` attributes (cuisine, BHK, furnishing, vehicle) become category subheadings |
+| Design tokens | `src/theme/tokens.ts` | Palette and accent system, Inter scale, chart colours validated for colour-blind separation |
+| Component library | `src/components/` | Line icon set, Button, Chip, Badges, Price, DealCard (4 variants with hover), Glass, Sheet (dialog on wide screens), RollingNumber, layout primitives |
+| App chrome | `src/ui/` | Responsive layout hook, scroll-aware header and floating tab bar |
+| Customer screens | `src/app/` | Home, Search, Results, Category, Deal detail, My Deals, Profile, Notifications |
+| Merchant mode | `src/app/merchant/`, `src/merchant/` | Dashboard, deals, 7-step wizard, deal lifecycle, redeem, insights |
+| Admin | `src/app/admin/` | Review queue: approve, or reject with a reason |
+| Claim flow | `src/deal/ClaimSheet.tsx` | Quantity, IST slots, eligibility preflight, code and QR |
+| Search UI | `src/search/` | Parser, filter sheet, data-driven subheadings (`facets.ts`) |
+| Session | `src/state/session.ts` | Account, locality, radius, recent searches; persisted |
 
-`npm run typecheck` and `npm run db:verify` both pass.
+`npm run typecheck`, `npm run lint` and `npm run db:verify` all pass. A browser run
+against the local Supabase stack covers sign-in, claim, My Deals, merchant redeem
+and admin approval end to end.
 
 ### Bugs the test suite caught
 
@@ -69,20 +90,28 @@ security holes:
    `is_yolo_verified`. Fixed by revoking `UPDATE` on `profiles` and granting
    back only the fields a person legitimately edits.
 
+Wiring against Supabase and merchant onboarding found six more, all fixed and now under test:
+
+4. **Anyone could read unpublished deals** through the `deal_card_base` view,
+   which ran with its owner's rights. It is now `security_invoker`.
+5. **`get_deal` returned drafts and submissions** to any caller who knew the id.
+   It now checks visibility: live deals, your own business, admins, or a deal
+   you already acted on.
+6. **`merchant_stats` answered for any business.** It now requires membership.
+7. **Any signed-in customer could add themselves to any business** through the
+   `business_members` insert policy. Only existing members and admins can now.
+8. **Anyone could insert a business already marked verified**, and
+9. **an owner could verify or rate their own business**: `businesses` kept
+   Supabase's table-wide write grants. Creation now goes through
+   `create_business()` and only contact fields are editable (0006).
+
 ### Not done yet
 
-- **All screens.** Waiting on Figma.
-- **Supabase adapter** (`src/data/supabase.ts`) — the contract is defined, the
-  RPC calls are not written yet.
-- `App.tsx` is still the Expo template. Expo Router is installed but not wired,
-  and per `AGENTS.md` routes belong in `src/app/`.
-- Migrations have only run against local Postgres, not the real Supabase
-  project. `0004_seed.sql` inserts into `auth.users` directly, which Supabase
-  discourages — on the real project, create the three demo accounts through
-  Auth first, then run the seed with those ids.
-- pg_cron is not scheduled yet. `activate_due_deals()`, `expire_due_deals()`
-  and `rollup_deal_analytics()` exist and are tested, but nothing calls them on
-  a timer.
+- **Production auth setup.** Phone codes need an SMS provider (Twilio,
+  MessageBird, Vonage or Textlocal) under Authentication → Providers → Phone.
+  Email codes need the two templates in `supabase/templates/` pasted into
+  Authentication → Email Templates (the CLI's `config.toml` only covers local).
+- Deal media upload (Storage bucket) and device location.
 
 ---
 
@@ -92,7 +121,7 @@ security holes:
 npm install
 npm run typecheck     # tsc --noEmit
 npm run db:up         # start the local PostGIS container (once)
-npm run db:verify     # rebuild the schema, then run 110 assertions
+npm run db:verify     # rebuild the schema, then run 176 assertions
 ```
 
 | Command | What it does |
@@ -101,7 +130,7 @@ npm run db:verify     # rebuild the schema, then run 110 assertions
 | `npm run db:reset` | Drops and rebuilds the schema, applying every migration in order |
 | `npm run db:test` | Runs the two SQL suites (needs a freshly reset database) |
 | `npm run db:verify` | `db:reset` then `db:test` — the one to use |
-| `npm run gen:seed` | Regenerates `0004_seed.sql` from `src/data/seed-*.ts` |
+| `npm run gen:seed` | Regenerates `supabase/seed.sql` from `src/data/seed-*.ts` |
 
 The seed's dates are relative to generation time, so the Today and Ending Soon
 rails go stale after a few days — rerun `npm run gen:seed`.
@@ -110,10 +139,33 @@ rails go stale after a few days — rerun `npm run gen:seed`.
 `anon` / `authenticated` roles that Supabase provides for real, so
 **never run it against the real project**.
 
-### Against real Supabase
+### Against the Supabase CLI stack
 
-Apply `0001` → `0002` → `0003` through the SQL editor. Skip the stub: the
-project already has `auth` and the roles.
+Needs Docker. This runs the real Auth, PostgREST and Postgres locally, applies
+`supabase/migrations/` and then `supabase/seed.sql`:
+
+```bash
+npx supabase start -x studio,imgproxy,edge-runtime,logflare,vector,supavisor,realtime,storage-api,postgres-meta
+npx supabase db reset      # reapply migrations + seed
+npx supabase status        # prints the API URL and publishable key
+```
+
+Start the app pointed at it:
+
+```bash
+EXPO_PUBLIC_SUPABASE_URL=http://127.0.0.1:54321 EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY=<publishable key from status> npx expo start
+```
+
+Sign in with `customer@yolodeals.in`, `merchant@yolodeals.in` or
+`admin@yolodeals.in`; the code arrives in Mailpit at http://127.0.0.1:54324.
+Stop the stack with `npx supabase stop`.
+
+### Against the hosted project
+
+The Supabase GitHub integration applies `supabase/migrations/` when `main`
+changes, if "Deploy to production" is on. It never runs `seed.sql`, and nobody
+should run it there by hand. Only the publishable key belongs in
+`EXPO_PUBLIC_` variables — never the secret or service-role key.
 
 ---
 
@@ -121,7 +173,7 @@ project already has `auth` and the roles.
 
 **Two adapters, one contract.** Screens import from `src/data` and call the
 `DataSource` interface. `local.ts` serves the seed with no network; `supabase.ts`
-will call the RPCs. Swapping is one line in `src/data/index.ts`, and no screen
+calls the RPCs. `src/data/index.ts` picks one from the environment, and no screen
 changes.
 
 **The mirrors must stay in step.** Four pairs of files deliberately duplicate

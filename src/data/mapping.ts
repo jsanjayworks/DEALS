@@ -78,6 +78,14 @@ export interface DealCardRow {
   distance_km: number | null;
   ending_soon: boolean;
   score: number | null;
+  audience: string | null;
+  membership_required: boolean | null;
+  advance_booking_hours: number | null;
+  custom_rule: string | null;
+  rejection_reason: string | null;
+  created_at: string | null;
+  business_rating: string | number | null;
+  business_rating_count: number | null;
 }
 
 /**
@@ -140,18 +148,18 @@ export function rowToDealCard(r: DealCardRow): DealCardModel {
       end_time: hhmm(r.availability_end),
     },
     eligibility: {
-      audience: 'everyone',
+      audience: (r.audience ?? 'everyone') as DealCardModel['eligibility']['audience'],
       min_age: r.min_age,
       min_spend: num(r.min_spend),
-      membership_required: false,
-      advance_booking_hours: r.booking_required ? 2 : null,
-      custom_rule: null,
+      membership_required: r.membership_required ?? false,
+      advance_booking_hours: r.advance_booking_hours,
+      custom_rule: r.custom_rule,
     },
-    rejection_reason: null,
+    rejection_reason: r.rejection_reason,
     published_at: r.published_at,
     rating_avg: num0(r.rating_avg),
     rating_count: r.rating_count ?? 0,
-    created_at: r.published_at ?? new Date().toISOString(),
+    created_at: r.created_at ?? r.published_at ?? new Date().toISOString(),
     views: r.view_count ?? 0,
     searches: r.search_count ?? 0,
 
@@ -163,8 +171,8 @@ export function rowToDealCard(r: DealCardRow): DealCardModel {
       email: '',
       primary_category_id: r.category_id,
       verification_status: r.is_verified ? 'verified' : 'unverified',
-      rating_avg: num0(r.rating_avg),
-      rating_count: r.rating_count ?? 0,
+      rating_avg: num0(r.business_rating ?? r.rating_avg),
+      rating_count: r.business_rating_count ?? r.rating_count ?? 0,
       locality_id: '',
       address_line: r.address_line ?? '',
       location: { lat: r.lat ?? 0, lng: r.lng ?? 0 },

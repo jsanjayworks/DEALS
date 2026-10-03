@@ -73,8 +73,14 @@ $$;
 -- ------------------------------------------------- denormalized read view --
 -- One place that flattens a deal into what a card needs. feed_nearby and
 -- search_deals both read from here, so the two never drift apart.
+--
+-- security_invoker: a plain view runs with its owner's rights, which skips
+-- row-level security on deals, so anon could read drafts, submissions and
+-- rejection reasons straight through the REST API. With security_invoker the
+-- caller's RLS applies. The SECURITY DEFINER readers below still see every
+-- row, because inside them the caller is the owner.
 
-create or replace view deal_card_base as
+create or replace view deal_card_base with (security_invoker = true) as
 select
   d.id,
   d.business_id,
@@ -120,6 +126,7 @@ select
   b.phone                            as business_phone,
   (b.verification_status = 'verified') as is_verified,
   b.rating_avg                       as business_rating,
+  b.rating_count                     as business_rating_count,
 
   c.slug                             as category_slug,
   c.name                             as category_name,
@@ -230,7 +237,18 @@ create type deal_card as (
   min_spend             numeric,
   distance_km           double precision,
   ending_soon           boolean,
-  score                 double precision
+  score                 double precision,
+  -- Appended so earlier columns keep their positions. Without these the app
+  -- had to guess: every deal read as open to everyone, the notice period was
+  -- invented, and a merchant never saw why a deal was rejected.
+  audience              text,
+  membership_required   boolean,
+  advance_booking_hours int,
+  custom_rule           text,
+  rejection_reason      text,
+  created_at            timestamptz,
+  business_rating       numeric,
+  business_rating_count int
 );
 
 -- -------------------------------------------------------------- ranking ----
@@ -373,7 +391,9 @@ begin
     s.primary_cta, s.secondary_ctas,
     s.availability_days, s.availability_start, s.availability_end,
     s.min_age, s.min_spend,
-    s.distance_km, s.ending_soon, s.score
+    s.distance_km, s.ending_soon, s.score,
+    s.audience::text, s.membership_required, s.advance_booking_hours, s.custom_rule,
+    s.rejection_reason, s.created_at, s.business_rating, s.business_rating_count
   from scored s
   where case p_section
     -- Open right now, on a day the deal runs.
@@ -526,7 +546,9 @@ begin
     s.primary_cta, s.secondary_ctas,
     s.availability_days, s.availability_start, s.availability_end,
     s.min_age, s.min_spend,
-    s.distance_km, s.ending_soon, s.score
+    s.distance_km, s.ending_soon, s.score,
+    s.audience::text, s.membership_required, s.advance_booking_hours, s.custom_rule,
+    s.rejection_reason, s.created_at, s.business_rating, s.business_rating_count
   from scored s
   order by
     case coalesce(p_filters->>'sort', 'relevance')
@@ -539,9 +561,16 @@ begin
   offset greatest(p_offset, 0);
 end $$;
 
-create or replace function get_deal(p_deal_id uuid, p_lat double precision default null,
-                                    p_lng double precision default null)
-returns setof deal_card
+/**
+ * Cards for a set of deal ids, with no visibility check at all. Internal: it
+ * is revoked from every client role in 0003, and each public reader below
+ * decides who may see what before calling it.
+ */
+create or replace function deal_cards(
+  p_ids uuid[],
+  p_lat double precision default null,
+  p_lng double precision default null
+) returns setof deal_card
 language plpgsql stable security definer set search_path = public as $$
 declare
   v_origin geography := case
@@ -564,13 +593,121 @@ begin
     v.primary_cta, v.secondary_ctas,
     v.availability_days, v.availability_start, v.availability_end,
     v.min_age, v.min_spend,
-    case when v_origin is null then 0
+    case when v_origin is null or v.location is null then 0
          else st_distance(v.location, v_origin) / 1000.0 end,
     (v.ends_at is not null and v.ends_at <= now() + interval '24 hours'),
-    0::double precision
+    0::double precision,
+    v.audience::text, v.membership_required, v.advance_booking_hours, v.custom_rule,
+    v.rejection_reason, v.created_at, v.business_rating, v.business_rating_count
   from deal_card_base v
-  where v.id = p_deal_id;
+  where v.id = any (p_ids);
 end $$;
+
+/**
+ * One deal for its detail page. Public deals for anyone; anything else only
+ * for the business that owns it, an admin, or a customer who has already
+ * claimed, booked or enquired about it (so My Deals can still open a deal
+ * that has since expired). Mirrors getDeal in src/data/local.ts.
+ */
+create or replace function get_deal(p_deal_id uuid, p_lat double precision default null,
+                                    p_lng double precision default null)
+returns setof deal_card
+language plpgsql stable security definer set search_path = public as $$
+begin
+  return query
+  select c.* from deal_cards(array[p_deal_id], p_lat, p_lng) c
+  where c.status in ('ACTIVE', 'PUBLISHED')
+     or is_business_member(c.business_id)
+     or current_is_admin()
+     or exists (
+       select 1 from customer_actions a
+       where a.deal_id = c.id and a.customer_id = auth.uid()
+     );
+end $$;
+
+/** Every deal a business has, any status. Members and admins only. */
+create or replace function business_deals(p_business_id uuid) returns setof deal_card
+language plpgsql stable security definer set search_path = public as $$
+begin
+  if not (is_business_member(p_business_id) or current_is_admin()) then
+    raise exception 'not a member of this business' using errcode = '42501';
+  end if;
+  return query
+  select * from deal_cards(array(select id from deals where business_id = p_business_id));
+end $$;
+
+/** Deals waiting on review, oldest submission first. Admins only. */
+create or replace function review_queue() returns setof deal_card
+language plpgsql stable security definer set search_path = public as $$
+begin
+  if not current_is_admin() then
+    raise exception 'admin only' using errcode = '42501';
+  end if;
+  return query
+  select * from deal_cards(array(
+    select id from deals where status in ('SUBMITTED', 'VERIFICATION')
+  )) c
+  order by c.created_at;
+end $$;
+
+/** The caller's saved deals, whatever their status now. */
+create or replace function saved_deal_cards(
+  p_lat double precision default null,
+  p_lng double precision default null
+) returns setof deal_card
+language plpgsql stable security definer set search_path = public as $$
+begin
+  return query
+  select * from deal_cards(
+    array(select deal_id from saved_deals where profile_id = auth.uid()), p_lat, p_lng);
+end $$;
+
+/** Cards for every deal the caller has acted on, for My Deals. */
+create or replace function my_action_deals(
+  p_lat double precision default null,
+  p_lng double precision default null
+) returns setof deal_card
+language plpgsql stable security definer set search_path = public as $$
+begin
+  return query
+  select * from deal_cards(
+    array(select distinct deal_id from customer_actions where customer_id = auth.uid()),
+    p_lat, p_lng);
+end $$;
+
+/**
+ * A business with its primary location as plain lat/lng. Locations are stored
+ * as geography, which the REST API would hand back as hex WKB.
+ */
+create or replace function get_business(p_business_id uuid)
+returns table (
+  id uuid, name text, phone text, email text, primary_category_id uuid,
+  verification_status text, rating_avg numeric, rating_count int,
+  locality_id uuid, address_line text, lat double precision, lng double precision
+)
+language sql stable security definer set search_path = public as $$
+  select b.id, b.name, b.phone, b.email, b.primary_category_id,
+         b.verification_status::text, b.rating_avg, b.rating_count,
+         bl.locality_id, bl.address_line,
+         st_y(bl.location::geometry), st_x(bl.location::geometry)
+  from businesses b
+  left join lateral (
+    select * from business_locations x
+    where x.business_id = b.id
+    order by x.is_primary desc, x.id limit 1
+  ) bl on true
+  where b.id = p_business_id;
+$$;
+
+/** Localities with plain lat/lng centroids, for the same reason. */
+create or replace function list_localities()
+returns table (id uuid, name text, city text, lat double precision, lng double precision, aliases text[])
+language sql stable security definer set search_path = public as $$
+  select l.id, l.name, l.city,
+         st_y(l.centroid::geometry), st_x(l.centroid::geometry), l.aliases
+  from localities l
+  order by l.name;
+$$;
 
 -- ------------------------------------------------------ lifecycle engine ---
 
@@ -999,27 +1136,51 @@ begin
       raise exception 'only draft or rejected deals can be edited' using errcode = 'P0001';
     end if;
 
+    -- Two rules for fields. Required columns keep their value when the key is
+    -- absent or null. Optional columns take whatever is posted when the key is
+    -- present, null included, so a merchant can clear a usual price or remove a
+    -- capacity limit; an absent key leaves them alone.
     update deals set
       category_id          = coalesce(v_cat, category_id),
       deal_type_code       = coalesce(p_deal->>'deal_type_code', deal_type_code),
       offering_kind        = coalesce((p_deal->>'offering_kind')::offering_kind, offering_kind),
       title                = coalesce(p_deal->>'title', title),
-      short_description    = coalesce(p_deal->>'short_description', short_description),
-      description          = coalesce(p_deal->>'description', description),
-      original_price       = coalesce(nullif(p_deal->>'original_price','')::numeric, original_price),
-      deal_price           = coalesce(nullif(p_deal->>'deal_price','')::numeric, deal_price),
-      price_unit           = coalesce(p_deal->>'price_unit', price_unit),
-      taxes_note           = coalesce(p_deal->>'taxes_note', taxes_note),
-      min_purchase         = coalesce(nullif(p_deal->>'min_purchase','')::numeric, min_purchase),
-      max_qty_per_customer = coalesce(nullif(p_deal->>'max_qty_per_customer','')::int, max_qty_per_customer),
+      short_description    = case when p_deal ? 'short_description'
+                                  then p_deal->>'short_description' else short_description end,
+      description          = case when p_deal ? 'description'
+                                  then p_deal->>'description' else description end,
+      original_price       = case when p_deal ? 'original_price'
+                                  then nullif(p_deal->>'original_price','')::numeric else original_price end,
+      deal_price           = case when p_deal ? 'deal_price'
+                                  then nullif(p_deal->>'deal_price','')::numeric else deal_price end,
+      price_unit           = case when p_deal ? 'price_unit'
+                                  then p_deal->>'price_unit' else price_unit end,
+      taxes_note           = case when p_deal ? 'taxes_note'
+                                  then p_deal->>'taxes_note' else taxes_note end,
+      min_purchase         = case when p_deal ? 'min_purchase'
+                                  then nullif(p_deal->>'min_purchase','')::numeric else min_purchase end,
+      max_qty_per_customer = case when p_deal ? 'max_qty_per_customer'
+                                  then nullif(p_deal->>'max_qty_per_customer','')::int
+                                  else max_qty_per_customer end,
       starts_at            = coalesce(nullif(p_deal->>'starts_at','')::timestamptz, starts_at),
       ends_at              = coalesce(nullif(p_deal->>'ends_at','')::timestamptz, ends_at),
-      capacity_total       = coalesce(nullif(p_deal->>'capacity_total','')::int, capacity_total),
-      capacity_remaining   = coalesce(nullif(p_deal->>'capacity_remaining','')::int, capacity_remaining),
+      capacity_total       = case when p_deal ? 'capacity_total'
+                                  then nullif(p_deal->>'capacity_total','')::int else capacity_total end,
+      -- Nothing can have been claimed from a draft or a rejected deal, so what
+      -- is left follows the new total, including back to unlimited. A live deal
+      -- keeps its count: an admin raising capacity must not hand back units
+      -- already claimed.
+      capacity_remaining   = case
+                               when p_deal ? 'capacity_remaining'
+                                 then nullif(p_deal->>'capacity_remaining','')::int
+                               when p_deal ? 'capacity_total' and status in ('DRAFT','REJECTED')
+                                 then nullif(p_deal->>'capacity_total','')::int
+                               else capacity_remaining end,
       booking_required     = coalesce((p_deal->>'booking_required')::boolean, booking_required),
       fulfilment           = coalesce((p_deal->>'fulfilment')::fulfilment_mode, fulfilment),
-      cancellation_policy  = coalesce(p_deal->>'cancellation_policy', cancellation_policy),
-      terms                = coalesce(p_deal->>'terms', terms),
+      cancellation_policy  = case when p_deal ? 'cancellation_policy'
+                                  then p_deal->>'cancellation_policy' else cancellation_policy end,
+      terms                = case when p_deal ? 'terms' then p_deal->>'terms' else terms end,
       attributes           = coalesce(p_deal->'attributes', attributes),
       tags                 = case when p_deal ? 'tags'
                                   then coalesce(array(select jsonb_array_elements_text(p_deal->'tags')), '{}')
@@ -1251,27 +1412,36 @@ returns table (
   views int, searches int, claims int, bookings int, enquiries int,
   active_count int, draft_count int, pending_count int, expired_count int
 )
-language sql stable security definer set search_path = public as $$
-  with d as (select id, status from deals where business_id = p_business_id),
+language plpgsql stable security definer set search_path = public as $$
+#variable_conflict use_column
+begin
+  -- A business's numbers are its own: views, claims and bookings are
+  -- commercially sensitive, so outsiders are refused rather than shown them.
+  if not (is_business_member(p_business_id) or current_is_admin()) then
+    raise exception 'not a member of this business' using errcode = '42501';
+  end if;
+
+  return query
+  with d as (select x.id, x.status from deals x where x.business_id = p_business_id),
   ev as (
     select
-      coalesce(sum(a.views), 0)::int              as views,
-      coalesce(sum(a.search_appearances), 0)::int as searches,
-      coalesce(sum(a.claims), 0)::int             as claims,
-      coalesce(sum(a.bookings), 0)::int           as bookings,
-      coalesce(sum(a.enquiries), 0)::int          as enquiries
+      coalesce(sum(a.views), 0)::int              as v_views,
+      coalesce(sum(a.search_appearances), 0)::int as v_searches,
+      coalesce(sum(a.claims), 0)::int             as v_claims,
+      coalesce(sum(a.bookings), 0)::int           as v_bookings,
+      coalesce(sum(a.enquiries), 0)::int          as v_enquiries
     from deal_analytics_daily a
     join d on d.id = a.deal_id
     where a.day >= current_date - p_days
   )
   select
-    ev.views, ev.searches, ev.claims, ev.bookings, ev.enquiries,
-    (select count(*) from d where status = 'ACTIVE')::int,
-    (select count(*) from d where status = 'DRAFT')::int,
-    (select count(*) from d where status in ('SUBMITTED','VERIFICATION','APPROVED','PUBLISHED'))::int,
-    (select count(*) from d where status in ('EXPIRED','COMPLETED','ARCHIVED'))::int
+    ev.v_views, ev.v_searches, ev.v_claims, ev.v_bookings, ev.v_enquiries,
+    (select count(*) from d where d.status = 'ACTIVE')::int,
+    (select count(*) from d where d.status = 'DRAFT')::int,
+    (select count(*) from d where d.status in ('SUBMITTED','VERIFICATION','APPROVED','PUBLISHED'))::int,
+    (select count(*) from d where d.status in ('EXPIRED','COMPLETED','ARCHIVED'))::int
   from ev;
-$$;
+end $$;
 
 -- ------------------------------------------------------- scheduled jobs ----
 -- PUBLISHED -> ACTIVE when the start time arrives, ACTIVE -> EXPIRED when it

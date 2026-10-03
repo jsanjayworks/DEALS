@@ -3,7 +3,7 @@
  * docs/design/figma-make/ui.tsx.
  *
  * The `dark` header is how the design signals merchant mode: the same app, a
- * deep plum bar instead of white.
+ * deep brand-coloured bar instead of white.
  */
 
 import type { ReactNode } from 'react';
@@ -23,7 +23,7 @@ export interface HeaderProps {
   title: string;
   onBack?: () => void;
   right?: ReactNode;
-  /** Merchant mode: plum bar, white text. */
+  /** Merchant and admin: a bar in the theme's deep shade, white text. */
   dark?: boolean;
 }
 
@@ -135,7 +135,7 @@ export function EmptyState({
       <View
         style={[
           styles.emptyIcon,
-          { backgroundColor: tone === 'alert' ? '#FDECEF' : color.background },
+          { backgroundColor: tone === 'alert' ? '#FDECEF' : color.surfaceSoftAlt },
         ]}
       >
         <Icon name={icon} size={32} color={tint} />
@@ -157,7 +157,7 @@ const styles = StyleSheet.create({
     borderBottomColor: color.border,
   },
   headerDark: {
-    backgroundColor: color.brandStrong,
+    backgroundColor: color.brand,
   },
   headerRow: {
     height: size.header,

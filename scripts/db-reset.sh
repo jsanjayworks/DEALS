@@ -25,20 +25,20 @@ drop schema if exists auth cascade;
 create schema public;
 SQL
 
-FILES=(
-  supabase/local/00_supabase_stub.sql
-  supabase/migrations/0001_init.sql
-  supabase/migrations/0002_functions.sql
-  supabase/migrations/0003_rls.sql
-)
+# The stub stands in for what Supabase provides, then every migration in order.
+FILES=(supabase/local/00_supabase_stub.sql)
+for m in supabase/migrations/*.sql; do
+  FILES+=("$m")
+done
 
-# Optional files are applied when present, so seeding can land later.
-for extra in supabase/migrations/0004_seed.sql; do
+# The seed is not a migration: Supabase never runs seed.sql against production,
+# only locally and on preview branches. Applied last, when present.
+for extra in supabase/seed.sql; do
   [ -f "$extra" ] && FILES+=("$extra")
 done
 
 for f in "${FILES[@]}"; do
-  printf '%-44s' "$f"
+  printf '%-52s' "$f"
   out="$(psql_file "$f" 2>&1)"
   code=$?
   if [ $code -eq 0 ]; then

@@ -16,29 +16,25 @@ import { Icon } from './Icon';
 
 export type BadgeKind = 'Ending Soon' | 'Trending' | 'New' | 'Flash Deal' | 'Free';
 
-const BADGE_FILL: Record<BadgeKind, string> = {
-  'Ending Soon': color.alert,
-  Trending: color.text,
-  New: color.interactive,
-  'Flash Deal': color.alertSoft,
-  Free: color.brand,
-};
-
+/**
+ * Marketing flags are ink pills: they sit on photos of every colour, and a
+ * tinted flag on a tinted photo is noise. Words do the distinguishing.
+ */
 export function Badge({ kind }: { kind: BadgeKind }) {
   return (
-    <View style={[styles.badge, { backgroundColor: BADGE_FILL[kind] }]}>
+    <View style={[styles.badge, styles.ink]}>
       <Text style={[styles.badgeText, { color: color.white }]}>{kind}</Text>
     </View>
   );
 }
 
-/** The lime discount flag. Reserved for discounts — never reuse this colour. */
+/** The discount flag, in the accent: the one tinted thing on a deal photo. */
 export function DiscountBadge({ percent }: { percent: number }) {
   if (percent <= 0) return null;
   return (
-    <View style={[styles.badge, { backgroundColor: color.deal }]}>
-      <Text style={[styles.badgeText, styles.tabular, { color: color.text }]}>
-        {'🔥 ' + percent + '% OFF'}
+    <View style={[styles.badge, styles.discount]}>
+      <Text style={[styles.badgeText, styles.tabular, { color: color.onCta }]}>
+        {percent + '% off'}
       </Text>
     </View>
   );
@@ -98,10 +94,20 @@ export function DealStatusPill({ status }: { status: DealStatus }) {
 }
 
 const styles = StyleSheet.create({
+  discount: {
+    backgroundColor: color.cta,
+    shadowColor: color.black,
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 1 },
+  },
+  ink: {
+    backgroundColor: color.brand,
+  },
   badge: {
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: radius.sm,
+    paddingHorizontal: 9,
+    paddingVertical: 3,
+    borderRadius: radius.pill,
     alignSelf: 'flex-start',
   },
   badgeText: {
@@ -122,7 +128,7 @@ const styles = StyleSheet.create({
     width: 14,
     height: 14,
     borderRadius: 7,
-    backgroundColor: color.brandStrong,
+    backgroundColor: color.brand,
     alignItems: 'center',
     justifyContent: 'center',
   },

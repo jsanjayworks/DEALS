@@ -98,6 +98,21 @@ export interface Locality {
   aliases: string[];
 }
 
+/** One attribute in a category's schema, as stored in categories.attribute_schema. */
+export interface AttributeSpec {
+  readonly type: 'string' | 'integer' | 'number' | 'boolean';
+  readonly title?: string;
+  /** Shown as a row of subheadings on the category page. */
+  readonly 'x-facet'?: boolean;
+  /** How a value reads, e.g. "{value} BHK". */
+  readonly 'x-label'?: string;
+}
+
+/** JSON Schema subset for deals.attributes. Absent means {}. */
+export interface AttributeSchema {
+  readonly properties?: Readonly<Record<string, AttributeSpec>>;
+}
+
 export interface Category {
   id: string;
   slug: string;
@@ -105,6 +120,7 @@ export interface Category {
   vertical: Vertical;
   icon: string;
   parent_id: string | null;
+  attribute_schema?: AttributeSchema;
 }
 
 export interface Business {
@@ -212,7 +228,9 @@ export interface Notification {
     | 'deal_rejected'
     | 'action_confirmed'
     | 'new_claim'
-    | 'ending_soon';
+    | 'ending_soon'
+    | 'business_verified'
+    | 'business_rejected';
   title: string;
   body: string;
   data: Record<string, unknown>;

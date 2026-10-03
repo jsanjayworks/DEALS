@@ -3,10 +3,10 @@
  * docs/design/figma-make/ui.tsx.
  *
  * Variants, in the design's own terms:
- *   primary    plum fill, white text        — the default action
- *   cta        lime fill, dark plum text    — Claim Deal, Submit for verification
- *   secondary  white fill, plum text, hairline border
- *   text       plum text, no fill
+ *   primary    ink fill, white text    — the default action
+ *   cta        accent fill, white text — the one action a screen exists for: Claim Deal, Submit
+ *   secondary  white fill, brand text, hairline border
+ *   text       brand text, no fill
  *
  * The web version animates `active:scale-[.98]` on press. Pressable's `pressed`
  * state gives the same feedback without an Animated value for every button.
@@ -40,7 +40,7 @@ const FILL: Record<ButtonVariant, string> = {
 
 const LABEL: Record<ButtonVariant, string> = {
   primary: color.white,
-  cta: color.brandStrong,
+  cta: color.onCta,
   secondary: color.brand,
   text: color.brand,
 };
@@ -104,7 +104,7 @@ export function Button({
 export interface ChipProps {
   children: ReactNode;
   onPress?: () => void;
-  /** Selected state: plum fill with white text. */
+  /** Selected state: brand fill with white text. */
   selected?: boolean;
   /** Trailing count, e.g. the tab chips on My Deals. */
   count?: number;
