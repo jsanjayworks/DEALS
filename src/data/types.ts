@@ -230,7 +230,8 @@ export interface Notification {
     | 'new_claim'
     | 'ending_soon'
     | 'business_verified'
-    | 'business_rejected';
+    | 'business_rejected'
+    | 'support_reply';
   title: string;
   body: string;
   data: Record<string, unknown>;

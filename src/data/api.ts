@@ -41,6 +41,14 @@ export interface AppViewer extends Viewer {
   full_name?: string | null;
   phone?: string | null;
   email?: string | null;
+  /** Profile picture, ready to display; null when there is none. */
+  avatar_url?: string | null;
+}
+
+/** A picked image, as expo-image-picker returns it. */
+export interface PickedImage {
+  uri: string;
+  mimeType?: string | null;
 }
 
 /** Where a one-time code is sent: a phone in E.164, or an email address. */
@@ -146,6 +154,50 @@ export interface ActionWithDeal extends CustomerAction {
   deal: DealCardModel;
 }
 
+/** The fields a person edits about themselves; phone is the login, so not here. */
+export interface ProfileUpdate {
+  full_name?: string;
+  email?: string | null;
+  /** YYYY-MM-DD. Unlocks 18+ and 21+ deals. */
+  date_of_birth?: string | null;
+}
+
+export type SupportTopic =
+  | 'claim_problem'
+  | 'payment_refund'
+  | 'deal_wrong'
+  | 'account'
+  | 'account_deletion'
+  | 'other';
+
+/** A customer's request to YOLO support; see create_support_ticket(). */
+export interface SupportTicket {
+  id: string;
+  topic: SupportTopic;
+  message: string;
+  status: 'open' | 'answered' | 'closed';
+  reply: string | null;
+  replied_at: string | null;
+  action_id: string | null;
+  deal_id: string | null;
+  created_at: string;
+}
+
+/** A request as the admin inbox shows it. */
+export interface SupportQueueItem {
+  id: string;
+  topic: SupportTopic;
+  message: string;
+  status: 'open' | 'answered' | 'closed';
+  created_at: string;
+  customer_name: string;
+  customer_contact: string;
+  redemption_code: string | null;
+  action_status: string | null;
+  deal_title: string | null;
+  reply: string | null;
+}
+
 /** What a new merchant fills in to list their business; see create_business(). */
 export interface NewBusinessInput {
   name: string;
@@ -245,6 +297,21 @@ export interface DataSource {
     details?: string,
   ): Promise<string>;
 
+  // ---- account and support ----
+  updateMyProfile(input: ProfileUpdate): Promise<void>;
+  /** Uploads a new profile picture and returns its URL. */
+  setAvatar(image: PickedImage): Promise<string>;
+  removeAvatar(): Promise<void>;
+  createSupportTicket(input: {
+    topic: SupportTopic;
+    message: string;
+    action_id?: string;
+    deal_id?: string;
+  }): Promise<string>;
+  listMySupportTickets(): Promise<SupportTicket[]>;
+  /** Cancels open claims, forgets saved deals, and asks the team to remove the login. */
+  requestAccountDeletion(reason?: string): Promise<void>;
+
   // ---- merchant ----
   /** Lists a business owned by the caller; the caller becomes a merchant. Returns its id. */
   createBusiness(input: NewBusinessInput): Promise<string>;
@@ -266,6 +333,8 @@ export interface DataSource {
   listReviewQueue(): Promise<DealCardModel[]>;
   reviewDeal(dealId: string, approve: boolean, reason?: string): Promise<DealStatus>;
   listVerificationQueue(): Promise<VerificationRequest[]>;
+  listSupportQueue(): Promise<SupportQueueItem[]>;
+  replySupportTicket(ticketId: string, reply: string, close?: boolean): Promise<'answered' | 'closed'>;
   reviewBusiness(businessId: string, approve: boolean, reason?: string): Promise<'verified' | 'rejected'>;
 
   // ---- notifications and analytics ----

@@ -17,6 +17,7 @@ import type { ReactNode } from 'react';
 import { LinearGradient } from 'expo-linear-gradient';
 import { color, font, radius, size, theme, type } from '../theme/tokens';
 import { Icon, type IconName } from './Icon';
+import { pressedProps } from '../lib/a11y';
 
 export type ButtonVariant = 'primary' | 'cta' | 'secondary' | 'text';
 
@@ -70,7 +71,8 @@ export function Button({
       disabled={isDisabled}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel}
-      accessibilityState={{ disabled: !!isDisabled, busy: !!loading }}
+      aria-disabled={!!isDisabled}
+      aria-busy={!!loading}
       style={({ pressed }) => [
         styles.base,
         {
@@ -130,7 +132,7 @@ export function Chip({ children, onPress, selected, count }: ChipProps) {
     <Pressable
       onPress={onPress}
       accessibilityRole="button"
-      accessibilityState={{ selected: !!selected }}
+      {...pressedProps(!!selected)}
       style={({ pressed }) => [
         styles.chip,
         selected ? styles.chipOn : styles.chipOff,

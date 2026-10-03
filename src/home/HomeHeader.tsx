@@ -11,7 +11,7 @@ import type { ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, { interpolate, useAnimatedStyle } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Glass, Icon, useHoverPress } from '../components';
+import { Avatar, Glass, Icon, useHoverPress } from '../components';
 import { useChromeHidden } from '../ui/chrome';
 import { MAX_CONTENT_WIDTH } from '../ui/layout';
 import { color, font, theme, type } from '../theme/tokens';
@@ -26,7 +26,8 @@ export function HomeHeader({
   locality,
   city,
   unread,
-  initial,
+  name,
+  avatarUrl,
   gutter,
   onLocality,
   onBell,
@@ -35,7 +36,9 @@ export function HomeHeader({
   locality: string;
   city: string;
   unread: number;
-  initial: string;
+  /** For the initial when there is no picture, and for screen readers. */
+  name: string;
+  avatarUrl: string | null;
   gutter: number;
   onLocality: () => void;
   onBell: () => void;
@@ -74,8 +77,8 @@ export function HomeHeader({
             <Icon name="bell" size={22} color={color.text} />
             {unread ? <View style={styles.dot} /> : null}
           </RoundButton>
-          <RoundButton label="Profile" onPress={onProfile} solid>
-            <Text style={styles.initial}>{initial}</Text>
+          <RoundButton label="Profile" onPress={onProfile}>
+            <Avatar uri={avatarUrl} name={name} size={36} />
           </RoundButton>
         </View>
       </Glass>

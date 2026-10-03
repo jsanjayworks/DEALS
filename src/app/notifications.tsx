@@ -22,6 +22,7 @@ const KIND_ICON: Record<Notification['kind'], IconName> = {
   ending_soon: 'clock',
   business_verified: 'shield',
   business_rejected: 'x',
+  support_reply: 'chat',
 };
 
 export default function NotificationsScreen() {

@@ -47,6 +47,7 @@ import {
   Sheet,
   VerifiedBadge,
 } from '../../components';
+import { pressedProps } from '../../lib/a11y';
 
 const HERO_HEIGHT = 300;
 /** Space either side of the photo card on a phone. */
@@ -527,7 +528,7 @@ function RoundButton({
       onPress={onPress}
       accessibilityRole="button"
       accessibilityLabel={label}
-      accessibilityState={active !== undefined ? { selected: active } : undefined}
+      {...(active !== undefined ? pressedProps(active) : {})}
       style={({ pressed }) => [styles.round, pressed && { opacity: 0.8 }]}
     >
       <Icon

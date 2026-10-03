@@ -22,6 +22,8 @@ import {
   type DataSource,
   type MerchantStats,
   type OtpTarget,
+  type SupportQueueItem,
+  type SupportTicket,
   type VerificationRequest,
 } from './api';
 import { draftToPayload, num, rowToAction, rowToDealCard, type DealCardRow } from './mapping';
@@ -100,7 +102,7 @@ export async function loadViewer(client: SupabaseClient): Promise<AppViewer | nu
   const [profile, members] = await Promise.all([
     client
       .from('profiles')
-      .select('full_name, phone, email, date_of_birth, is_yolo_verified, is_admin')
+      .select('full_name, phone, email, date_of_birth, is_yolo_verified, is_admin, avatar_path')
       .eq('id', id)
       .maybeSingle(),
     client.from('business_members').select('business_id').eq('profile_id', id),
@@ -117,8 +119,17 @@ export async function loadViewer(client: SupabaseClient): Promise<AppViewer | nu
     full_name: p?.full_name ?? null,
     phone: p?.phone ?? null,
     email: p?.email ?? null,
+    avatar_url: p?.avatar_path ? avatarUrl(client, p.avatar_path) : null,
   };
 }
+
+/** Public URL of a file in the avatars bucket. */
+function avatarUrl(client: SupabaseClient, path: string): string {
+  return client.storage.from(AVATARS).getPublicUrl(path).data.publicUrl;
+}
+
+const AVATARS = 'avatars';
+const AVATAR_TYPES: Record<string, string> = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' };
 
 export function createSupabaseAuth(client: SupabaseClient): AuthApi {
   return {
@@ -401,6 +412,65 @@ export function createSupabaseDataSource(client: SupabaseClient): DataSource {
       return (data ?? []).map(rowToAction);
     },
 
+    // ---- account and support ----
+
+    async updateMyProfile(input) {
+      const uid = await userId(client);
+      if (!uid) throw new RuleViolation('Sign in first');
+      // Column grants (0003) allow exactly these fields; anything else is refused.
+      const { error } = await client.from('profiles').update(input).eq('id', uid);
+      if (error) fail(error);
+    },
+
+    async setAvatar(image) {
+      const uid = await userId(client);
+      if (!uid) throw new RuleViolation('Sign in first');
+      const type = image.mimeType && AVATAR_TYPES[image.mimeType] ? image.mimeType : 'image/jpeg';
+      // A new name every time: a fixed name would be served stale from caches.
+      const path = uid + '/avatar-' + Date.now() + '.' + AVATAR_TYPES[type];
+      const body = await (await fetch(image.uri)).arrayBuffer();
+      if (body.byteLength > 2 * 1024 * 1024) throw new RuleViolation('Choose a picture under 2 MB');
+
+      const up = await client.storage.from(AVATARS).upload(path, body, { contentType: type });
+      if (up.error) throw new RuleViolation('That picture did not upload. Try another one.');
+
+      const before = await client.from('profiles').select('avatar_path').eq('id', uid).maybeSingle();
+      const { error } = await client.from('profiles').update({ avatar_path: path }).eq('id', uid);
+      if (error) fail(error);
+      // Best effort: the old file is only clutter if this fails.
+      const old = before.data?.avatar_path as string | null | undefined;
+      if (old && old !== path) void client.storage.from(AVATARS).remove([old]);
+      return avatarUrl(client, path);
+    },
+
+    async removeAvatar() {
+      const uid = await userId(client);
+      if (!uid) throw new RuleViolation('Sign in first');
+      const before = await client.from('profiles').select('avatar_path').eq('id', uid).maybeSingle();
+      const { error } = await client.from('profiles').update({ avatar_path: null }).eq('id', uid);
+      if (error) fail(error);
+      const old = before.data?.avatar_path as string | null | undefined;
+      if (old) void client.storage.from(AVATARS).remove([old]);
+    },
+
+    async createSupportTicket(input) {
+      return rpc<string>('create_support_ticket', { p: input });
+    },
+
+    async listMySupportTickets() {
+      if (!(await userId(client))) return [];
+      const { data, error } = await client
+        .from('support_tickets')
+        .select('id, topic, message, status, reply, replied_at, action_id, deal_id, created_at')
+        .order('created_at', { ascending: false });
+      if (error) fail(error);
+      return (data ?? []) as SupportTicket[];
+    },
+
+    async requestAccountDeletion(reason) {
+      await rpc('request_account_deletion', { p_reason: reason ?? null });
+    },
+
     // ---- merchant onboarding ----
 
     async createBusiness(input) {
@@ -481,6 +551,22 @@ export function createSupabaseDataSource(client: SupabaseClient): DataSource {
         same_id_elsewhere: Number(r.same_id_elsewhere ?? 0),
         submitted_at: String(r.submitted_at),
       }));
+    },
+
+    async listSupportQueue() {
+      return ((await rpc<SupportQueueItem[]>('support_queue')) ?? []).map((r) => ({
+        ...r,
+        customer_name: r.customer_name ?? '',
+        customer_contact: r.customer_contact ?? '',
+      }));
+    },
+
+    async replySupportTicket(ticketId, reply, close) {
+      return rpc<'answered' | 'closed'>('reply_support_ticket', {
+        p_ticket_id: ticketId,
+        p_reply: reply,
+        p_close: close ?? false,
+      });
     },
 
     async reviewBusiness(businessId, approve, reason) {

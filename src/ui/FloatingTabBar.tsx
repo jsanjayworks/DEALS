@@ -107,7 +107,7 @@ function TabButton({
       {...handlers}
       accessibilityRole="tab"
       accessibilityLabel={label}
-      accessibilityState={{ selected: focused }}
+      aria-selected={focused}
     >
       <Animated.View layout={LinearTransition.springify().damping(18)} style={[styles.item, hoverBg]}>
         <Icon name={icon} size={22} color={focused ? color.onBrand : color.text} strokeWidth={focused ? 2.2 : 1.9} />

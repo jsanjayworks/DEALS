@@ -60,7 +60,7 @@ function Tab({ icon, label, focused, onPress }: { icon: IconName; label: string;
       onHoverOut={() => setHovered(false)}
       accessibilityRole="tab"
       accessibilityLabel={label}
-      accessibilityState={{ selected: focused }}
+      aria-selected={focused}
       style={styles.tab}
     >
       <View style={[styles.pill, focused ? styles.pillOn : hovered && styles.pillHover]}>

@@ -396,7 +396,7 @@ function StepButton({
       disabled={disabled}
       accessibilityRole="button"
       accessibilityLabel={icon === 'plus' ? 'Increase quantity' : 'Decrease quantity'}
-      accessibilityState={{ disabled }}
+      aria-disabled={disabled}
       style={[styles.step, disabled && styles.stepDisabled]}
     >
       {icon === 'plus' ? (

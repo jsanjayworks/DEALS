@@ -1,5 +1,6 @@
 /** Barrel for the component library. Screens import from '../components'. */
 export { Icon, ICON_PATHS, categoryIcon, type IconName, type IconProps } from './Icon';
+export { Avatar } from './Avatar';
 export { Button, Chip, type ButtonProps, type ButtonVariant, type ChipProps } from './Button';
 export {
   Badge,

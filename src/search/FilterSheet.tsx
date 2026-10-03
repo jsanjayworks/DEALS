@@ -238,7 +238,7 @@ function Toggle({
     <Pressable
       onPress={() => onChange(!value)}
       accessibilityRole="switch"
-      accessibilityState={{ checked: value }}
+      aria-checked={value}
       style={styles.toggle}
     >
       <Text style={styles.toggleLabel}>{label}</Text>

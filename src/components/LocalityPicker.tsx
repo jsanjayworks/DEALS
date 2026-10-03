@@ -37,7 +37,7 @@ export function LocalityPicker({
               onClose();
             }}
             accessibilityRole="radio"
-            accessibilityState={{ checked: selected }}
+            aria-checked={selected}
             style={({ pressed }) => [styles.row, pressed && styles.pressed]}
           >
             <View style={[styles.pin, selected && styles.pinOn]}>

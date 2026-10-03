@@ -1,9 +1,10 @@
 /**
  * The bento row on Home: three live tiles under the search bar.
  *
- *   Spotlight     the top deals near you, a photo tile that turns over every
- *                 few seconds (2 rows tall)
- *   Ending soon   the deal closest to ending, with a ticking countdown
+ *   Spotlight     the top deals near you, a photo tile you can swipe through
+ *                 (2 rows tall); it turns over on its own until you touch it
+ *   Ending soon   the deals closest to ending, each with a ticking countdown;
+ *                 swipe the same way
  *   Under ₹200    how many deals cost ₹200 or less; opens them
  *
  * Each tile is one tap to something useful, which is the point of the grid:
@@ -15,16 +16,18 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
-import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
+import Animated from 'react-native-reanimated';
 import type { DealCardModel } from '../data/types';
 import { DiscountBadge, useHoverPress } from '../components';
 import { color, distanceLabel, font, inr, radius, space, type } from '../theme/tokens';
+import { TilePager } from './TilePager';
 
 const GAP = 10;
 const ROW = 112;
-const TURN_MS = 4500;
 // expo-image reads a bare string as a URL, so the blurhash must be wrapped.
 const PLACEHOLDER = { blurhash: 'L6Pj0^i_.AyE_3t7t7R**0o#DgR4' };
+
+const priceOf = (d: DealCardModel) => (d.deal_price === 0 ? 'Free' : inr(d.deal_price ?? 0));
 
 export function BentoTiles({
   spotlight,
@@ -34,17 +37,29 @@ export function BentoTiles({
   onUnder,
 }: {
   spotlight: DealCardModel[];
-  ending: DealCardModel | null;
+  ending: DealCardModel[];
   under: { count: number; names: string };
   onOpen: (d: DealCardModel) => void;
   onUnder: () => void;
 }) {
   return (
     <View style={styles.grid}>
-      <SpotlightTile deals={spotlight} onOpen={onOpen} />
+      <View style={[styles.tile, styles.spot]}>
+        {spotlight.length > 0 ? (
+          <TilePager
+            items={spotlight}
+            keyOf={(d) => d.id}
+            label="Spotlight deals"
+            renderPage={(d) => <SpotlightPage deal={d} onOpen={onOpen} />}
+          />
+        ) : null}
+      </View>
+
       <View style={styles.column}>
-        {ending ? <EndingTile deal={ending} onOpen={onOpen} /> : <View style={[styles.tile, styles.empty]} />}
-        <Tile onPress={onUnder} label={'Under ₹200, ' + under.count + ' deals'} soft>
+        <View style={[styles.tile, styles.plain, ending.length === 0 && styles.empty]}>
+          {ending.length > 0 ? <EndingPager deals={ending} onOpen={onOpen} /> : null}
+        </View>
+        <PressTile onPress={onUnder} label={'Under ₹200, ' + under.count + ' deals'}>
           <Text style={styles.kicker}>Under ₹200</Text>
           <Text style={[styles.big, styles.bigAccent]}>
             {under.count} {under.count === 1 ? 'deal' : 'deals'}
@@ -52,107 +67,90 @@ export function BentoTiles({
           <Text style={styles.sub} numberOfLines={1}>
             {under.names || 'Nothing that cheap nearby'}
           </Text>
-        </Tile>
+        </PressTile>
       </View>
     </View>
   );
 }
 
-/** A pressable tile with the shared lift on hover and press. */
-function Tile({
-  children,
-  onPress,
-  label,
-  soft,
-  style,
-}: {
-  children: ReactNode;
-  onPress: () => void;
-  label: string;
-  soft?: boolean;
-  style?: object;
-}) {
+/** A whole tile that is one button, with the shared lift on hover and press. */
+function PressTile({ children, onPress, label }: { children: ReactNode; onPress: () => void; label: string }) {
   const { handlers, liftStyle } = useHoverPress({ lift: 3, pressScale: 0.97 });
   return (
     <Pressable onPress={onPress} {...handlers} accessibilityRole="button" accessibilityLabel={label} style={styles.flex}>
-      <Animated.View style={[styles.tile, soft && styles.soft, liftStyle, style]}>{children}</Animated.View>
+      <Animated.View style={[styles.tile, styles.plain, styles.soft, liftStyle]}>{children}</Animated.View>
     </Pressable>
   );
 }
 
-function SpotlightTile({ deals, onOpen }: { deals: DealCardModel[]; onOpen: (d: DealCardModel) => void }) {
-  const [index, setIndex] = useState(0);
-  const count = deals.length;
-
-  useEffect(() => {
-    if (count <= 1) return;
-    const id = setInterval(() => setIndex((i) => (i + 1) % count), TURN_MS);
-    return () => clearInterval(id);
-  }, [count]);
-
-  const deal = deals[index % Math.max(1, count)];
-  if (!deal) return <View style={[styles.spot, styles.tile, styles.empty]} />;
-
+function SpotlightPage({ deal, onOpen }: { deal: DealCardModel; onOpen: (d: DealCardModel) => void }) {
   return (
-    <Tile onPress={() => onOpen(deal)} label={deal.title + ', ' + deal.business.name} style={styles.spot}>
-      {/* Keyed by deal: the old photo fades out as the next fades in. */}
-      <Animated.View key={deal.id} entering={FadeIn.duration(600)} exiting={FadeOut.duration(600)} style={StyleSheet.absoluteFill}>
-        <Image source={{ uri: deal.image }} style={StyleSheet.absoluteFill} contentFit="cover" placeholder={PLACEHOLDER} />
-        <LinearGradient
-          colors={['transparent', 'rgba(8,16,36,0.88)']}
-          locations={[0.35, 1]}
-          style={StyleSheet.absoluteFill}
-        />
-        <View style={styles.spotBadge}>
-          <DiscountBadge percent={deal.deal_price === 0 ? 0 : Math.round(deal.discount_pct ?? 0)} />
-        </View>
-        <View style={styles.spotText}>
-          <Text style={styles.spotTitle} numberOfLines={2}>
-            {deal.title}
-          </Text>
-          <Text style={styles.spotMeta}>
-            {(deal.deal_price === 0 ? 'Free' : inr(deal.deal_price ?? 0)) + ' · ' + distanceLabel(deal.distance_km)}
-          </Text>
-        </View>
-      </Animated.View>
-      {count > 1 ? (
-        <View style={styles.dots} pointerEvents="none">
-          {deals.map((d, i) => (
-            <View key={d.id} style={[styles.dot, i === index % count && styles.dotOn]} />
-          ))}
-        </View>
-      ) : null}
-    </Tile>
+    <Pressable
+      onPress={() => onOpen(deal)}
+      accessibilityRole="button"
+      accessibilityLabel={deal.title + ', ' + deal.business.name}
+      style={styles.flex}
+    >
+      <Image source={{ uri: deal.image }} style={StyleSheet.absoluteFill} contentFit="cover" placeholder={PLACEHOLDER} />
+      <LinearGradient
+        colors={['transparent', 'rgba(8,16,36,0.88)']}
+        locations={[0.35, 1]}
+        style={StyleSheet.absoluteFill}
+      />
+      <View style={styles.spotBadge}>
+        <DiscountBadge percent={deal.deal_price === 0 ? 0 : Math.round(deal.discount_pct ?? 0)} />
+      </View>
+      <View style={styles.spotText}>
+        <Text style={styles.spotTitle} numberOfLines={2}>
+          {deal.title}
+        </Text>
+        <Text style={styles.spotMeta}>{priceOf(deal) + ' · ' + distanceLabel(deal.distance_km)}</Text>
+      </View>
+    </Pressable>
   );
 }
 
-function EndingTile({ deal, onOpen }: { deal: DealCardModel; onOpen: (d: DealCardModel) => void }) {
-  return (
-    <Tile onPress={() => onOpen(deal)} label={'Ending soon: ' + deal.title}>
-      <Text style={styles.kicker}>Ending soon</Text>
-      <Countdown to={deal.ends_at} />
-      <Text style={styles.sub} numberOfLines={1}>
-        {deal.title + ', ' + (deal.deal_price === 0 ? 'free' : inr(deal.deal_price ?? 0))}
-      </Text>
-    </Tile>
-  );
-}
-
-/** HH:MM:SS under a day, "2d 4h" beyond, ticking once a second. Its own state, so only it re-renders. */
-function Countdown({ to }: { to: string }) {
+/** One clock for every page, so swiping between them never shows a stale time. */
+function EndingPager({ deals, onOpen }: { deals: DealCardModel[]; onOpen: (d: DealCardModel) => void }) {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(id);
   }, []);
-  const ms = Math.max(0, new Date(to).getTime() - now);
+
+  return (
+    <TilePager
+      items={deals}
+      keyOf={(d) => d.id}
+      dotTone="dark"
+      label="Deals ending soon"
+      renderPage={(d) => (
+        <Pressable
+          onPress={() => onOpen(d)}
+          accessibilityRole="button"
+          accessibilityLabel={'Ending soon: ' + d.title}
+          style={styles.endingPage}
+        >
+          <Text style={styles.kicker}>Ending soon</Text>
+          <Text style={styles.big}>{countdown(d.ends_at, now)}</Text>
+          <Text style={styles.sub} numberOfLines={1}>
+            {d.title + ', ' + priceOf(d)}
+          </Text>
+        </Pressable>
+      )}
+    />
+  );
+}
+
+/** HH:MM:SS under a day, "2d 4h" beyond. */
+function countdown(endsAt: string, now: number): string {
+  const ms = Math.max(0, new Date(endsAt).getTime() - now);
+  if (ms === 0) return 'Ended';
   const s = Math.floor(ms / 1000);
   const two = (n: number) => String(n).padStart(2, '0');
-  const text =
-    s >= 86_400
-      ? Math.floor(s / 86_400) + 'd ' + Math.floor((s % 86_400) / 3600) + 'h'
-      : two(Math.floor(s / 3600)) + ':' + two(Math.floor((s % 3600) / 60)) + ':' + two(s % 60);
-  return <Text style={styles.big}>{ms === 0 ? 'Ended' : text}</Text>;
+  return s >= 86_400
+    ? Math.floor(s / 86_400) + 'd ' + Math.floor((s % 86_400) / 3600) + 'h'
+    : two(Math.floor(s / 3600)) + ':' + two(Math.floor((s % 3600) / 60)) + ':' + two(s % 60);
 }
 
 const styles = StyleSheet.create({
@@ -174,20 +172,29 @@ const styles = StyleSheet.create({
     backgroundColor: color.surface,
     borderWidth: 1,
     borderColor: color.border,
-    padding: space.md + 2,
-    justifyContent: 'center',
     overflow: 'hidden',
+  },
+  plain: {
+    justifyContent: 'center',
+  },
+  spot: {
+    borderWidth: 0,
+    backgroundColor: color.surfaceSoftAlt,
   },
   soft: {
     backgroundColor: color.accentSoft,
     borderColor: 'transparent',
+    padding: space.md + 2,
   },
   empty: {
     backgroundColor: color.surfaceSoftAlt,
     borderColor: 'transparent',
   },
-  spot: {
-    padding: 0,
+  endingPage: {
+    flex: 1,
+    padding: space.md + 2,
+    paddingBottom: space.lg + 4,
+    justifyContent: 'center',
   },
   spotBadge: {
     position: 'absolute',
@@ -198,7 +205,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 14,
     right: 14,
-    bottom: 22,
+    bottom: 24,
   },
   spotTitle: {
     fontFamily: font.bold,
@@ -210,23 +217,6 @@ const styles = StyleSheet.create({
     ...type.captionMedium,
     color: 'rgba(255,255,255,0.88)',
     marginTop: 2,
-  },
-  dots: {
-    position: 'absolute',
-    left: 14,
-    bottom: 10,
-    flexDirection: 'row',
-    gap: 4,
-  },
-  dot: {
-    width: 5,
-    height: 5,
-    borderRadius: 3,
-    backgroundColor: 'rgba(255,255,255,0.45)',
-  },
-  dotOn: {
-    width: 14,
-    backgroundColor: '#FFFFFF',
   },
   kicker: {
     ...type.overline,

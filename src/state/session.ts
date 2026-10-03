@@ -12,7 +12,6 @@ import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 import { useSyncExternalStore } from 'react';
 import {
-  backend,
   currentViewer,
   demoAccounts,
   onViewerChange,
@@ -140,8 +139,6 @@ export function useViewerReady(): boolean {
 /** First name for the greeting and avatar: the profile on Supabase, the demo name locally. */
 export function useDisplayName(): string {
   const viewer = useViewer();
-  const account = useSession((s) => s.account);
-  if (backend === 'local') return ACCOUNT_PROFILE[account].name;
   const name = viewer?.full_name?.trim();
   return name ? name.split(/\s+/)[0] : 'there';
 }

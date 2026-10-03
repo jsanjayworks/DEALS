@@ -32,6 +32,8 @@ import {
   type SearchResult,
   type TakeActionInput,
   type BusinessVerification,
+  type SupportQueueItem,
+  type SupportTicket,
   type VerificationRequest,
 } from './api';
 import {
@@ -73,6 +75,9 @@ export type LocalViewer = AppViewer;
 
 export const DEMO_CUSTOMER: LocalViewer = {
   id: 'usr-demo-customer',
+  full_name: 'Aarav Sharma',
+  phone: '+91 98450 12345',
+  email: 'aarav@example.in',
   date_of_birth: '1996-04-12', // old enough for the 21+ pub deals
   is_yolo_verified: true,
   is_admin: false,
@@ -81,6 +86,9 @@ export const DEMO_CUSTOMER: LocalViewer = {
 
 export const DEMO_MERCHANT: LocalViewer = {
   id: 'usr-demo-merchant',
+  full_name: 'Meera Rao',
+  phone: '+91 98860 54321',
+  email: 'meera@rangolikitchen.in',
   date_of_birth: '1988-09-02',
   is_yolo_verified: true,
   is_admin: false,
@@ -89,6 +97,9 @@ export const DEMO_MERCHANT: LocalViewer = {
 
 export const DEMO_ADMIN: LocalViewer = {
   id: 'usr-demo-admin',
+  full_name: 'YOLO Ops',
+  phone: '+91 80 4000 0000',
+  email: 'ops@yolodeals.in',
   date_of_birth: '1990-01-01',
   is_yolo_verified: true,
   is_admin: true,
@@ -116,6 +127,8 @@ export interface LocalStore {
   saved: Set<string>;
   outbox: OutboxEvent[];
   reports: { id: string; target_type: string; target_id: string; reason: string }[];
+  /** Support requests, oldest first, with who filed them. */
+  tickets: (SupportTicket & { profile_id: string })[];
   /** Every verification request, oldest first, with who filed it. */
   verifications: (BusinessVerification & { business_id: string; owner_profile_id: string })[];
   viewer: LocalViewer;
@@ -133,6 +146,7 @@ export function createStore(viewer: LocalViewer = DEMO_CUSTOMER): LocalStore {
     outbox: [],
     reports: [],
     verifications: [],
+    tickets: [],
     viewer,
   };
 }
@@ -318,6 +332,74 @@ export function createLocalDataSource(
     },
     async getBusiness(id): Promise<Business | null> {
       return BUSINESSES.find((b) => b.id === id) ?? null;
+    },
+
+    // ---- account and support (mirrors 0007_support_and_account.sql) ----
+
+    async updateMyProfile(input): Promise<void> {
+      if (input.full_name !== undefined && input.full_name.trim().length < 2) {
+        throw new RuleViolation('Enter your name');
+      }
+      // Kept on the demo account itself, so switching accounts and back keeps it;
+      // the fresh object is what makes subscribers re-render.
+      Object.assign(store.viewer, input);
+      store.viewer = { ...store.viewer };
+    },
+
+    // The demo keeps the picked file's own URI; it lasts until the page reloads.
+    async setAvatar(image): Promise<string> {
+      Object.assign(store.viewer, { avatar_url: image.uri });
+      store.viewer = { ...store.viewer };
+      return image.uri;
+    },
+
+    async removeAvatar(): Promise<void> {
+      Object.assign(store.viewer, { avatar_url: null });
+      store.viewer = { ...store.viewer };
+    },
+
+    async createSupportTicket(input): Promise<string> {
+      const message = input.message.trim();
+      if (message.length < 10) throw new RuleViolation('Tell us a little more, at least 10 characters');
+      if (message.length > 2000) throw new RuleViolation('Keep it under 2,000 characters');
+      let dealId = input.deal_id ?? null;
+      if (input.action_id) {
+        const action = store.actions.find((a) => a.id === input.action_id);
+        if (!action || action.customer_id !== store.viewer.id) {
+          throw new RuleViolation('That claim is not on your account');
+        }
+        dealId = action.deal_id;
+      }
+      const open = store.tickets.filter((t) => t.profile_id === store.viewer.id && t.status === 'open');
+      if (open.length >= 5) throw new RuleViolation('You have 5 open requests. We will answer those first');
+      const id = uid('tkt');
+      store.tickets.push({
+        id,
+        profile_id: store.viewer.id,
+        topic: input.topic,
+        message,
+        status: 'open',
+        reply: null,
+        replied_at: null,
+        action_id: input.action_id ?? null,
+        deal_id: dealId,
+        created_at: new Date().toISOString(),
+      });
+      emit('support.ticket_created', 'support_ticket', id, { topic: input.topic });
+      return id;
+    },
+
+    async listMySupportTickets(): Promise<SupportTicket[]> {
+      return store.tickets
+        .filter((t) => t.profile_id === store.viewer.id)
+        .map(({ profile_id: _p, ...t }) => t)
+        .reverse();
+    },
+
+    async requestAccountDeletion(): Promise<void> {
+      throw new RuleViolation(
+        'Demo accounts cannot be deleted. On the live app this cancels your open claims and removes your account.',
+      );
     },
 
     // Mirrors create_business() in 0006_merchant_onboarding.sql.
@@ -935,6 +1017,46 @@ export function createLocalDataSource(
             submitted_at: v.submitted_at,
           };
         });
+    },
+
+    async listSupportQueue(): Promise<SupportQueueItem[]> {
+      if (!store.viewer.is_admin) throw new RuleViolation('Admin only');
+      const people = [DEMO_CUSTOMER, DEMO_MERCHANT, DEMO_ADMIN];
+      return store.tickets
+        .filter((t) => t.status !== 'closed')
+        .sort((a, b) => Number(b.status === 'open') - Number(a.status === 'open') || a.created_at.localeCompare(b.created_at))
+        .map((t) => {
+          const who = people.find((p) => p.id === t.profile_id);
+          const action = t.action_id ? store.actions.find((a) => a.id === t.action_id) : undefined;
+          const deal = t.deal_id ? store.deals.find((d) => d.id === t.deal_id) : undefined;
+          return {
+            id: t.id,
+            topic: t.topic,
+            message: t.message,
+            status: t.status,
+            created_at: t.created_at,
+            customer_name: who?.full_name ?? '',
+            customer_contact: who?.phone ?? who?.email ?? '',
+            redemption_code: action?.redemption_code ?? null,
+            action_status: action?.status ?? null,
+            deal_title: deal?.title ?? null,
+            reply: t.reply,
+          };
+        });
+    },
+
+    async replySupportTicket(ticketId, reply, close): Promise<'answered' | 'closed'> {
+      if (!store.viewer.is_admin) throw new RuleViolation('Admin only');
+      if (reply.trim().length < 2) throw new RuleViolation('Write a reply first');
+      const t = store.tickets.find((x) => x.id === ticketId);
+      if (!t) throw new RuleViolation('That request no longer exists');
+      t.status = close ? 'closed' : 'answered';
+      t.reply = reply.trim();
+      t.replied_at = new Date().toISOString();
+      notify(t.profile_id, 'support_reply', 'YOLO support replied', reply.trim().slice(0, 160), {
+        ticket_id: ticketId,
+      });
+      return t.status;
     },
 
     // Mirrors review_business() in 0006_merchant_onboarding.sql.

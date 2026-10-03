@@ -151,7 +151,7 @@ export function RadiusSelector({
               }}
               onPress={() => choose(i)}
               accessibilityRole="radio"
-              accessibilityState={{ checked: i === selected }}
+              aria-checked={i === selected}
               accessibilityLabel={o.label}
               style={styles.pill}
             >

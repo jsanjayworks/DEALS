@@ -18,6 +18,7 @@ import { VerificationCard } from '../../../merchant/VerificationCard';
 import { useSession } from '../../../state/session';
 import { color, font, radius, space, type } from '../../../theme/tokens';
 import { Button, EmptyState, Icon, VerifiedBadge } from '../../../components';
+import { pressedProps } from '../../../lib/a11y';
 
 const PERIODS = [7, 30] as const;
 
@@ -99,7 +100,7 @@ export default function MerchantDashboard() {
               key={p}
               onPress={() => setDays(p)}
               accessibilityRole="button"
-              accessibilityState={{ selected: days === p }}
+              {...pressedProps(days === p)}
               style={[styles.period, days === p && styles.periodOn]}
             >
               <Text style={[styles.periodText, days === p && styles.periodTextOn]}>

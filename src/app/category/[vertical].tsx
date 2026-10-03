@@ -37,6 +37,7 @@ import {
   useHoverPress,
 } from '../../components';
 import { Container, cellWidth, useLayout } from '../../ui/layout';
+import { pressedProps } from '../../lib/a11y';
 
 const VERTICALS: Vertical[] = ['food', 'retail', 'events', 'mobility', 'property', 'services', 'business', 'community'];
 
@@ -365,7 +366,7 @@ function Pill({
       onPress={onPress}
       {...handlers}
       accessibilityRole="button"
-      accessibilityState={{ selected }}
+      {...pressedProps(selected)}
       accessibilityLabel={label + (count != null ? ', ' + count + ' deals' : '')}
     >
       <Animated.View style={[styles.pill, selected && styles.pillOn, quiet && styles.pillQuiet, liftStyle]}>

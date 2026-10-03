@@ -635,4 +635,151 @@ begin
     'and the queue is empty again');
 end $$;
 
+-- ---------------------------------------------------------------------------
+-- Support requests and account deletion (0007).
+-- ---------------------------------------------------------------------------
+do $$
+declare
+  i          record;
+  v_action   uuid;
+  v_other    uuid;
+  v_ticket   uuid;
+  v_status   text;
+begin
+  select * into i from ids;
+
+  -- One of the customer's own claims, and one belonging to someone else.
+  insert into customer_actions (deal_id, customer_id, action_type, status, redemption_code)
+  values (i.active_deal, i.customer, 'claim', 'redeemed', 'YOLO-TSTSUP')
+  returning id into v_action;
+  insert into customer_actions (deal_id, customer_id, action_type, status, redemption_code)
+  values (i.active_deal, i.admin, 'claim', 'confirmed', 'YOLO-TSTOTH')
+  returning id into v_other;
+
+  perform assert(
+    refused('anon', null, 'select create_support_ticket(''{"topic":"other","message":"Hello there team"}''::jsonb)'),
+    'anon cannot file a support request');
+  perform assert(
+    refused('authenticated', i.customer,
+            'select create_support_ticket(''{"topic":"other","message":"help"}''::jsonb)'),
+    'a request needs at least 10 characters');
+  perform assert(
+    refused('authenticated', i.customer,
+            format('select create_support_ticket(%L::jsonb)',
+                   jsonb_build_object('topic', 'claim_problem', 'action_id', v_other,
+                                      'message', 'The shop did not honour this'))),
+    'a customer cannot attach someone else''s claim');
+  perform assert(
+    refused('authenticated', i.customer,
+            format('insert into support_tickets (profile_id, topic, message, status, reply)
+                    values (%L, ''other'', ''Fake answered ticket'', ''answered'', ''All sorted'')', i.customer)),
+    'nobody writes tickets directly, let alone answered ones');
+
+  perform set_config('app.current_user_id', i.customer::text, true);
+  set local role authenticated;
+  v_ticket := create_support_ticket(jsonb_build_object(
+    'topic', 'claim_problem', 'action_id', v_action,
+    'message', 'The shop charged me the full price instead of the deal price.'));
+  reset role;
+
+  perform assert(
+    (select deal_id from support_tickets where id = v_ticket) = i.active_deal
+    and (select status from support_tickets where id = v_ticket) = 'open',
+    'a request on a claim records its deal and starts open');
+  perform assert(
+    visible_count('authenticated', i.customer, format('select 1 from support_tickets where id = %L', v_ticket)) = 1,
+    'the customer can read their own request');
+  perform assert(
+    visible_count('authenticated', i.merchant, format('select 1 from support_tickets where id = %L', v_ticket)) = 0,
+    'nobody else can');
+
+  perform assert(
+    refused('authenticated', i.customer, 'select 1 from support_queue()'),
+    'a customer cannot read the support queue');
+  perform assert(
+    visible_count('authenticated', i.admin,
+                  format('select 1 from support_queue() where id = %L and redemption_code = ''YOLO-TSTSUP''', v_ticket)) = 1,
+    'an admin sees the request with the claim''s code');
+  perform assert(
+    refused('authenticated', i.customer, format('select reply_support_ticket(%L, ''Done'')', v_ticket)),
+    'only an admin can reply');
+
+  perform set_config('app.current_user_id', i.admin::text, true);
+  set local role authenticated;
+  v_status := reply_support_ticket(v_ticket, 'We have spoken to the shop and they will honour the price.');
+  reset role;
+  perform assert(
+    v_status = 'answered'
+    and (select reply from support_tickets where id = v_ticket) like 'We have spoken%'
+    and exists (select 1 from notifications where profile_id = i.customer and kind = 'support_reply'),
+    'a reply is stored and the customer is notified');
+end $$;
+
+-- Account deletion, on a throwaway account so the demo ones survive.
+do $$
+declare
+  i        record;
+  v_user   uuid := gen_random_uuid();
+  v_deal   uuid;
+  v_before int;
+  v_action uuid;
+begin
+  select * into i from ids;
+  insert into auth.users (id, email, aud, role, raw_user_meta_data)
+  values (v_user, 'leaving@yolodeals.in', 'authenticated', 'authenticated', '{"full_name":"Leaving User"}');
+
+  select id, capacity_remaining into v_deal, v_before from deals
+   where status = 'ACTIVE' and capacity_remaining is not null and capacity_remaining > 0
+   order by id limit 1;
+  update deals set capacity_remaining = capacity_remaining - 1 where id = v_deal;
+  insert into customer_actions (deal_id, customer_id, action_type, status, redemption_code)
+  values (v_deal, v_user, 'claim', 'confirmed', 'YOLO-TSTDEL')
+  returning id into v_action;
+  insert into saved_deals (profile_id, deal_id) values (v_user, v_deal);
+
+  perform assert(
+    refused('authenticated', i.merchant, 'select request_account_deletion()'),
+    'a business owner is sent to support instead of deleting outright');
+
+  perform set_config('app.current_user_id', v_user::text, true);
+  set local role authenticated;
+  perform request_account_deletion('Moving away');
+  reset role;
+
+  perform assert((select deleted_at from profiles where id = v_user) is not null,
+                 'deletion marks the profile');
+  perform assert(
+    (select status::text from customer_actions where id = v_action) = 'cancelled'
+    and (select capacity_remaining from deals where id = v_deal) = v_before,
+    'open claims are cancelled and their places go back to the deal');
+  perform assert(not exists (select 1 from saved_deals where profile_id = v_user),
+                 'saved deals are forgotten');
+  perform assert(
+    exists (select 1 from support_tickets where profile_id = v_user and topic = 'account_deletion'
+            and message = 'Moving away'),
+    'a ticket asks the team to remove the login');
+  perform assert(
+    refused('authenticated', v_user, 'select request_account_deletion()'),
+    'asking twice is refused');
+end $$;
+
+-- Profile pictures: the path must sit in the owner's own folder.
+do $$
+declare i record;
+begin
+  select * into i from ids;
+  perform assert(
+    not refused('authenticated', i.customer,
+                format('update profiles set avatar_path = %L where id = %L', i.customer || '/avatar-1.jpg', i.customer)),
+    'a customer can set a picture in their own folder');
+  perform assert(
+    refused('authenticated', i.customer,
+            format('update profiles set avatar_path = %L where id = %L', i.merchant || '/avatar-1.jpg', i.customer)),
+    'but not one from someone else''s folder');
+  perform assert(
+    refused('authenticated', i.customer,
+            format('update profiles set avatar_path = ''https://example.com/x.jpg'' where id = %L', i.customer)),
+    'nor an outside web address');
+end $$;
+
 select '--- RLS assertions passed ---' as result;

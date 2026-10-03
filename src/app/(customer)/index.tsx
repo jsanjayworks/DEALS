@@ -17,7 +17,7 @@
  * separate build.
  */
 
-import { memo, useCallback, useEffect, useMemo, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { router, useIsFocused } from 'expo-router';
@@ -58,7 +58,7 @@ import { BentoTiles } from '../../home/BentoTiles';
 import { CountCard } from '../../home/CountCard';
 import { useHideOnScroll } from '../../ui/chrome';
 import { useTabBarSpace } from '../../ui/FloatingTabBar';
-import { Container, cellWidth, useLayout } from '../../ui/layout';
+import { Container, useLayout } from '../../ui/layout';
 
 function greeting(now = new Date()): string {
   const h = now.getHours();
@@ -78,6 +78,8 @@ let greetedThisLaunch = false;
 let resumedThisLaunch = false;
 
 const NO_COUNTS: Record<string, number> = {};
+/** Card width in the compact rail (New this week). */
+const COMPACT_CARD_WIDTH = 200;
 
 const SECTIONS = ['near_you', 'trending', 'ending_soon', 'new'] as const;
 type Rails = Record<(typeof SECTIONS)[number], DealCardModel[]>;
@@ -87,8 +89,8 @@ interface HomeData {
   nearbyCount: number;
   byVertical: Record<string, number>;
   unread: number;
-  /** The deal closest to ending, for the countdown tile. */
-  ending: DealCardModel | null;
+  /** The deals closest to ending, soonest first, for the countdown tile. */
+  ending: DealCardModel[];
   /** Deals at ₹200 or less, and a few of their categories to name. */
   under: { count: number; names: string };
 }
@@ -123,7 +125,8 @@ export default function HomeScreen() {
       db.feedNearby({ origin, radius_m: radiusM, section: 'near_you', limit: 200 }),
       db.listNotifications(),
       ...SECTIONS.map((section: FeedSection) =>
-        db.feedNearby({ origin, radius_m: radiusM, section, limit: 12 }),
+        // Trending runs to a top 20; the other rails stop at 12.
+        db.feedNearby({ origin, radius_m: radiusM, section, limit: section === 'trending' ? 20 : 12 }),
       ),
     ]);
     const [near_you, trending, ending_soon, fresh] = lists as DealCardModel[][];
@@ -134,13 +137,15 @@ export default function HomeScreen() {
     }
     const cheap = everything.filter((d) => d.deal_price != null && d.deal_price <= UNDER);
     const cheapNames = [...new Set(cheap.map((d) => d.category.name))];
-    const soonest = [...everything].sort((a, b) => a.ends_at.localeCompare(b.ends_at))[0] ?? null;
+    const soonest = [...everything].sort((a, b) => a.ends_at.localeCompare(b.ends_at));
     return {
       rails: { near_you, trending, ending_soon, new: fresh },
       nearbyCount: everything.length,
       byVertical,
       unread: notifications.filter((n) => n.read_at === null).length,
-      ending: ending_soon[0] ?? soonest,
+      // The flagged ones first, topped up with whatever ends next, so the tile
+      // always has a few to swipe through and each shows its real countdown.
+      ending: [...ending_soon, ...soonest.filter((d) => !ending_soon.some((e) => e.id === d.id))].slice(0, 5),
       under: {
         count: cheap.length,
         names: cheapNames.slice(0, 3).join(', ') + (cheapNames.length > 3 ? '…' : ''),
@@ -283,7 +288,8 @@ export default function HomeScreen() {
         locality={locality.name}
         city={locality.city}
         unread={data?.unread ?? 0}
-        initial={displayName.charAt(0)}
+        name={displayName}
+        avatarUrl={viewer?.avatar_url ?? null}
         gutter={layout.gutter}
         onLocality={() => setPickerOpen(true)}
         onBell={() => router.push('/notifications')}
@@ -369,12 +375,14 @@ function SearchPill({ onPress }: { onPress: () => void }) {
   );
 }
 
-/**
- * A section of deals. Sideways-scrolling cards on a phone; a grid of up to two
- * rows on wider screens, where sideways scrolling with a mouse is a chore.
- */
 const Rail = memo(RailSection);
 
+/**
+ * A section of deals: one row that scrolls sideways at every width, so a
+ * ranked list like Trending can run to its full 20. On a phone it is a swipe;
+ * on a wide screen, where sideways scrolling with a mouse is a chore, arrow
+ * buttons page through it and grey out at either end.
+ */
 function RailSection({
   title,
   deals,
@@ -393,24 +401,18 @@ function RailSection({
   compact?: boolean;
 }) {
   const layout = useLayout();
+  const scroller = useRef<ScrollView>(null);
+  const [x, setX] = useState(0);
+  const [contentWidth, setContentWidth] = useState(0);
+  const [viewWidth, setViewWidth] = useState(0);
   if (!loading && (!deals || deals.length === 0)) return null;
 
   const gap = space.md;
-  const asGrid = compact || !layout.isCompact;
-  const columns = layout.gridColumns;
-  const cell = cellWidth(layout.contentWidth, columns, gap);
-  const shown = asGrid ? (deals ?? []).slice(0, columns * (compact ? 1 : 2)) : (deals ?? []);
-
-  const card = (d: DealCardModel, i: number, width: number) => (
-    <View key={d.id} style={{ width }}>
-      <DealCard deal={d} variant={compact ? 'compact' : 'large'} style={{ width }} onPress={() => onOpen(d)} />
-      {ranked ? (
-        <View style={styles.rank} pointerEvents="none">
-          <Text style={styles.rankText}>{i + 1}</Text>
-        </View>
-      ) : null}
-    </View>
-  );
+  const width = compact ? COMPACT_CARD_WIDTH : DEAL_CARD_LARGE_WIDTH;
+  const list = deals ?? [];
+  const maxX = Math.max(0, contentWidth - viewWidth);
+  const page = (dir: 1 | -1) =>
+    scroller.current?.scrollTo({ x: Math.min(maxX, Math.max(0, x + dir * viewWidth * 0.85)), animated: true });
 
   return (
     <View style={styles.section}>
@@ -418,6 +420,7 @@ function RailSection({
         <View style={styles.sectionHead}>
           <Text style={styles.sectionTitle} accessibilityRole="header">
             {title}
+            {ranked && list.length > 3 ? <Text style={styles.sectionCount}>{'  Top ' + list.length}</Text> : null}
           </Text>
           {onSeeAll ? (
             <Pressable onPress={onSeeAll} accessibilityRole="button" hitSlop={8} style={styles.seeAll}>
@@ -428,36 +431,64 @@ function RailSection({
         </View>
       </Container>
 
-      {asGrid ? (
-        <Container>
-          <View style={[styles.grid, { gap }]}>
-            {loading
-              ? Array.from({ length: columns }, (_, k) => (
-                  <View key={k} style={{ width: cell }}>
-                    <DealCardSkeleton variant="compact" />
-                  </View>
-                ))
-              : shown.map((d, i) => card(d, i, cell))}
-          </View>
-        </Container>
-      ) : (
-        <Container flush>
+      <Container flush>
+        <View onLayout={(e) => setViewWidth(e.nativeEvent.layout.width)}>
           <ScrollView
+            ref={scroller}
             horizontal
             showsHorizontalScrollIndicator={false}
+            onScroll={(e) => setX(e.nativeEvent.contentOffset.x)}
+            onContentSizeChange={(w) => setContentWidth(w)}
+            scrollEventThrottle={32}
             contentContainerStyle={{ paddingHorizontal: layout.gutter, gap, paddingBottom: 6, paddingTop: 4 }}
           >
             {loading
-              ? [0, 1].map((k) => (
-                  <View key={k} style={{ width: DEAL_CARD_LARGE_WIDTH }}>
-                    <DealCardSkeleton variant="large" />
+              ? [0, 1, 2].map((k) => (
+                  <View key={k} style={{ width }}>
+                    <DealCardSkeleton variant={compact ? 'compact' : 'large'} />
                   </View>
                 ))
-              : shown.map((d, i) => card(d, i, DEAL_CARD_LARGE_WIDTH))}
+              : list.map((d, i) => (
+                  <View key={d.id} style={{ width }}>
+                    <DealCard deal={d} variant={compact ? 'compact' : 'large'} style={{ width }} onPress={() => onOpen(d)} />
+                    {ranked ? (
+                      <View style={styles.rank} pointerEvents="none">
+                        <Text style={styles.rankText}>{i + 1}</Text>
+                      </View>
+                    ) : null}
+                  </View>
+                ))}
           </ScrollView>
-        </Container>
-      )}
+
+          {!layout.isCompact && maxX > 0 ? (
+            <>
+              <RailArrow dir={-1} disabled={x <= 4} onPress={() => page(-1)} />
+              <RailArrow dir={1} disabled={x >= maxX - 4} onPress={() => page(1)} />
+            </>
+          ) : null}
+        </View>
+      </Container>
     </View>
+  );
+}
+
+function RailArrow({ dir, disabled, onPress }: { dir: 1 | -1; disabled: boolean; onPress: () => void }) {
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={disabled}
+      accessibilityRole="button"
+      accessibilityLabel={dir === 1 ? 'Show more' : 'Show previous'}
+      aria-disabled={disabled}
+      style={({ hovered }) => [
+        styles.arrow,
+        dir === 1 ? styles.arrowRight : styles.arrowLeft,
+        disabled && styles.arrowOff,
+        hovered && !disabled && styles.arrowHover,
+      ]}
+    >
+      <Icon name={dir === 1 ? 'chev' : 'back'} size={20} color={color.text} strokeWidth={2} />
+    </Pressable>
   );
 }
 
@@ -544,6 +575,40 @@ const styles = StyleSheet.create({
     letterSpacing: -0.4,
     color: color.text,
   },
+  sectionCount: {
+    fontFamily: font.medium,
+    fontSize: 14,
+    color: color.textMuted,
+    letterSpacing: 0,
+  },
+  arrow: {
+    position: 'absolute',
+    top: 72,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: color.surface,
+    borderWidth: 1,
+    borderColor: color.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.12,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+  },
+  arrowLeft: {
+    left: 8,
+  },
+  arrowRight: {
+    right: 8,
+  },
+  arrowHover: {
+    backgroundColor: color.surfaceSoftAlt,
+  },
+  arrowOff: {
+    opacity: 0,
+  },
   seeAll: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -553,10 +618,6 @@ const styles = StyleSheet.create({
   seeAllText: {
     ...type.captionMedium,
     color: color.text,
-  },
-  grid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
   },
   rank: {
     position: 'absolute',

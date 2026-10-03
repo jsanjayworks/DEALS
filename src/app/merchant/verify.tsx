@@ -318,7 +318,7 @@ function VerifyForm({
         <Pressable
           onPress={() => edit(setDeclared)(!declared)}
           accessibilityRole="checkbox"
-          accessibilityState={{ checked: declared }}
+          aria-checked={declared}
           style={styles.declare}
         >
           <View style={[styles.tick, declared && styles.tickOn]}>

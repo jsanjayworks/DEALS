@@ -597,7 +597,7 @@ function RulesStep({ form, patch, errors }: StepProps) {
       <Pressable
         onPress={() => patch({ booking_required: !form.booking_required })}
         accessibilityRole="switch"
-        accessibilityState={{ checked: form.booking_required }}
+        aria-checked={form.booking_required}
         style={styles.toggle}
       >
         <View style={styles.flex}>
@@ -703,7 +703,7 @@ function ActionsStep({ form, patch, errors }: StepProps) {
               key={o.cta}
               onPress={() => patch({ primary_cta: o.cta })}
               accessibilityRole="radio"
-              accessibilityState={{ checked: selected }}
+              aria-checked={selected}
               style={[styles.option, selected && styles.optionOn]}
             >
               <View style={[styles.radio, selected && styles.radioOn]}>

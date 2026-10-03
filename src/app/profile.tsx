@@ -1,12 +1,13 @@
 /**
- * Profile: who you are, your activity, and the way into merchant mode.
+ * Profile: who you are, and everything about your account in one place.
  *
- * Location and radius are not repeated here; they live in the Home header
- * and radius row, where they are changed while looking at the deals.
+ *   Activity   my deals, order history, saved deals, notifications
+ *   Help       help and support (FAQs, contact, your requests), payments and refunds
+ *   Account    edit profile (picture, name, email, date of birth), delete account
  *
- * Until Supabase Auth is wired, "account" is one of the three seeded demo
- * accounts. Switching is the same decision the real app will make from the
- * session — merchant mode appears only for someone who belongs to a business.
+ * Merchant and admin entries appear only for accounts that have them, from
+ * the same data the database checks. Location and radius are not repeated
+ * here; they live on Home, where they are changed while looking at deals.
  */
 
 import { useCallback } from 'react';
@@ -15,9 +16,9 @@ import Constants from 'expo-constants';
 import { router } from 'expo-router';
 import { auth, backend, db } from '../data';
 import { useQuery } from '../lib/useQuery';
-import { ACCOUNT_PROFILE, type AccountKind, useSession, useViewer } from '../state/session';
-import { color, font, radius, size, space, type } from '../theme/tokens';
-import { Button, Chip, EmptyState, Header, Icon, type IconName, VerifiedBadge } from '../components';
+import { type AccountKind, useSession, useViewer } from '../state/session';
+import { color, radius, size, space, type } from '../theme/tokens';
+import { Avatar, Button, Chip, EmptyState, Header, Icon, type IconName, VerifiedBadge } from '../components';
 
 const ACCOUNT_LABEL: Record<AccountKind, string> = {
   customer: 'Customer',
@@ -68,26 +69,31 @@ export default function ProfileScreen() {
     );
   }
 
-  const profile =
-    backend === 'local'
-      ? ACCOUNT_PROFILE[account]
-      : { name: viewer.full_name || 'Your profile', phone: viewer.phone || viewer.email || '' };
+  const name = viewer.full_name || 'Your profile';
+  const contact = [viewer.phone, viewer.email].filter(Boolean).join(' · ');
 
   return (
     <View style={styles.screen}>
       <Header title="Profile" onBack={() => router.back()} />
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.card}>
-          <View style={styles.avatar}>
-            <Text style={styles.avatarText}>{profile.name.charAt(0)}</Text>
-          </View>
+          <Avatar uri={viewer.avatar_url} name={name} size={64} />
           <View style={styles.cardText}>
-            <Text style={styles.name}>{profile.name}</Text>
-            <Text style={styles.phone}>{profile.phone}</Text>
+            <Text style={styles.name} numberOfLines={1}>
+              {name}
+            </Text>
+            {contact ? (
+              <Text style={styles.phone} numberOfLines={1}>
+                {contact}
+              </Text>
+            ) : null}
             <View style={styles.cardBadges}>
               {viewer.is_yolo_verified ? <VerifiedBadge /> : null}
             </View>
           </View>
+          <Button small variant="secondary" onPress={() => router.push('/account/edit')}>
+            Edit
+          </Button>
         </View>
 
         {viewer.business_ids.length > 0 ? (
@@ -121,6 +127,14 @@ export default function ProfileScreen() {
             onPress={() => router.push('/admin/businesses')}
           />
         ) : null}
+        {viewer.is_admin ? (
+          <ModeCard
+            icon="chat"
+            title="Support inbox"
+            body="Answer customer requests about claims, payments and accounts."
+            onPress={() => router.push('/admin/support')}
+          />
+        ) : null}
 
         <View style={styles.stats}>
           <Stat label="Active" value={data?.active} onPress={() => router.navigate('/my-deals')} />
@@ -140,6 +154,7 @@ export default function ProfileScreen() {
             value={data ? String(data.active) : undefined}
             onPress={() => router.navigate('/my-deals')}
           />
+          <Row icon="list" title="Order history" onPress={() => router.push('/account/history')} />
           <Row
             icon="heart"
             title="Saved deals"
@@ -153,6 +168,23 @@ export default function ProfileScreen() {
             onPress={() => router.push('/notifications')}
             last
           />
+        </View>
+
+        <Text style={styles.sectionTitle}>Help</Text>
+        <View style={styles.group}>
+          <Row icon="chat" title="Help and support" onPress={() => router.push('/account/help')} />
+          <Row
+            icon="shield"
+            title="Payments and refunds"
+            onPress={() => router.push({ pathname: '/account/help', params: { topic: 'refunds' } })}
+            last
+          />
+        </View>
+
+        <Text style={styles.sectionTitle}>Account</Text>
+        <View style={styles.group}>
+          <Row icon="user" title="Edit profile" onPress={() => router.push('/account/edit')} />
+          <Row icon="x" title="Delete account" tone="alert" onPress={() => router.push('/account/delete')} last />
         </View>
 
         {backend === 'local' ? (
@@ -297,21 +329,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: color.border,
   },
-  avatar: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: color.brand,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarText: {
-    fontFamily: font.bold,
-    fontSize: 26,
-    color: color.white,
-  },
   cardText: {
     flex: 1,
+    minWidth: 0,
     gap: 2,
   },
   name: {
