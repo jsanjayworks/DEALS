@@ -164,7 +164,7 @@ export default function CategoryScreen() {
             </View>
 
             <View style={styles.titleRow}>
-              <Icon name={categoryIcon(top?.icon ?? '')} size={34} color={theme.tile.icon} strokeWidth={1.6} />
+              <Icon name={categoryIcon(top?.icon ?? '')} size={34} color={theme.onSelected ?? theme.hero.text} strokeWidth={1.6} />
               <View style={styles.flex}>
                 <Text style={styles.title} accessibilityRole="header">
                   {top?.name ?? ' '}
@@ -446,7 +446,7 @@ const styles = StyleSheet.create({
     height: 40,
     paddingHorizontal: 16,
     borderRadius: radius.pill,
-    backgroundColor: theme.tile.bg,
+    backgroundColor: theme.heroChip.track,
     borderWidth: 1,
     borderColor: theme.heroChip.border,
     flexDirection: 'row',
@@ -463,7 +463,7 @@ const styles = StyleSheet.create({
   pillText: {
     fontFamily: font.medium,
     fontSize: 14,
-    color: theme.hero.text,
+    color: theme.heroChip.text,
   },
   pillTextOn: {
     color: theme.heroChip.onThumb,

@@ -12,6 +12,13 @@ import { useBusinessId } from '../../merchant/useBusiness';
 import { useSession, useViewer, useViewerReady } from '../../state/session';
 import { color } from '../../theme/tokens';
 
+/**
+ * On a wide screen merchant mode is a centred column, not a 1,280 px stretch:
+ * stat tiles, lists and the redeem box read best at console width.
+ */
+// Auto margins, not alignSelf: React Navigation positions screens absolutely from the left.
+const COLUMN = { width: '100%', maxWidth: 960, marginHorizontal: 'auto' } as const;
+
 export default function MerchantLayout() {
   const businessId = useBusinessId();
   const ready = useViewerReady();
@@ -32,7 +39,7 @@ export default function MerchantLayout() {
     <Stack
       screenOptions={{
         headerShown: false,
-        contentStyle: { backgroundColor: color.background },
+        contentStyle: { backgroundColor: color.background, ...COLUMN },
       }}
     >
       <Stack.Screen name="(tabs)" />

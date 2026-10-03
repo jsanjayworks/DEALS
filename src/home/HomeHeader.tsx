@@ -1,25 +1,17 @@
 /**
- * The Home header: where you are and how many deals are live there, with
- * notifications and your profile on the right.
+ * The Home header: where you are, with notifications and your profile on the
+ * right. The deal count is not repeated here; the count card under it owns it.
  *
- * Frosted glass in the hero's colour. It slides up out of the way while
+ * Frosted light glass over the page, ink type. It slides up out of the way while
  * scrolling down and comes back on the first scroll up, in step with the tab
- * bar. The deal count is the one highlighted thing in it, in the accent, and
- * pulses once when the greeting below folds away so the eye lands on it.
+ * bar.
  */
 
-import { useEffect, type ReactNode } from 'react';
+import type { ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import Animated, {
-  interpolate,
-  useAnimatedStyle,
-  useSharedValue,
-  withDelay,
-  withSequence,
-  withTiming,
-} from 'react-native-reanimated';
+import Animated, { interpolate, useAnimatedStyle } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Glass, Icon, RollingNumber, useHoverPress } from '../components';
+import { Glass, Icon, useHoverPress } from '../components';
 import { useChromeHidden } from '../ui/chrome';
 import { MAX_CONTENT_WIDTH } from '../ui/layout';
 import { color, font, theme, type } from '../theme/tokens';
@@ -33,23 +25,18 @@ export function useHeaderHeight(): number {
 export function HomeHeader({
   locality,
   city,
-  count,
   unread,
   initial,
   gutter,
-  pulseAfterMs,
   onLocality,
   onBell,
   onProfile,
 }: {
   locality: string;
   city: string;
-  count: number | null;
   unread: number;
   initial: string;
   gutter: number;
-  /** Pulse the count once, this long after mount (when the greeting folds). */
-  pulseAfterMs: number | null;
   onLocality: () => void;
   onBell: () => void;
   onProfile: () => void;
@@ -57,30 +44,20 @@ export function HomeHeader({
   const insets = useSafeAreaInsets();
   const hidden = useChromeHidden();
   const height = insets.top + HEADER_BAR_HEIGHT;
-  const pulse = useSharedValue(1);
-
-  useEffect(() => {
-    if (pulseAfterMs == null) return;
-    pulse.set(withDelay(
-      pulseAfterMs,
-      withSequence(withTiming(1.14, { duration: 220 }), withTiming(1, { duration: 320 })),
-    ));
-  }, [pulseAfterMs, pulse]);
 
   const slide = useAnimatedStyle(() => ({
     transform: [{ translateY: interpolate(hidden.get(), [0, 1], [0, -height - 4]) }],
   }));
-  const pulseStyle = useAnimatedStyle(() => ({ transform: [{ scale: pulse.get() }] }));
 
   return (
     <Animated.View style={[styles.wrap, slide]}>
-      <Glass tone="hero" edge={false} intensity={50} style={{ paddingTop: insets.top }}>
+      <Glass tone="light" edge={false} intensity={50} style={{ paddingTop: insets.top }}>
         <View style={[styles.row, { paddingHorizontal: gutter }]}>
           <Pressable
             onPress={onLocality}
             accessibilityRole="button"
             accessibilityLabel={
-              'Deals around ' + locality + (count != null ? ', ' + count + ' deals nearby' : '') + '. Change locality'
+              'Deals around ' + locality + '. Change locality'
             }
             style={styles.where}
           >
@@ -89,17 +66,12 @@ export function HomeHeader({
               <Text style={styles.place} numberOfLines={1}>
                 {locality}
               </Text>
-              <Icon name="down" size={16} color={theme.hero.text} strokeWidth={2} />
-              {count != null ? (
-                <Animated.View style={[styles.count, pulseStyle]}>
-                  <RollingNumber value={count} suffix=" deals" style={styles.countText} />
-                </Animated.View>
-              ) : null}
+              <Icon name="down" size={16} color={color.text} strokeWidth={2} />
             </View>
           </Pressable>
 
           <RoundButton label={unread ? 'Notifications, ' + unread + ' unread' : 'Notifications'} onPress={onBell}>
-            <Icon name="bell" size={22} color={theme.hero.text} />
+            <Icon name="bell" size={22} color={color.text} />
             {unread ? <View style={styles.dot} /> : null}
           </RoundButton>
           <RoundButton label="Profile" onPress={onProfile} solid>
@@ -153,7 +125,7 @@ const styles = StyleSheet.create({
   },
   overline: {
     ...type.overline,
-    color: theme.hero.muted,
+    color: color.textMuted,
   },
   placeRow: {
     flexDirection: 'row',
@@ -165,23 +137,8 @@ const styles = StyleSheet.create({
     fontSize: 18,
     lineHeight: 24,
     letterSpacing: -0.2,
-    color: theme.hero.text,
+    color: color.text,
     flexShrink: 1,
-  },
-  count: {
-    marginLeft: 6,
-    paddingHorizontal: 9,
-    height: 22,
-    borderRadius: 11,
-    backgroundColor: theme.countPill.bg,
-    justifyContent: 'center',
-  },
-  countText: {
-    fontFamily: font.semibold,
-    fontSize: 12,
-    lineHeight: 16,
-    color: theme.countPill.text,
-    fontVariant: ['tabular-nums'],
   },
   round: {
     width: 44,
@@ -195,12 +152,12 @@ const styles = StyleSheet.create({
     height: 36,
     borderRadius: 18,
     margin: 4,
-    backgroundColor: theme.hero.light ? color.brand : theme.hero.text,
+    backgroundColor: theme.countPill.bg,
   },
   initial: {
     fontFamily: font.semibold,
     fontSize: 15,
-    color: theme.hero.light ? color.white : theme.hero.colors[0],
+    color: theme.countPill.text,
   },
   dot: {
     position: 'absolute',
@@ -211,6 +168,6 @@ const styles = StyleSheet.create({
     borderRadius: 4,
     backgroundColor: color.alert,
     borderWidth: 1.5,
-    borderColor: theme.hero.colors[0],
+    borderColor: color.background,
   },
 });

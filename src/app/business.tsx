@@ -91,7 +91,7 @@ export default function BusinessLoginScreen() {
             {PERKS.map((p) => (
               <View key={p.title} style={styles.perk}>
                 <View style={styles.perkIcon}>
-                  <Icon name={p.icon} size={20} color={color.cta} />
+                  <Icon name={p.icon} size={20} color={color.accentText} />
                 </View>
                 <View style={styles.flex}>
                   <Text style={styles.perkTitle}>{p.title}</Text>

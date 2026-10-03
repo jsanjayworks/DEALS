@@ -281,6 +281,9 @@ const styles = StyleSheet.create({
     backgroundColor: color.background,
   },
   content: {
+    width: '100%',
+    maxWidth: 720,
+    alignSelf: 'center',
     padding: space.lg,
     paddingBottom: space.xxxl,
   },

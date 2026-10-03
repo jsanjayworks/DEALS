@@ -37,7 +37,8 @@ export function Price({ now, was, unit, large }: PriceProps) {
 }
 
 export interface MetaProps {
-  distanceKm: number;
+  /** Null hides it: a card seen from nowhere in particular (the admin queue). */
+  distanceKm: number | null;
   rating: number;
   ratingCount?: number;
 }
@@ -46,10 +47,12 @@ export interface MetaProps {
 export function Meta({ distanceKm, rating, ratingCount }: MetaProps) {
   return (
     <View style={styles.metaRow}>
-      <View style={styles.metaItem}>
-        <Icon name="pin" size={13} color={color.textSecondary} />
-        <Text style={styles.metaText}>{distanceLabel(distanceKm)}</Text>
-      </View>
+      {distanceKm != null ? (
+        <View style={styles.metaItem}>
+          <Icon name="pin" size={13} color={color.textSecondary} />
+          <Text style={styles.metaText}>{distanceLabel(distanceKm)}</Text>
+        </View>
+      ) : null}
       {rating > 0 ? (
         <View style={styles.metaItem}>
           <Icon name="star" size={13} color={color.star} filled />

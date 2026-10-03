@@ -428,6 +428,99 @@ const SEED: DealSeed[] = [
     views: 1420, searches: 690, booking: true, minAge: 18 },
 ];
 
+/**
+ * Photos: free Unsplash images (Unsplash License), each chosen to show what
+ * its deal is about, so a chai deal shows chai. Keyed by deal id, with a
+ * per-category fallback for anything not listed.
+ *
+ * d-902 is deliberately off-topic: it is the demo's rejected deal, sent back
+ * because "the offer image does not show the actual product".
+ */
+const PHOTO: Record<string, string> = {
+  'd-001': '1567620905732-2d1ec7ab7445', // pancakes, brunch
+  'd-002': '1546833999-b9f581a1996d', // thali
+  'd-003': '1495474472287-4d71bcdd2085', // two coffees
+  'd-004': '1589302168068-964664d93dc0', // biryani
+  'd-005': '1535958636474-b021ee887b13', // beer on tap
+  'd-006': '1630383249896-424e482df921', // idli, vada
+  'd-007': '1553621042-f6e147245754', // sushi boat
+  'd-008': '1533134242443-d4fd215305ad', // cheesecake
+  'd-009': '1585937421612-70a008356fbe', // curries
+  'd-010': '1571934811356-5cc061b6821f', // tea
+  'd-011': '1668236543090-82eba5ee5976', // dosa
+  'd-012': '1509042239860-f550ce710b93', // coffee and plants
+  'd-013': '1534438327276-14e5300c3a48', // gym floor
+  'd-014': '1560066984-138dadb4c035', // salon
+  'd-015': '1571019613454-1cb2f99b2d8b', // workout
+  'd-016': '1621905251189-08b45d6a269e', // technician
+  'd-017': '1544367567-0f2fcb009e0b', // yoga at sunrise
+  'd-018': '1581578731548-c64695cc6952', // cleaning
+  'd-019': '1487412947147-5cebf100ffc2', // makeup
+  'd-020': '1527224857830-43a7acc85260', // LAUGH neon
+  'd-021': '1459749411175-04bf5292ceea', // live gig
+  'd-022': '1493106641515-6b5631de4bb9', // pottery wheel
+  'd-023': '1585699324551-f6c309eedeca', // stage
+  'd-024': '1470225620780-dba8ba36b745', // DJ decks
+  'd-025': '1513364776144-60967b0f800f', // paints and brush
+  'd-026': '1449965408869-eaa3f722e40d', // driving
+  'd-027': '1558981403-c5f9899a28bc', // two-wheeler
+  'd-028': '1469854523086-cc02fe5d8800', // road trip
+  'd-029': '1502672260266-1c1ef2d93688', // living room
+  'd-030': '1524758631624-e2822e304c36', // shared lounge
+  'd-031': '1522708323590-d24dbb6b0267', // apartment
+  'd-032': '1502672260266-1c1ef2d93688', // studio
+  'd-033': '1497366216548-37526070297c', // office
+  'd-034': '1497215728101-856f4ea42174', // hot desks
+  'd-035': '1563986768609-322da13575f3', // work on laptop
+  'd-036': '1441986300917-64674bd600d8', // shopfront
+  'd-037': '1542291026-7eec264c27ff', // running shoe
+  'd-038': '1590658268037-6bf12165a8df', // earbuds
+  'd-039': '1488459716781-31db52582fe9', // veg market
+  'd-040': '1489987707025-afc232f7ea0f', // shirts
+  'd-041': '1601925260368-ae2f83cf8b7f', // yoga mats
+  'd-042': '1622597467836-f3285f2131b8', // cold-pressed juice
+  'd-043': '1517336714731-489689fd1ca8', // laptop
+  'd-044': '1524178232363-1fb2b075b655', // classroom
+  'd-045': '1618477461853-cf6ed80faba5', // cleanup
+  'd-046': '1510915361894-db8b60106cb1', // guitar
+  'd-047': '1515879218367-8466d910aaa4', // code
+  'd-048': '1546069901-ba9599a7e63c', // lunch bowl
+  'd-049': '1565299624946-b28f40a0ae38', // pizza
+  'd-050': '1533089860892-a7c6f0a88666', // breakfast plate
+  'd-051': '1504754524776-8f4f37790ca0', // spread for the table
+  'd-052': '1561336313-0bd5e0b27ec8', // coffees
+  'd-053': '1569050467447-ce54b3bbc37d', // katsu
+  'd-054': '1534438327276-14e5300c3a48', // gym floor
+  'd-055': '1503095396549-807759245b35', // stage silhouettes
+  'd-056': '1571068316344-75bc76f77890', // bicycle
+  'd-057': '1570172619644-dfd03ed5d881', // facial
+  'd-058': '1560448204-e02f11c3d0e2', // villa living room
+  'd-059': '1558981806-ec527fa84c39', // motorcycle
+  'd-900': '1551024601-bec78aea704b', // doughnuts
+  'd-901': '1589301760014-d929f3979dbc', // idli on banana leaf
+  'd-902': '1565193566173-7a0ee3dbe261', // vases: deliberately not coffee
+  'd-910': '1571019613454-1cb2f99b2d8b', // workout
+  'd-911': '1560448204-e02f11c3d0e2', // villa
+};
+
+/** When a deal has no photo of its own: one per top-level category. */
+const CATEGORY_PHOTO: Record<string, string> = {
+  food: '1504674900247-0877df9cc836',
+  services: '1560066984-138dadb4c035',
+  events: '1501281668745-f7f57925c3b4',
+  mobility: '1449965408869-eaa3f722e40d',
+  property: '1522708323590-d24dbb6b0267',
+  business: '1497366216548-37526070297c',
+  retail: '1441986300917-64674bd600d8',
+  community: '1618477461853-cf6ed80faba5',
+};
+
+function photoFor(id: string, categoryId: string): string {
+  const vertical = categoryId.split('-')[1] ?? 'food';
+  const key = PHOTO[id] ?? CATEGORY_PHOTO[vertical] ?? CATEGORY_PHOTO.food;
+  return 'https://images.unsplash.com/photo-' + key + '?w=800&h=600&fit=crop&q=70&auto=format';
+}
+
 function expand(s: DealSeed): Deal {
   const mrp = s.mrp ?? null;
   const price = s.price ?? null;
@@ -464,7 +557,7 @@ function expand(s: DealSeed): Deal {
     attributes: s.attrs ?? {},
     tags: s.tags ?? [],
     location: biz.location,
-    image: 'https://picsum.photos/seed/' + s.id + '/800/600',
+    image: photoFor(s.id, s.cat),
     primary_cta: s.cta,
     secondary_ctas: s.also ?? [],
     availability: {

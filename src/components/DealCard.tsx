@@ -7,8 +7,8 @@
  *   compact    fills a grid cell
  *   spotlight  photo-first, text over a gradient, for the Home carousel
  *
- * Photo first, type underneath, no box around it: the photo is the colour on
- * the page and everything else stays ink and grey. Every variant lifts and
+ * Bento tiles: a white card with a hairline edge, the photo inset with its own
+ * rounded corners, type underneath. The photo is the colour on the card. Every variant lifts and
  * pushes its photo in on hover, so the web build feels like a website rather
  * than a phone screen in a browser; touch gets the press.
  *
@@ -45,12 +45,14 @@ export interface DealCardProps {
   badge?: CardBadge | null;
   /** Sizing from the parent, e.g. a grid cell width. */
   style?: StyleProp<ViewStyle>;
+  /** Hide the distance where there is no "here" to measure from (the admin queue). */
+  showDistance?: boolean;
 }
 
 // expo-image reads a bare string as a URL, so the blurhash must be wrapped.
 const PLACEHOLDER = { blurhash: 'L6Pj0^i_.AyE_3t7t7R**0o#DgR4' };
 
-export function DealCard({ deal, variant = 'large', onPress, badge, style }: DealCardProps) {
+export function DealCard({ deal, variant = 'large', onPress, badge, style, showDistance = true }: DealCardProps) {
   const flag = badge === undefined ? badgeFor(deal) : badge;
   // A free deal says Free once; "100% OFF" beside it is noise.
   const discount = deal.deal_price === 0 ? 0 : Math.round(deal.discount_pct ?? 0);
@@ -150,7 +152,7 @@ export function DealCard({ deal, variant = 'large', onPress, badge, style }: Dea
           </Text>
           <Price now={deal.deal_price} was={deal.original_price} unit={deal.price_unit} />
           <View style={styles.listFooter}>
-            <Meta distanceKm={deal.distance_km} rating={deal.rating_avg} />
+            <Meta distanceKm={showDistance ? deal.distance_km : null} rating={deal.rating_avg} />
             <Text style={styles.cta} numberOfLines={1}>
               {ctaLabel(deal.primary_cta)} {'→'}
             </Text>
@@ -182,7 +184,7 @@ export function DealCard({ deal, variant = 'large', onPress, badge, style }: Dea
         <Text style={styles.business} numberOfLines={1}>
           {deal.business.name}
         </Text>
-        <Meta distanceKm={deal.distance_km} rating={deal.rating_avg} />
+        <Meta distanceKm={showDistance ? deal.distance_km : null} rating={deal.rating_avg} />
         <View style={styles.priceGap}>
           <Price now={deal.deal_price} was={deal.original_price} unit={deal.price_unit} />
         </View>
@@ -230,7 +232,10 @@ export function DealCardSkeleton({ variant = 'list' }: { variant?: DealCardVaria
 
 export const DEAL_CARD_LARGE_WIDTH = 270;
 
-const CARD_RADIUS = 16;
+/** The tile's corner, and the inset photo's (tile minus its padding). */
+const TILE_RADIUS = 22;
+const TILE_PAD = 8;
+const CARD_RADIUS = TILE_RADIUS - TILE_PAD;
 
 const styles = StyleSheet.create({
   flex: {
@@ -238,7 +243,7 @@ const styles = StyleSheet.create({
   },
   // The shadow sits on a wrapper: iOS clips shadows on a view with overflow hidden.
   shadowWrap: {
-    borderRadius: CARD_RADIUS,
+    borderRadius: TILE_RADIUS,
   },
   shadowWrapSpot: {
     borderRadius: 24,
@@ -246,6 +251,10 @@ const styles = StyleSheet.create({
   },
   card: {
     backgroundColor: color.surface,
+    borderRadius: TILE_RADIUS,
+    borderWidth: 1,
+    borderColor: color.border,
+    padding: TILE_PAD,
   },
   largeCard: {
     width: '100%',
@@ -255,8 +264,7 @@ const styles = StyleSheet.create({
   },
   listCard: {
     flexDirection: 'row',
-    gap: 14,
-    paddingVertical: 6,
+    gap: 12,
   },
   spot: {
     width: '100%',
@@ -335,9 +343,9 @@ const styles = StyleSheet.create({
     backgroundColor: color.surfaceSoftAlt,
   },
   listImageWrap: {
-    width: 112,
-    height: 112,
-    borderRadius: radius.lg,
+    width: 104,
+    height: 104,
+    borderRadius: CARD_RADIUS,
     overflow: 'hidden',
     backgroundColor: color.surfaceSoftAlt,
   },
@@ -356,7 +364,8 @@ const styles = StyleSheet.create({
   },
   body: {
     paddingTop: 10,
-    paddingHorizontal: 2,
+    paddingHorizontal: 6,
+    paddingBottom: 4,
     gap: 2,
   },
   titleRow: {

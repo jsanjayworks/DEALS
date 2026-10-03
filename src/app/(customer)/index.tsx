@@ -19,7 +19,6 @@
 
 import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 import { StatusBar } from 'expo-status-bar';
 import { router, useIsFocused } from 'expo-router';
 import Animated, {
@@ -55,8 +54,8 @@ import {
 } from '../../components';
 import { CategoryGrid } from '../../home/CategoryGrid';
 import { HomeHeader, useHeaderHeight } from '../../home/HomeHeader';
-import { RadiusSelector } from '../../home/RadiusSelector';
-import { Spotlight } from '../../home/Spotlight';
+import { BentoTiles } from '../../home/BentoTiles';
+import { CountCard } from '../../home/CountCard';
 import { useHideOnScroll } from '../../ui/chrome';
 import { useTabBarSpace } from '../../ui/FloatingTabBar';
 import { Container, cellWidth, useLayout } from '../../ui/layout';
@@ -88,7 +87,13 @@ interface HomeData {
   nearbyCount: number;
   byVertical: Record<string, number>;
   unread: number;
+  /** The deal closest to ending, for the countdown tile. */
+  ending: DealCardModel | null;
+  /** Deals at ₹200 or less, and a few of their categories to name. */
+  under: { count: number; names: string };
 }
+
+const UNDER = 200;
 
 export default function HomeScreen() {
   const layout = useLayout();
@@ -122,15 +127,24 @@ export default function HomeScreen() {
       ),
     ]);
     const [near_you, trending, ending_soon, fresh] = lists as DealCardModel[][];
+    const everything = all as DealCardModel[];
     const byVertical: Record<string, number> = {};
-    for (const d of all as DealCardModel[]) {
+    for (const d of everything) {
       byVertical[d.category.vertical] = (byVertical[d.category.vertical] ?? 0) + 1;
     }
+    const cheap = everything.filter((d) => d.deal_price != null && d.deal_price <= UNDER);
+    const cheapNames = [...new Set(cheap.map((d) => d.category.name))];
+    const soonest = [...everything].sort((a, b) => a.ends_at.localeCompare(b.ends_at))[0] ?? null;
     return {
       rails: { near_you, trending, ending_soon, new: fresh },
-      nearbyCount: (all as DealCardModel[]).length,
+      nearbyCount: everything.length,
       byVertical,
       unread: notifications.filter((n) => n.read_at === null).length,
+      ending: ending_soon[0] ?? soonest,
+      under: {
+        count: cheap.length,
+        names: cheapNames.slice(0, 3).join(', ') + (cheapNames.length > 3 ? '…' : ''),
+      },
     };
   }, [origin, radiusM, account]);
 
@@ -144,7 +158,7 @@ export default function HomeScreen() {
     if (mode === 'merchant' && viewer.business_ids.length > 0) router.push('/merchant');
   }, [focused, viewer, mode]);
   const rails = data?.rails;
-  const spotlight = useMemo(() => rails?.near_you.slice(0, 6) ?? [], [rails]);
+  const spotlight = useMemo(() => rails?.near_you.slice(0, 5) ?? [], [rails]);
 
   // Stable callbacks: the rails, spotlight and grid are memoised, and a new
   // function every render would make every one of them re-render on a tap.
@@ -164,6 +178,14 @@ export default function HomeScreen() {
     () => router.push({ pathname: '/results', params: { radius: String(useSession.getState().radiusM) } }),
     [],
   );
+  const openUnder = useCallback(
+    () =>
+      router.push({
+        pathname: '/results',
+        params: { q: 'under ' + UNDER, radius: String(useSession.getState().radiusM) },
+      }),
+    [],
+  );
   const seeAllEnding = useCallback(
     () =>
       router.push({
@@ -178,7 +200,7 @@ export default function HomeScreen() {
 
   return (
     <View style={styles.screen}>
-      {focused ? <StatusBar style={theme.hero.light ? 'dark' : 'light'} /> : null}
+      {focused ? <StatusBar style="dark" /> : null}
 
       <Animated.ScrollView
         onScroll={onScroll}
@@ -186,24 +208,34 @@ export default function HomeScreen() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: tabSpace + space.lg }}
       >
-        {/* ---------- Hero ---------- */}
-        <View style={[styles.hero, { paddingTop: headerHeight + space.sm }]}>
-          <LinearGradient colors={theme.hero.colors} style={StyleSheet.absoluteFill} pointerEvents="none" />
+        {/* ---------- Top: count, search, live tiles, categories ---------- */}
+        <View style={[styles.top, { paddingTop: headerHeight + space.sm }]}>
           <Container>
-            {greet ? (
-              <Greeting
-                name={displayName}
-                subtitle={
-                  data
-                    ? data.nearbyCount + ' deals live within ' + radiusLabel(radiusM) + ' of ' + locality.name
-                    : 'Finding deals near you'
-                }
-              />
-            ) : null}
+            {greet ? <Greeting name={displayName} subtitle="Here is what is live near you." /> : null}
 
-            <RadiusSelector options={RADIUS_OPTIONS} value={radiusM} onChange={setRadius} />
+            <CountCard
+              count={data ? data.nearbyCount : null}
+              caption={'deals live within ' + radiusLabel(radiusM) + ' of ' + locality.name}
+              options={RADIUS_OPTIONS}
+              radiusM={radiusM}
+              onRadius={setRadius}
+            />
 
             <SearchPill onPress={() => router.push('/search')} />
+
+            <View style={styles.bento}>
+              {data ? (
+                <BentoTiles
+                  spotlight={spotlight}
+                  ending={data.ending}
+                  under={data.under}
+                  onOpen={openSpotlight}
+                  onUnder={openUnder}
+                />
+              ) : (
+                <View style={styles.bentoSkeleton} />
+              )}
+            </View>
 
             <View style={styles.categories}>
               <CategoryGrid
@@ -216,23 +248,6 @@ export default function HomeScreen() {
             </View>
           </Container>
         </View>
-
-        {/* ---------- Spotlight ---------- */}
-        <Container flush style={styles.spotlightWrap}>
-          {loading ? (
-            <View style={{ paddingHorizontal: layout.gutter }}>
-              <View style={styles.spotSkeleton} />
-            </View>
-          ) : (
-            <Spotlight
-              deals={spotlight}
-              width={layout.contentWidth}
-              gutter={layout.gutter}
-              perPage={layout.isCompact ? 1 : 2}
-              onOpen={openSpotlight}
-            />
-          )}
-        </Container>
 
         {empty ? (
           <Container>
@@ -267,11 +282,9 @@ export default function HomeScreen() {
       <HomeHeader
         locality={locality.name}
         city={locality.city}
-        count={data ? data.nearbyCount : null}
         unread={data?.unread ?? 0}
         initial={displayName.charAt(0)}
         gutter={layout.gutter}
-        pulseAfterMs={greet ? GREET_HOLD_MS + GREET_FOLD_MS : null}
         onLocality={() => setPickerOpen(true)}
         onBell={() => router.push('/notifications')}
         onProfile={() => router.push('/profile')}
@@ -453,31 +466,35 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: color.background,
   },
-  hero: {
-    paddingBottom: space.xxl,
-    marginBottom: space.lg,
-    overflow: 'hidden',
-    borderBottomLeftRadius: theme.hero.light ? 0 : 28,
-    borderBottomRightRadius: theme.hero.light ? 0 : 28,
+  top: {
+    paddingBottom: space.sm,
+  },
+  bento: {
+    marginTop: space.md,
+  },
+  bentoSkeleton: {
+    height: 234,
+    borderRadius: radius.xxl,
+    backgroundColor: color.surfaceSoftAlt,
   },
   greetWrap: {
     overflow: 'hidden',
   },
   greeting: {
     ...type.display,
-    fontSize: 34,
-    lineHeight: 42,
-    color: theme.hero.text,
-    paddingTop: space.sm,
+    fontSize: 30,
+    lineHeight: 36,
+    color: color.text,
+    paddingTop: space.xs,
   },
   greetingSub: {
     ...type.body,
-    color: theme.hero.muted,
+    color: color.textSecondary,
     marginTop: 2,
     marginBottom: space.lg,
   },
   search: {
-    marginTop: space.xs,
+    marginTop: space.md,
     height: 56,
     borderRadius: 28,
     backgroundColor: theme.heroSearch.bg,
@@ -509,17 +526,7 @@ const styles = StyleSheet.create({
     color: theme.heroSearch.hint,
   },
   categories: {
-    marginTop: space.xl,
-  },
-  spotlightWrap: {
-    marginTop: 0,
-  },
-  spotSkeleton: {
-    width: '100%',
-    aspectRatio: 16 / 10,
-    maxHeight: 360,
-    borderRadius: 24,
-    backgroundColor: color.surfaceSoftAlt,
+    marginTop: space.md,
   },
   section: {
     marginTop: space.xxl,

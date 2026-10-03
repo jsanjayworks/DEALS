@@ -13,10 +13,10 @@ most open items are setup, native features and polish rather than new screens.
 
 | Area | Items | Estimate | What is holding it back |
 |---|---|---|---|
-| **Front end** | 55 / 70 | **~80%** | Theme not picked yet, real photos, location, native features (camera, maps, push), error and offline states, no automated tests |
+| **Front end** | 63 / 76 | **~80%** | Location, native features (camera, maps, push), error and offline states, no automated tests |
 | **Back end** | 24 / 35 | **~80%** | All logic and wiring done and tested; production setup is not: migrations not deployed, no SMS provider, no Storage bucket, no push delivery |
 | **Ship** | 0 / 12 | **~5%** | No `eas.json`, store assets, privacy policy, crash reporting or CI yet |
-| **Overall MVP** | 79 / 117 | **~70%** | The demo loop is code-complete; production setup and shipping are barely started |
+| **Overall MVP** | 87 / 123 | **~70%** | The demo loop is code-complete; production setup and shipping are barely started |
 
 The demo loop works end to end today, on both backends: customer finds and
 claims a deal, merchant redeems it, admin approves a new one.
@@ -37,7 +37,7 @@ claims a deal, merchant redeems it, admin approves a new one.
 - [x] ESLint (`eslint.config.js`); `npx expo lint` and `npx tsc --noEmit` clean
 - [x] Viewer hooks (`useViewer`, `useDisplayName`) shared by both backends
 
-## F2. Design system and look · 9 / 13
+## F2. Design system and look · 17 / 20
 
 - [x] Theme system: one colour family per theme, one accent, display font; `?theme=` preview on web
 - [x] Five directions rendered for comparison: `docs/design/theme-options.png`
@@ -48,12 +48,19 @@ claims a deal, merchant redeems it, admin approves a new one.
 - [x] Distance thumb starts gliding on the tap itself, labels stay readable under it, and the feed reloads in the background (memoised Home sections, results applied as a transition)
 - [x] Header and floating tab bar hide on scroll down, return on scroll up
 - [x] Discount pill in the accent, badges otherwise neutral
-- [ ] **Pick the theme** (editorial, sunset, forest, ocean or glow) and drop the unused display font
+- [x] **Theme picked: premium blue and gold, Bento layout** (dev branch; `docs/design/redesign-blue-gold.png`). Navy for structure, gold for the one action and the saving
+- [x] Bento Home: navy count card with the distance selector, spotlight tile, live "Ending soon" countdown, "Under ₹200" tile; header no longer repeats the count
+- [x] Bento deal page: photo card, price / left / when / where tiles, only the price highlighted (gold save chip)
+- [x] Cards as white tiles; navy-and-gold discount pill; gold pill buttons
+- [x] Real photos for every seed deal (Unsplash), each matching its deal
+- [x] Merchant tab bar rebuilt: pill and label aligned at every width, centred on desktop
+- [x] Web focus rings: none after a click or tap, a brand ring for keyboard users
+- [x] Wide screens: merchant and admin in a centred 960 px column, profile 720 px, capped search tiles and distance track
 - [ ] Carry the chosen theme into sign-in, profile, notifications and the merchant header
 - [ ] App icon and splash in the chosen theme; `app.json` still has the template assets
 - [ ] Respect Reduce Motion in Reanimated animations
 
-## F3. Customer app · 17 / 23
+## F3. Customer app · 17 / 22
 
 - [x] Home: greeting, deal count by the address, distance selector, search, 7 categories without scrolling, spotlight carousel, rails
 - [x] Category pages with data-driven subheadings (taxonomy children plus `x-facet` attributes) and a separate filter sheet
@@ -73,7 +80,6 @@ claims a deal, merchant redeems it, admin approves a new one.
 - [x] Deep links land on a deal or category with Home underneath
 - [x] Savings ("You save ₹…") and capacity bar on the deal page
 - [ ] Device location (`expo-location`) in place of the locality centre
-- [ ] Real deal photos; seed images are random placeholders (a chai deal can show a street lamp)
 - [ ] Map view of results (`react-native-maps`, needs a development build)
 - [ ] Retry on every failed load, offline banner
 - [ ] 44 pt touch targets for applied-filter chips and distance options

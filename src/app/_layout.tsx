@@ -21,6 +21,7 @@ import {
 import { BricolageGrotesque_700Bold } from '@expo-google-fonts/bricolage-grotesque/700Bold';
 import { Fraunces_600SemiBold } from '@expo-google-fonts/fraunces/600SemiBold';
 import { color } from '../theme/tokens';
+import { installFocusRing } from '../lib/focus-ring';
 import { ChromeProvider } from '../ui/chrome';
 
 // A deep link to a deal, a category or Profile still has Home underneath, so
@@ -28,6 +29,9 @@ import { ChromeProvider } from '../ui/chrome';
 export const unstable_settings = {
   anchor: '(customer)',
 };
+
+// Web: no outline box after clicks and taps; a brand ring for keyboard users.
+installFocusRing();
 
 SplashScreen.preventAutoHideAsync().catch(() => {
   // Already hidden, or called twice during fast refresh. Not worth failing for.

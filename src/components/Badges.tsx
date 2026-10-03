@@ -8,7 +8,7 @@
  */
 
 import { StyleSheet, Text, View } from 'react-native';
-import { color, font, radius, status as statusColor, type } from '../theme/tokens';
+import { color, font, radius, status as statusColor, theme, type } from '../theme/tokens';
 import type { StatusTone } from '../theme/tokens';
 import type { DealStatus } from '../data/types';
 import { STATUS_LABEL } from '../domain/lifecycle';
@@ -23,17 +23,17 @@ export type BadgeKind = 'Ending Soon' | 'Trending' | 'New' | 'Flash Deal' | 'Fre
 export function Badge({ kind }: { kind: BadgeKind }) {
   return (
     <View style={[styles.badge, styles.ink]}>
-      <Text style={[styles.badgeText, { color: color.white }]}>{kind}</Text>
+      <Text style={[styles.badgeText, { color: color.text }]}>{kind}</Text>
     </View>
   );
 }
 
-/** The discount flag, in the accent: the one tinted thing on a deal photo. */
+/** The discount flag: the theme's highlight pill (navy and gold on premium). */
 export function DiscountBadge({ percent }: { percent: number }) {
   if (percent <= 0) return null;
   return (
     <View style={[styles.badge, styles.discount]}>
-      <Text style={[styles.badgeText, styles.tabular, { color: color.onCta }]}>
+      <Text style={[styles.badgeText, styles.tabular, { color: theme.countPill.text }]}>
         {percent + '% off'}
       </Text>
     </View>
@@ -95,14 +95,14 @@ export function DealStatusPill({ status }: { status: DealStatus }) {
 
 const styles = StyleSheet.create({
   discount: {
-    backgroundColor: color.cta,
+    backgroundColor: theme.countPill.bg,
     shadowColor: color.black,
     shadowOpacity: 0.08,
     shadowRadius: 4,
     shadowOffset: { width: 0, height: 1 },
   },
   ink: {
-    backgroundColor: color.brand,
+    backgroundColor: 'rgba(255,255,255,0.92)',
   },
   badge: {
     paddingHorizontal: 9,

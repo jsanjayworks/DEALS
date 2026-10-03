@@ -97,7 +97,7 @@ function TabButton({
 }) {
   const { handlers, hover } = useHoverPress();
   const hoverBg = useAnimatedStyle(() => ({
-    // Frosted white bar, ink icons; the active tab is an ink pill with a white icon and label.
+    // Frosted white bar, ink icons; the active tab is a brand pill (navy and gold on premium).
     backgroundColor: focused ? color.brand : `rgba(${BRAND_RGB},${0.12 * hover.get()})`,
   }));
 
@@ -110,7 +110,7 @@ function TabButton({
       accessibilityState={{ selected: focused }}
     >
       <Animated.View layout={LinearTransition.springify().damping(18)} style={[styles.item, hoverBg]}>
-        <Icon name={icon} size={22} color={focused ? color.white : color.text} strokeWidth={focused ? 2.2 : 1.9} />
+        <Icon name={icon} size={22} color={focused ? color.onBrand : color.text} strokeWidth={focused ? 2.2 : 1.9} />
         {focused ? (
           <Animated.Text entering={FadeIn.duration(180)} style={styles.label} numberOfLines={1}>
             {label}
@@ -155,7 +155,7 @@ const styles = StyleSheet.create({
   label: {
     fontFamily: font.semibold,
     fontSize: 14,
-    color: color.white,
+    color: color.onBrand,
   },
 });
 

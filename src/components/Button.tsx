@@ -14,7 +14,8 @@
 
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import type { ReactNode } from 'react';
-import { color, font, radius, size, type } from '../theme/tokens';
+import { LinearGradient } from 'expo-linear-gradient';
+import { color, font, radius, size, theme, type } from '../theme/tokens';
 import { Icon, type IconName } from './Icon';
 
 export type ButtonVariant = 'primary' | 'cta' | 'secondary' | 'text';
@@ -39,7 +40,7 @@ const FILL: Record<ButtonVariant, string> = {
 };
 
 const LABEL: Record<ButtonVariant, string> = {
-  primary: color.white,
+  primary: color.onBrand,
   cta: color.onCta,
   secondary: color.brand,
   text: color.brand,
@@ -59,6 +60,9 @@ export function Button({
   const isDisabled = disabled || loading;
   const height = small ? size.buttonSmall : size.button;
   const tint = LABEL[variant];
+  // The theme may give the main action a sheen (gold, on the premium theme).
+  const sheen = variant === 'cta' && theme.accentGradient ? theme.accentGradient : null;
+  const corner = variant === 'text' ? radius.lg : (theme.buttonRadius ?? radius.lg);
 
   return (
     <Pressable
@@ -71,15 +75,26 @@ export function Button({
         styles.base,
         {
           height,
+          borderRadius: corner,
           paddingHorizontal: small ? 16 : 20,
           backgroundColor: FILL[variant],
           alignSelf: full ? 'stretch' : 'flex-start',
         },
+        sheen && styles.sheenShadow,
         variant === 'secondary' && styles.bordered,
         pressed && !isDisabled && styles.pressed,
         isDisabled && styles.disabled,
       ]}
     >
+      {sheen ? (
+        <LinearGradient
+          colors={sheen}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={[StyleSheet.absoluteFill, { borderRadius: corner }]}
+          pointerEvents="none"
+        />
+      ) : null}
       {loading ? (
         <ActivityIndicator color={tint} size="small" />
       ) : (
@@ -122,14 +137,14 @@ export function Chip({ children, onPress, selected, count }: ChipProps) {
         pressed && styles.pressed,
       ]}
     >
-      <Text style={[styles.chipLabel, { color: selected ? color.white : color.text }]}>
+      <Text style={[styles.chipLabel, { color: selected ? color.onBrand : color.text }]}>
         {children}
       </Text>
       {count !== undefined ? (
         <Text
           style={[
             styles.chipCount,
-            { color: selected ? color.white : color.textSecondary },
+            { color: selected ? color.onBrand : color.textSecondary },
           ]}
         >
           {count}
@@ -145,6 +160,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     flexDirection: 'row',
+  },
+  sheenShadow: {
+    shadowColor: color.accentText,
+    shadowOpacity: 0.3,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 4,
   },
   bordered: {
     borderWidth: 1,

@@ -120,7 +120,7 @@ export default function ReviewQueueScreen() {
                 {item.business.verification_status !== 'verified' ? ' · unverified business' : ''}
               </Text>
             </View>
-            <DealCard deal={item} variant="list" badge={null} onPress={() => setOpen(item)} />
+            <DealCard deal={item} variant="list" badge={null} showDistance={false} onPress={() => setOpen(item)} />
           </View>
         )}
         ListEmptyComponent={

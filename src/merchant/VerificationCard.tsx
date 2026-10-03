@@ -31,7 +31,7 @@ export function VerificationCard({ business }: { business: Business }) {
   return (
     <View style={styles.card}>
       <View style={styles.icon}>
-        <Icon name={pending ? 'clock' : rejected ? 'x' : 'shield'} size={20} color={rejected ? color.alert : color.cta} />
+        <Icon name={pending ? 'clock' : rejected ? 'x' : 'shield'} size={20} color={rejected ? color.alert : color.accentText} />
       </View>
       <View style={styles.text}>
         <Text style={styles.title}>

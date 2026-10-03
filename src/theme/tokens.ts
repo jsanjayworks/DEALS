@@ -34,9 +34,49 @@ export interface Theme {
   countPill: { bg: string; text: string };
   /** Heading face: greetings, page titles, section titles. */
   display: string;
+  /** Optional sheen for accent fills (the primary button), top-left to bottom-right. */
+  accentGradient?: readonly [string, string, ...string[]];
+  /** The accent as text on the page, when the fill colour is too light to read. */
+  accentText?: string;
+  /** Type and icons on a `selected` fill (the active tab, chips). Default white. */
+  onSelected?: string;
+  /** Primary buttons: 12 for soft corners, 999 for pills. */
+  buttonRadius?: number;
 }
 
 export const THEMES = {
+  /**
+   * Premium: navy for structure and selection, gold for the one action and
+   * the saving, on a cool paper grey. Gold fills carry navy type; gold as text
+   * uses a deeper shade so it stays readable.
+   */
+  premium: {
+    accent: '#D6A93A',
+    onAccent: '#0E2240',
+    accentGradient: ['#F0D27A', '#D6A93A', '#B88A1E'],
+    accentText: '#8A6508',
+    selected: '#16325C',
+    onSelected: '#E2BE5A',
+    buttonRadius: 999,
+    page: '#F4F5F8',
+    inset: '#EBEEF4',
+    border: '#E2E6EE',
+    text: '#0F1B2D',
+    textSecondary: '#4A5568',
+    textMuted: '#646D7E',
+    hero: { colors: ['#2A4C84', '#16325C', '#0B1D38'], text: '#FFFFFF', muted: 'rgba(255,255,255,0.74)', light: false },
+    heroChip: {
+      track: 'rgba(255,255,255,0.12)',
+      thumb: '#E2BE5A',
+      onThumb: '#0E2240',
+      text: 'rgba(255,255,255,0.86)',
+      border: 'rgba(255,255,255,0.14)',
+    },
+    heroSearch: { bg: '#FFFFFF', text: '#0F1B2D', hint: '#646D7E', icon: '#16325C', border: '#E2E6EE' },
+    tile: { bg: '#FFFFFF', border: '#E2E6EE', icon: '#16325C', label: '#0F1B2D', count: '#16325C', onCount: '#E2BE5A' },
+    countPill: { bg: '#16325C', text: '#E2BE5A' },
+    display: 'BricolageGrotesque_700Bold',
+  },
   /** Warm cream paper, a serif with character, burnt orange. */
   editorial: {
     accent: '#C2410C',
@@ -184,7 +224,7 @@ export const THEMES = {
 export type ThemeName = keyof typeof THEMES;
 
 /** The one line to change to re-theme the app. */
-export const ACTIVE_THEME: ThemeName = 'sunset';
+export const ACTIVE_THEME: ThemeName = 'premium';
 
 /** Dev-only web preview: ?theme=… on the URL that opens the app. */
 function preview<T extends string>(key: string, allowed: Record<T, unknown>): T | null {
@@ -215,6 +255,12 @@ export const color = {
   cta: theme.accent,
   /** Type and icons on a `cta` fill. */
   onCta: theme.onAccent,
+  /** The accent as readable text on the page: savings, highlights. */
+  accentText: theme.accentText ?? theme.accent,
+  /** On a `brand` (selected) fill. */
+  onBrand: theme.onSelected ?? '#FFFFFF',
+  /** A soft accent tint for highlight tiles. */
+  accentSoft: alphaHex(theme.accent, 0.16),
   /** Links and search hints. */
   interactive: theme.accent,
   /** A whisper of the accent for selected rows and savings panels. */

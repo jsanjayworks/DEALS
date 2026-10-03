@@ -176,7 +176,7 @@ export default function MerchantDealScreen() {
             <Button
               variant="cta"
               full
-              icon="gear"
+              icon="edit"
               onPress={() => router.push({ pathname: '/merchant/new', params: { id: deal.id } })}
             >
               {deal.status === 'REJECTED' ? 'Fix and resubmit' : 'Continue editing'}

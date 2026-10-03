@@ -235,7 +235,7 @@ function VerifyForm({
             />
             {gstinOk ? (
               <View style={styles.okRow}>
-                <Icon name="check" size={14} color={color.cta} strokeWidth={2.4} />
+                <Icon name="check" size={14} color={color.accentText} strokeWidth={2.4} />
                 <Text style={styles.okText}>
                   {stateOfGstin(gstinNow)} · PAN {panOfGstin(gstinNow)}
                 </Text>

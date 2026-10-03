@@ -20,9 +20,7 @@ import { checkAction } from '../../domain/rules';
 import {
   availabilityLabel,
   badgeFor,
-  capacityFraction,
   DEAL_TYPE_LABEL,
-  endsInLabel,
 } from '../../lib/format';
 import {
   callPhone,
@@ -33,6 +31,7 @@ import {
 } from '../../lib/device';
 import { useQuery } from '../../lib/useQuery';
 import { ClaimSheet } from '../../deal/ClaimSheet';
+import { DealTiles } from '../../deal/DealTiles';
 import { MAX_CONTENT_WIDTH, useLayout } from '../../ui/layout';
 import { useOrigin, useSession, useViewer } from '../../state/session';
 import { alpha, color, distanceLabel, font, inr, radius, shadow, space, type } from '../../theme/tokens';
@@ -41,7 +40,6 @@ import {
   Button,
   DealStatusPill,
   DiscountBadge,
-  Divider,
   EmptyState,
   Header,
   Icon,
@@ -51,6 +49,8 @@ import {
 } from '../../components';
 
 const HERO_HEIGHT = 300;
+/** Space either side of the photo card on a phone. */
+const HERO_INSET = 14;
 
 /** CTAs that leave the app instead of writing a customer action. */
 const OUTBOUND: CtaType[] = ['call', 'chat', 'directions', 'visit'];
@@ -220,7 +220,6 @@ export default function DealDetailScreen() {
     setReported(true);
   };
 
-  const capFraction = capacityFraction(deal.capacity_remaining, deal.capacity_total);
   const lowStock =
     deal.capacity_remaining != null &&
     deal.capacity_total != null &&
@@ -292,7 +291,7 @@ export default function DealDetailScreen() {
         }
         showsVerticalScrollIndicator={false}
       >
-        <View style={[styles.hero, wide && styles.heroWide]}>
+        <View style={[styles.hero, wide ? styles.heroWide : [styles.heroCard, { marginTop: insets.top + 6 }]]}>
           <Image
             source={{ uri: deal.image }}
             style={StyleSheet.absoluteFill}
@@ -346,61 +345,22 @@ export default function DealDetailScreen() {
             </View>
           </View>
 
-          <View style={styles.priceBlock}>
-            <View style={styles.priceRow}>
-              <Text style={styles.price}>
-                {deal.deal_price === 0 ? 'Free' : inr(deal.deal_price ?? 0)}
-                {deal.price_unit ? <Text style={styles.unit}>{deal.price_unit}</Text> : null}
-              </Text>
-              {deal.original_price != null && saving > 0 ? (
-                <Text style={styles.was}>{inr(deal.original_price)}</Text>
-              ) : null}
-            </View>
-            {saving > 0 ? (
-              <Text style={styles.save}>You save {inr(saving)}</Text>
-            ) : null}
-            {deal.taxes_note ? <Text style={styles.taxes}>{deal.taxes_note}</Text> : null}
-          </View>
-
-          {deal.capacity_total != null && deal.capacity_remaining != null ? (
-            <View style={styles.capacity}>
-              <View style={styles.capacityHead}>
-                <Text style={[styles.capacityLabel, lowStock && { color: color.alert }]}>
-                  {deal.capacity_remaining === 0
-                    ? 'Sold out'
-                    : (lowStock ? 'Only ' : '') + deal.capacity_remaining + ' left'}
-                </Text>
-                <Text style={styles.capacityOf}>
-                  {deal.capacity_total - deal.capacity_remaining} of {deal.capacity_total} taken
-                </Text>
-              </View>
-              <View style={styles.track}>
-                <View
-                  style={[
-                    styles.fill,
-                    { width: `${Math.round(capFraction * 100)}%` as const },
-                    lowStock && { backgroundColor: color.alert },
-                  ]}
-                />
-              </View>
-            </View>
-          ) : null}
+          <DealTiles
+            deal={deal}
+            saving={saving}
+            lowStock={lowStock}
+            onDirections={() => openDirections(deal.location)}
+          />
 
           {wide ? actionBar : null}
 
           <View style={styles.infoList}>
             <InfoRow
-              icon="clock"
-              title={availabilityLabel(deal.availability)}
-              detail={endsInLabel(deal.ends_at)}
-              alert={deal.ending_soon}
-            />
-            <InfoRow
               icon="pin"
               title={deal.business.address_line}
-              detail={deal.locality_name + ' · ' + distanceLabel(deal.distance_km) + ' away'}
+              detail={deal.locality_name}
               onPress={() => openDirections(deal.location)}
-              actionLabel="Directions"
+              actionLabel="Map"
             />
             {deal.business.phone ? (
               <InfoRow
@@ -430,8 +390,6 @@ export default function DealDetailScreen() {
               ))}
             </View>
           ) : null}
-
-          <Divider />
 
           <Block title="About this deal">
             <Text style={styles.para}>{deal.description}</Text>
@@ -485,7 +443,12 @@ export default function DealDetailScreen() {
 
       {/* Floating controls: over the photo on a phone, a toolbar row on a wide screen */}
       <View
-        style={[styles.topBar, { paddingTop: insets.top + space.sm }, wide && { paddingHorizontal: sideInset }]}
+        style={[
+          styles.topBar,
+          wide
+            ? { paddingTop: insets.top + space.sm, paddingHorizontal: sideInset }
+            : { paddingTop: insets.top + 18, paddingHorizontal: HERO_INSET + 12 },
+        ]}
         pointerEvents="box-none"
       >
         <RoundButton icon="back" label="Go back" onPress={() => router.back()} />
@@ -652,6 +615,11 @@ const styles = StyleSheet.create({
   heroSkeleton: {
     backgroundColor: color.surfaceSoftAlt,
   },
+  heroCard: {
+    marginHorizontal: HERO_INSET,
+    borderRadius: 30,
+    overflow: 'hidden',
+  },
   heroScrim: {
     position: 'absolute',
     top: 0,
@@ -690,12 +658,8 @@ const styles = StyleSheet.create({
     borderColor: color.border,
   },
   sheet: {
-    marginTop: -24,
-    borderTopLeftRadius: radius.xxl,
-    borderTopRightRadius: radius.xxl,
-    backgroundColor: color.surface,
-    paddingHorizontal: space.xl,
-    paddingTop: space.xl,
+    paddingHorizontal: space.lg + 2,
+    paddingTop: space.lg,
   },
   badges: {
     flexDirection: 'row',
@@ -794,7 +758,7 @@ const styles = StyleSheet.create({
   },
   save: {
     ...type.captionMedium,
-    color: color.cta,
+    color: color.accentText,
     marginTop: 2,
   },
   taxes: {
@@ -878,7 +842,12 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   block: {
-    marginTop: space.xxl,
+    marginTop: space.md,
+    padding: space.lg,
+    borderRadius: radius.xxl - 2,
+    backgroundColor: color.surface,
+    borderWidth: 1,
+    borderColor: color.border,
   },
   blockTitle: {
     ...type.h3,

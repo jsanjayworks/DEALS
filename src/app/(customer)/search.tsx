@@ -321,6 +321,8 @@ const styles = StyleSheet.create({
     width: '23%',
     flexGrow: 1,
     aspectRatio: 1,
+    // Square on a phone; on a wide screen a square is a 280 px empty box.
+    maxHeight: 96,
     borderRadius: radius.xl,
     backgroundColor: color.surfaceSoftAlt,
     alignItems: 'center',

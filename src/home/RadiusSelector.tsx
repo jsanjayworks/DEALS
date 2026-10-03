@@ -196,6 +196,7 @@ const styles = StyleSheet.create({
   // same ones onLayout reports on every platform (web measures inside borders).
   trackOuter: {
     flex: 1,
+    maxWidth: 520,
     borderRadius: radius.pill,
     backgroundColor: theme.heroChip.track,
     borderWidth: 1,
