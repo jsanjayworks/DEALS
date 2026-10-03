@@ -13,10 +13,10 @@ most open items are setup, native features and polish rather than new screens.
 
 | Area | Items | Estimate | What is holding it back |
 |---|---|---|---|
-| **Front end** | 63 / 76 | **~80%** | Location, native features (camera, maps, push), error and offline states, no automated tests |
-| **Back end** | 24 / 35 | **~80%** | All logic and wiring done and tested; production setup is not: migrations not deployed, no SMS provider, no Storage bucket, no push delivery |
+| **Front end** | 71 / 83 | **~80%** | Location, native features (camera, maps, push), error and offline states, no automated tests |
+| **Back end** | 25 / 37 | **~80%** | All logic and wiring done and tested; production setup is not: migrations not deployed, no SMS provider, no deal-photo storage, no push delivery |
 | **Ship** | 0 / 12 | **~5%** | No `eas.json`, store assets, privacy policy, crash reporting or CI yet |
-| **Overall MVP** | 87 / 123 | **~70%** | The demo loop is code-complete; production setup and shipping are barely started |
+| **Overall MVP** | 96 / 132 | **~70%** | The demo loop is code-complete; production setup and shipping are barely started |
 
 The demo loop works end to end today, on both backends: customer finds and
 claims a deal, merchant redeems it, admin approves a new one.
@@ -60,7 +60,7 @@ claims a deal, merchant redeems it, admin approves a new one.
 - [ ] App icon and splash in the chosen theme; `app.json` still has the template assets
 - [ ] Respect Reduce Motion in Reanimated animations
 
-## F3. Customer app · 17 / 22
+## F3. Customer app · 24 / 28
 
 - [x] Home: greeting, deal count by the address, distance selector, search, 7 categories without scrolling, spotlight carousel, rails
 - [x] Category pages with data-driven subheadings (taxonomy children plus `x-facet` attributes) and a separate filter sheet
@@ -83,7 +83,13 @@ claims a deal, merchant redeems it, admin approves a new one.
 - [ ] Map view of results (`react-native-maps`, needs a development build)
 - [ ] Retry on every failed load, offline banner
 - [ ] 44 pt touch targets for applied-filter chips and distance options
-- [ ] Profile editing (name, date of birth for age-gated deals)
+- [x] Profile: reorganised into Activity, Help and Account
+- [x] Edit profile (`src/app/account/edit.tsx`): picture (pick, crop square, upload), name, email, date of birth (DD/MM/YYYY, unlocks 18+/21+ deals); phone shown, locked
+- [x] Order history (`src/app/account/history.tsx`): every claim and booking by month, status, code, "You have saved ₹X", Get help per row
+- [x] Help and support (`src/app/account/help.tsx`): FAQs (payments and refunds explained honestly: YOLO takes no payments), contact form with a claim attached, your requests and replies
+- [x] Delete account (`src/app/account/delete.tsx`), as App Store and Play require
+- [x] Spotlight and Ending soon tiles swipe (dots too); rails scroll at every width with arrows on desktop; Trending shows a top 20
+- [x] Screen readers get selected / checked / disabled state on web (`aria-*`; RN Web ignores `accessibilityState`)
 
 ## F4. Merchant app · 15 / 18
 
@@ -106,10 +112,11 @@ claims a deal, merchant redeems it, admin approves a new one.
 - [ ] QR scanning on Redeem (`expo-camera`, needs a development build)
 - [ ] Business profile editing (hours, address, phone)
 
-## F5. Admin · 3 / 4
+## F5. Admin · 4 / 5
 
 - [x] Review queue: approve, or reject with a reason
 - [x] Admin approval verified against the Supabase CLI stack
+- [x] Support inbox (`src/app/admin/support.tsx`): reply, or reply and close; the customer is notified
 - [ ] Reports queue: the `reports` table fills from "Report" on deals, but nobody can see it
 - [x] Business verification queue (`src/app/admin/businesses.tsx`): all registration details, GSTIN state, link to the GST portal's taxpayer search, a flag when the same GSTIN or PAN is on another business; verify, or decline with a reason
 
@@ -123,7 +130,7 @@ claims a deal, merchant redeems it, admin approves a new one.
 
 # Back end
 
-## B1. Database · 14 / 14
+## B1. Database · 15 / 15
 
 - [x] Schema: 30 tables, enums, indexes, partitioned `deal_events`, lifecycle transition table (`0001_init.sql`)
 - [x] All five PRD engines as `SECURITY DEFINER` RPCs (`0002_functions.sql`)
@@ -135,7 +142,8 @@ claims a deal, merchant redeems it, admin approves a new one.
 - [x] Demo data in `supabase/seed.sql`, outside `migrations/`, with auth rows Supabase Auth accepts
 - [x] Merchant onboarding: `create_business`, `submit_business_verification`, `business_verification_queue` (`0006_merchant_onboarding.sql`)
 - [x] Verification rules in SQL: `gstin_is_valid` (check digit), PAN holder type must match the business type, FSSAI for food, Udyam format; approval records the registered name and GSTIN on the business, owners are notified either way
-- [x] 176 SQL assertions passing (`npm run db:verify`)
+- [x] Support tickets, account deletion and profile pictures (`0007_support_and_account.sql`): `create_support_ticket`, `support_queue`, `reply_support_ticket`, `request_account_deletion`; public `avatars` bucket, owner-folder writes only, `profiles.avatar_path` checked to the owner's folder
+- [x] 196 SQL assertions passing (`npm run db:verify`)
 - [x] Migrations and seed apply cleanly on the Supabase CLI stack (Postgres 17)
 - [x] Nine security holes found and fixed: customer making themselves admin, writable `deals.status`, sell-out transition, unpublished deals via the view, `get_deal` leaking drafts, `merchant_stats` for any business, joining any business, inserting an already-verified business, an owner verifying or rating their own business
 - [x] Category facets in `categories.attribute_schema` (cuisine, BHK, furnishing, vehicle)
@@ -152,14 +160,15 @@ claims a deal, merchant redeems it, admin approves a new one.
 - [x] Test phone numbers with fixed codes for local development
 - [x] End-to-end on the CLI stack: sign-in, claim, My Deals, redeem, rejection reason, admin approve
 
-## B3. Production setup · 1 / 12
+## B3. Production setup · 1 / 13
 
 - [x] GitHub integration connected to the Supabase project
 - [ ] Confirm "Deploy to production" applies `supabase/migrations/`, then push. Never run `seed.sql` against production
 - [ ] SMS provider (Twilio, MessageBird, Vonage or Textlocal) for phone codes
 - [ ] Paste `supabase/templates/*.html` into the dashboard email templates
 - [ ] Environment variables in EAS for each build profile (URL and publishable key only)
-- [ ] Storage bucket for deal media, with RLS, and an upload path in the adapter
+- [ ] Storage bucket for deal media, with RLS, and an upload path in the adapter (copy the avatars bucket and `setAvatar`)
+- [ ] Finish account deletion: an Edge Function with the service role removes the auth user for each deletion request
 - [ ] Admin RPCs for the reports queue (business verification is done, B1)
 - [ ] Automatic GSTIN lookup (legal name, status, address) through a GST data provider, in place of the admin checking the GST portal by hand
 - [ ] Document upload for verification (GST certificate, ID) once the Storage bucket exists

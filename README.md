@@ -35,10 +35,11 @@ sign-in by email or phone code. The remaining list, in build order, is
 | Business logic | `supabase/migrations/0002_functions.sql` | All five PRD engines as `SECURITY DEFINER` RPCs |
 | New-user profiles | `supabase/migrations/0004_new_user_profiles.sql` | Trigger on `auth.users` creates the `profiles` row at sign-up |
 | Merchant onboarding | `supabase/migrations/0006_merchant_onboarding.sql` | `create_business`; YOLO Verified requests with GSTIN (check digit), or PAN plus Udyam / Shop & Establishment / trade licence, FSSAI for food; admin queue; direct writes to `businesses` closed |
+| Support and account | `supabase/migrations/0007_support_and_account.sql` | Support tickets and admin replies, in-app account deletion, profile pictures in a public `avatars` bucket |
 | Scheduled jobs | `supabase/migrations/0005_cron.sql` | pg_cron: activate and expire deals every minute, analytics rollup, partitions. Skipped where pg_cron is absent |
 | Security | `supabase/migrations/0003_rls.sql` | RLS on every table, plus table-level write lockdown routing all writes through RPCs |
 | Seed SQL | `supabase/seed.sql` | Generated from the TypeScript seed by `npm run gen:seed`. Not a migration, so Supabase never applies it to production |
-| Backend tests | `supabase/local/0{1,2}_*.sql` | **176 assertions, all passing** against Postgres 16.4 + PostGIS 3.4.3; the migrations and seed also apply cleanly on the Supabase CLI stack (Postgres 17) |
+| Backend tests | `supabase/local/0{1,2}_*.sql` | **196 assertions, all passing** against Postgres 16.4 + PostGIS 3.4.3; the migrations and seed also apply cleanly on the Supabase CLI stack (Postgres 17) |
 | Domain types | `src/data/types.ts` | Field names mirror the SQL one-to-one |
 | Mapping layer | `src/data/mapping.ts` | SQL `deal_card` row ↔ nested `DealCardModel`, both directions |
 | Data contract | `src/data/api.ts` | The single interface every screen will call |
@@ -121,7 +122,7 @@ Wiring against Supabase and merchant onboarding found six more, all fixed and no
 npm install
 npm run typecheck     # tsc --noEmit
 npm run db:up         # start the local PostGIS container (once)
-npm run db:verify     # rebuild the schema, then run 176 assertions
+npm run db:verify     # rebuild the schema, then run 196 assertions
 ```
 
 | Command | What it does |
