@@ -498,7 +498,7 @@ insert into business_members (business_id, profile_id, member_role)
   on conflict (business_id, profile_id) do nothing;
 
 -- ----------------------------------------------------------- deals --------
--- 76 live, 3 in the merchant pipeline,
+-- 77 live, 3 in the merchant pipeline,
 -- 2 awaiting admin review. Dates are relative to
 -- the moment this file was generated, so the Today and Ending Soon rails have
 -- content; regenerate if they go stale.
@@ -513,10 +513,10 @@ insert into deals (
 ) values (
   '3e3b0316-ab00-545c-ac28-3acb4a54671b', '4c782c56-acc4-5c15-9479-e4580088549d', '4836afd7-400f-5ee9-a11f-9a7cb54975a7', 'bundle', 'meal', 'Weekend Brunch for Two',
   'Unlimited brunch spread with one round of mimosas', 'A full weekend spread: live counters, continental and South Indian mains, dessert bar, and one round of mimosas per guest. Walk in or reserve ahead for the terrace seating.', 'ACTIVE', 899, 629,
-  null, 'Taxes included. Service charge extra.', null, 2, '2026-09-30T18:05:18.783Z', '2026-10-11T18:05:18.783Z',
+  null, 'Taxes included. Service charge extra.', null, 2, '2026-10-01T11:29:21.286Z', '2026-10-12T11:29:21.286Z',
   40, 12, false, 'Free cancellation up to 2 hours before your slot.',
   'Valid at the listed outlet only. Cannot be combined with other offers. Management reserves the right of admission.', '{"cuisine":"Continental","party_min":2,"party_max":2}'::jsonb, array['brunch','unlimited','weekend','mimosa']::text[], st_setsrid(st_makepoint(77.6265, 12.9322), 4326)::geography, 5000, null,
-  '2026-09-30T18:05:18.783Z', 4.7, 104, 1840, 620
+  '2026-10-01T11:29:21.286Z', 4.7, 104, 1840, 620
 ) on conflict (id) do update set
   title = excluded.title, status = excluded.status, ends_at = excluded.ends_at,
   capacity_remaining = excluded.capacity_remaining, published_at = excluded.published_at,
@@ -550,10 +550,10 @@ insert into deals (
 ) values (
   '63a0a710-091b-556e-812c-0071324877fe', '0fdf1ba5-4070-53cb-82b0-a9f594d7d53c', 'c7220893-c3dc-5a11-8732-db7ff745b202', 'discount', 'meal', 'South Indian Thali Lunch',
   'Full banana-leaf thali, 14 items', 'Traditional Karnataka thali served on banana leaf with unlimited rice, sambar, two palyas, kosambari, payasa and more.', 'ACTIVE', 320, 199,
-  null, null, null, 2, '2026-09-26T18:05:18.783Z', '2026-10-19T18:05:18.783Z',
+  null, null, null, 2, '2026-09-27T11:29:21.286Z', '2026-10-20T11:29:21.286Z',
   120, 54, false, null,
   'Valid at the listed outlet only. Cannot be combined with other offers. Management reserves the right of admission.', '{"cuisine":"South Indian"}'::jsonb, array['thali','lunch','vegetarian','south indian','veg']::text[], st_setsrid(st_makepoint(77.6255, 12.9372), 4326)::geography, 5000, null,
-  '2026-09-26T18:05:18.783Z', 4.6, 69, 3210, 1480
+  '2026-09-27T11:29:21.286Z', 4.6, 69, 3210, 1480
 ) on conflict (id) do update set
   title = excluded.title, status = excluded.status, ends_at = excluded.ends_at,
   capacity_remaining = excluded.capacity_remaining, published_at = excluded.published_at,
@@ -590,10 +590,10 @@ insert into deals (
 ) values (
   '208666f2-6431-560e-ab09-5946342bdaac', '00ee0e20-279c-524d-840d-5dc9bd738fed', '3b77c2bd-2c5f-5309-9c28-bcf9fb996160', 'bxgy', 'meal', 'Buy 1 Get 1 on All Coffee',
   'Every brew, all day, dine-in only', 'Applies to all hot and cold coffee on the menu. Dine-in only, one offer per bill.', 'ACTIVE', 280, 140,
-  null, 'GST extra as applicable.', null, 2, '2026-09-23T18:05:18.783Z', '2026-10-06T08:29:18.783Z',
+  null, 'GST extra as applicable.', null, 2, '2026-09-24T11:29:21.286Z', '2026-10-07T01:53:21.286Z',
   200, 88, false, null,
   'Valid at the listed outlet only. Cannot be combined with other offers. Management reserves the right of admission.', '{"cuisine":"Cafe"}'::jsonb, array['coffee','bogo','cafe','buy one get one']::text[], st_setsrid(st_makepoint(77.6432, 12.9709), 4326)::geography, 5000, null,
-  '2026-09-23T18:05:18.783Z', 4.5, 315, 5120, 2340
+  '2026-09-24T11:29:21.286Z', 4.5, 315, 5120, 2340
 ) on conflict (id) do update set
   title = excluded.title, status = excluded.status, ends_at = excluded.ends_at,
   capacity_remaining = excluded.capacity_remaining, published_at = excluded.published_at,
@@ -625,10 +625,10 @@ insert into deals (
 ) values (
   '500b3907-b30f-5d84-aa0f-cdeefc960b64', '3cf091f3-da67-589e-a983-6bea3407bb1a', 'a36142e3-32ec-55fa-8230-b37ff468054c', 'discount', 'meal', 'Boneless Biryani Family Pack',
   'Serves 4, with raita and gravy', 'Serves 4, with raita and gravy', 'ACTIVE', 1240, 849,
-  null, null, null, 2, '2026-10-01T18:05:18.783Z', '2026-10-14T18:05:18.783Z',
+  null, null, null, 2, '2026-10-02T11:29:21.286Z', '2026-10-15T11:29:21.286Z',
   60, 23, false, null,
   'Valid at the listed outlet only. Cannot be combined with other offers. Management reserves the right of admission.', '{"cuisine":"Biryani","party_min":3,"party_max":4}'::jsonb, array['biryani','family pack','dinner','chicken']::text[], st_setsrid(st_makepoint(77.6504, 12.9126), 4326)::geography, 5000, null,
-  '2026-10-01T18:05:18.783Z', 4.4, 530, 4480, 1920
+  '2026-10-02T11:29:21.286Z', 4.4, 530, 4480, 1920
 ) on conflict (id) do update set
   title = excluded.title, status = excluded.status, ends_at = excluded.ends_at,
   capacity_remaining = excluded.capacity_remaining, published_at = excluded.published_at,
@@ -661,10 +661,10 @@ insert into deals (
 ) values (
   'e7a8d7e2-e0f3-5998-b85f-1f5b01ea8b14', 'd8333806-d180-5f57-bc38-0d94c0bdf565', 'eb41bbd0-4d8e-5563-8ba1-baecd6130f67', 'time_based', 'meal', 'Happy Hours: Craft Beer Pitchers',
   'Pitchers at pint prices, 4 to 7 PM', 'All house-brewed beers on tap. Valid Monday to Thursday, 4 PM to 7 PM. Age 21 and above only.', 'ACTIVE', 850, 499,
-  null, null, null, 2, '2026-09-20T18:05:18.783Z', '2026-10-25T18:05:18.783Z',
+  null, null, null, 2, '2026-09-21T11:29:21.286Z', '2026-10-26T11:29:21.286Z',
   80, 31, true, null,
   'Valid at the listed outlet only. Cannot be combined with other offers. Management reserves the right of admission.', '{"cuisine":"Bar Food","party_min":2,"party_max":6}'::jsonb, array['beer','happy hours','craft','pub']::text[], st_setsrid(st_makepoint(77.6402, 12.9739), 4326)::geography, 5000, null,
-  '2026-09-20T18:05:18.783Z', 4.8, 873, 6240, 2810
+  '2026-09-21T11:29:21.286Z', 4.8, 873, 6240, 2810
 ) on conflict (id) do update set
   title = excluded.title, status = excluded.status, ends_at = excluded.ends_at,
   capacity_remaining = excluded.capacity_remaining, published_at = excluded.published_at,
@@ -698,12 +698,48 @@ insert into deals (
   terms, attributes, tags, location, search_radius_m, rejection_reason,
   published_at, rating_avg, rating_count, view_count, search_count
 ) values (
+  '7e64a792-1db8-5d43-86e9-0b31ef2ad787', '0fdf1ba5-4070-53cb-82b0-a9f594d7d53c', 'a36142e3-32ec-55fa-8230-b37ff468054c', 'booking', 'meal', 'Family Dinner Table for 4',
+  'A reserved table, four thalis, filter coffee and dessert', 'A table for four held at your time, with a South Indian thali each, filter coffee and payasam. Tables are held for 15 minutes past your booking.', 'ACTIVE', 1600, 999,
+  null, null, null, 2, '2026-10-03T11:29:21.286Z', '2026-10-26T11:29:21.286Z',
+  120, 103, true, 'Free cancellation up to 2 hours before your table.',
+  'Valid at the listed outlet only. Cannot be combined with other offers. Management reserves the right of admission.', '{"cuisine":"South Indian","slot_capacity":6,"party_min":4,"party_max":4}'::jsonb, array['table','dinner','family','reservation','thali']::text[], st_setsrid(st_makepoint(77.6255, 12.9372), 4326)::geography, 5000, null,
+  '2026-10-03T11:29:21.286Z', 4.6, 69, 1180, 540
+) on conflict (id) do update set
+  title = excluded.title, status = excluded.status, ends_at = excluded.ends_at,
+  capacity_remaining = excluded.capacity_remaining, published_at = excluded.published_at,
+  attributes = excluded.attributes, tags = excluded.tags;
+insert into deal_media (id, deal_id, kind, storage_path, position)
+  values ('b7b3aeff-89db-5a8e-adb9-0e409beb7c2f', '7e64a792-1db8-5d43-86e9-0b31ef2ad787', 'image', 'https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=800&h=600&fit=crop&q=70&auto=format', 0)
+  on conflict (id) do update set storage_path = excluded.storage_path;
+delete from deal_availability where deal_id = '7e64a792-1db8-5d43-86e9-0b31ef2ad787';
+insert into deal_availability (deal_id, day_of_week, start_time, end_time)
+  values ('7e64a792-1db8-5d43-86e9-0b31ef2ad787', null, '18:00', '22:30');
+insert into deal_eligibility (deal_id, audience, min_age, min_spend, membership_required, advance_booking_hours, custom_rule)
+  values ('7e64a792-1db8-5d43-86e9-0b31ef2ad787', 'everyone', null, null, false, 2, null)
+  on conflict (deal_id) do update set min_age = excluded.min_age, audience = excluded.audience;
+delete from deal_actions where deal_id = '7e64a792-1db8-5d43-86e9-0b31ef2ad787';
+insert into deal_actions (deal_id, action_type, is_primary, sort_order)
+  values ('7e64a792-1db8-5d43-86e9-0b31ef2ad787', 'reserve', true, 0),
+         ('7e64a792-1db8-5d43-86e9-0b31ef2ad787', 'call', false, 1),
+         ('7e64a792-1db8-5d43-86e9-0b31ef2ad787', 'directions', false, 2);
+insert into deal_locations (deal_id, business_location_id, mode, location, service_radius_m)
+  values ('7e64a792-1db8-5d43-86e9-0b31ef2ad787', 'a99284e1-a307-5904-a436-71b5c6c36e1e', 'store', st_setsrid(st_makepoint(77.6255, 12.9372), 4326)::geography, 5000)
+  on conflict (deal_id, business_location_id) do nothing;
+
+insert into deals (
+  id, business_id, category_id, deal_type_code, offering_kind, title,
+  short_description, description, status, original_price, deal_price,
+  price_unit, taxes_note, min_purchase, max_qty_per_customer, starts_at, ends_at,
+  capacity_total, capacity_remaining, booking_required, cancellation_policy,
+  terms, attributes, tags, location, search_radius_m, rejection_reason,
+  published_at, rating_avg, rating_count, view_count, search_count
+) values (
   'dd0019f2-16b5-5cbc-af0e-8b3f146f2b54', '74625daa-6c7c-511b-a154-707c1ead0309', 'c7220893-c3dc-5a11-8732-db7ff745b202', 'discount', 'meal', 'Breakfast Combo: Idli Vada Coffee',
   'Classic Bengaluru breakfast under 100', 'Classic Bengaluru breakfast under 100', 'ACTIVE', 150, 89,
-  null, null, null, 2, '2026-09-15T18:05:18.783Z', '2026-10-30T18:05:18.783Z',
+  null, null, null, 2, '2026-09-16T11:29:21.286Z', '2026-10-31T11:29:21.286Z',
   150, 112, false, null,
   'Valid at the listed outlet only. Cannot be combined with other offers. Management reserves the right of admission.', '{"cuisine":"South Indian"}'::jsonb, array['breakfast','idli','vada','filter coffee','veg']::text[], st_setsrid(st_makepoint(77.5918, 12.926), 4326)::geography, 5000, null,
-  '2026-09-15T18:05:18.783Z', 4.3, 149, 2180, 940
+  '2026-09-16T11:29:21.286Z', 4.3, 149, 2180, 940
 ) on conflict (id) do update set
   title = excluded.title, status = excluded.status, ends_at = excluded.ends_at,
   capacity_remaining = excluded.capacity_remaining, published_at = excluded.published_at,
@@ -735,10 +771,10 @@ insert into deals (
 ) values (
   '6d4c5f50-cb6c-5298-85e9-06412b773965', '848db70d-ed99-57db-9ac8-18e93ea3f538', 'a36142e3-32ec-55fa-8230-b37ff468054c', 'bundle', 'meal', 'Sushi Platter for Two',
   '24 pieces, chef selection, with miso soup', '24 pieces, chef selection, with miso soup', 'ACTIVE', 2200, 1499,
-  null, null, null, 2, '2026-10-03T18:05:18.783Z', '2026-10-09T18:05:18.783Z',
+  null, null, null, 2, '2026-10-04T11:29:21.286Z', '2026-10-10T11:29:21.286Z',
   20, 6, true, 'Cancel up to 4 hours before the slot for a full refund.',
   'Valid at the listed outlet only. Cannot be combined with other offers. Management reserves the right of admission.', '{"cuisine":"Japanese","party_min":2,"party_max":2}'::jsonb, array['sushi','japanese','platter','date night']::text[], st_setsrid(st_makepoint(77.6402, 12.969899999999999), 4326)::geography, 5000, null,
-  '2026-10-03T18:05:18.783Z', 4.6, 120, 1420, 580
+  '2026-10-04T11:29:21.286Z', 4.6, 120, 1420, 580
 ) on conflict (id) do update set
   title = excluded.title, status = excluded.status, ends_at = excluded.ends_at,
   capacity_remaining = excluded.capacity_remaining, published_at = excluded.published_at,
@@ -772,10 +808,10 @@ insert into deals (
 ) values (
   '6e71c543-9ba6-5880-9abb-4b23604c0f94', '6ead727c-ed9b-5fb0-9226-d0dd06513811', '3b77c2bd-2c5f-5309-9c28-bcf9fb996160', 'flash', 'meal', 'Flash Deal: Cheesecake Slice',
   'New York cheesecake, today only', 'New York cheesecake, today only', 'ACTIVE', 320, 149,
-  null, null, null, 2, '2026-10-05T18:05:18.783Z', '2026-10-06T02:29:18.783Z',
+  null, null, null, 2, '2026-10-06T11:29:21.286Z', '2026-10-06T19:53:21.286Z',
   30, 4, false, null,
   'Valid at the listed outlet only. Cannot be combined with other offers. Management reserves the right of admission.', '{"cuisine":"Desserts"}'::jsonb, array['dessert','cheesecake','flash']::text[], st_setsrid(st_makepoint(77.60780000000001, 12.9736), 4326)::geography, 5000, null,
-  '2026-10-05T18:05:18.783Z', 4.2, 46, 890, 410
+  '2026-10-06T11:29:21.286Z', 4.2, 46, 890, 410
 ) on conflict (id) do update set
   title = excluded.title, status = excluded.status, ends_at = excluded.ends_at,
   capacity_remaining = excluded.capacity_remaining, published_at = excluded.published_at,
@@ -807,10 +843,10 @@ insert into deals (
 ) values (
   'ece07845-b233-57c8-875e-bdfed1bd6d78', '3014cf86-a2de-5bc4-b891-2ee824fbd170', 'a36142e3-32ec-55fa-8230-b37ff468054c', 'discount', 'meal', '30% Off North Indian Dinner',
   'Whole à la carte menu, dine-in', 'Whole à la carte menu, dine-in', 'ACTIVE', 1000, 700,
-  null, null, null, 2, '2026-09-29T18:05:18.783Z', '2026-10-16T18:05:18.783Z',
+  null, null, null, 2, '2026-09-30T11:29:21.286Z', '2026-10-17T11:29:21.286Z',
   70, 44, false, null,
   'Valid at the listed outlet only. Cannot be combined with other offers. Management reserves the right of admission.', '{"cuisine":"North Indian"}'::jsonb, array['north indian','dinner','tandoor','chicken','paneer']::text[], st_setsrid(st_makepoint(77.752, 12.9718), 4326)::geography, 5000, null,
-  '2026-09-29T18:05:18.783Z', 4.1, 56, 1120, 460
+  '2026-09-30T11:29:21.286Z', 4.1, 56, 1120, 460
 ) on conflict (id) do update set
   title = excluded.title, status = excluded.status, ends_at = excluded.ends_at,
   capacity_remaining = excluded.capacity_remaining, published_at = excluded.published_at,
@@ -843,10 +879,10 @@ insert into deals (
 ) values (
   '41600d1e-154d-5635-98d6-2504c536ec70', '05f0182d-fdb6-5485-b30c-494891a2b7be', '3b77c2bd-2c5f-5309-9c28-bcf9fb996160', 'free', 'meal', 'Free Chai with Any Snack',
   'Kadak chai on the house', 'Kadak chai on the house', 'ACTIVE', 60, 0,
-  null, null, 99, 2, '2026-09-24T18:05:18.783Z', '2026-10-23T18:05:18.783Z',
+  null, null, 99, 2, '2026-09-25T11:29:21.286Z', '2026-10-24T11:29:21.286Z',
   300, 198, false, null,
   'Valid at the listed outlet only. Cannot be combined with other offers. Management reserves the right of admission.', '{"cuisine":"Cafe"}'::jsonb, array['chai','free','snack']::text[], st_setsrid(st_makepoint(77.66120000000001, 12.8462), 4326)::geography, 5000, null,
-  '2026-09-24T18:05:18.783Z', 4, 184, 2640, 1180
+  '2026-09-25T11:29:21.286Z', 4, 184, 2640, 1180
 ) on conflict (id) do update set
   title = excluded.title, status = excluded.status, ends_at = excluded.ends_at,
   capacity_remaining = excluded.capacity_remaining, published_at = excluded.published_at,
@@ -878,10 +914,10 @@ insert into deals (
 ) values (
   'd4568a9b-5c36-534a-b5ad-e5ab35f81c83', '0fdf1ba5-4070-53cb-82b0-a9f594d7d53c', 'a36142e3-32ec-55fa-8230-b37ff468054c', 'bxgy', 'meal', 'Buy 2 Get 1 Dosa Free',
   'All dosa varieties, evening menu', 'All dosa varieties, evening menu', 'ACTIVE', 390, 260,
-  null, null, null, 2, '2026-10-04T18:05:18.783Z', '2026-10-13T18:05:18.783Z',
+  null, null, null, 2, '2026-10-05T11:29:21.286Z', '2026-10-14T11:29:21.286Z',
   90, 67, false, null,
   'Valid at the listed outlet only. Cannot be combined with other offers. Management reserves the right of admission.', '{"cuisine":"South Indian"}'::jsonb, array['dosa','bogo','evening','veg']::text[], st_setsrid(st_makepoint(77.6255, 12.9372), 4326)::geography, 5000, null,
-  '2026-10-04T18:05:18.783Z', 4.6, 69, 760, 320
+  '2026-10-05T11:29:21.286Z', 4.6, 69, 760, 320
 ) on conflict (id) do update set
   title = excluded.title, status = excluded.status, ends_at = excluded.ends_at,
   capacity_remaining = excluded.capacity_remaining, published_at = excluded.published_at,
@@ -913,10 +949,10 @@ insert into deals (
 ) values (
   '9be42831-fcb9-58e2-b1da-382ac6cfc419', '4c782c56-acc4-5c15-9479-e4580088549d', '3b77c2bd-2c5f-5309-9c28-bcf9fb996160', 'time_based', 'meal', 'Coffee Meeting Combo',
   'Two coffees and a sandwich platter, weekday mornings', 'Two coffees and a sandwich platter, weekday mornings', 'ACTIVE', 640, 420,
-  null, null, null, 2, '2026-09-28T18:05:18.783Z', '2026-10-21T18:05:18.783Z',
+  null, null, null, 2, '2026-09-29T11:29:21.286Z', '2026-10-22T11:29:21.286Z',
   50, 28, false, null,
   'Valid at the listed outlet only. Cannot be combined with other offers. Management reserves the right of admission.', '{"cuisine":"Cafe","party_min":2,"party_max":2}'::jsonb, array['coffee','meeting','work','sandwich']::text[], st_setsrid(st_makepoint(77.6265, 12.9322), 4326)::geography, 5000, null,
-  '2026-09-28T18:05:18.783Z', 4.7, 104, 1340, 890
+  '2026-09-29T11:29:21.286Z', 4.7, 104, 1340, 890
 ) on conflict (id) do update set
   title = excluded.title, status = excluded.status, ends_at = excluded.ends_at,
   capacity_remaining = excluded.capacity_remaining, published_at = excluded.published_at,
@@ -952,10 +988,10 @@ insert into deals (
 ) values (
   'de524ba8-f5b3-5326-a4f5-2f4928e74746', '6851c178-95ba-5489-9b21-0e7d70d1168b', '8785946c-77d1-52f2-9f19-9bbc370c59c2', 'discount', 'service', 'Gym 3-Month Pass',
   'All classes, all centres, no joining fee', 'Unlimited access to strength and cardio floors plus group classes. Joining fee of 1,500 waived for YOLO users.', 'ACTIVE', 12000, 6999,
-  null, null, null, 2, '2026-10-02T18:05:18.783Z', '2026-10-15T18:05:18.783Z',
+  null, null, null, 2, '2026-10-03T11:29:21.286Z', '2026-10-16T11:29:21.286Z',
   50, 17, false, 'Transferable once. No refunds after activation.',
   'Valid at the listed outlet only. Cannot be combined with other offers. Management reserves the right of admission.', '{}'::jsonb, array['gym','fitness','membership','3 month']::text[], st_setsrid(st_makepoint(77.6225, 12.9362), 4326)::geography, 5000, null,
-  '2026-10-02T18:05:18.783Z', 4.5, 368, 4920, 2640
+  '2026-10-03T11:29:21.286Z', 4.5, 368, 4920, 2640
 ) on conflict (id) do update set
   title = excluded.title, status = excluded.status, ends_at = excluded.ends_at,
   capacity_remaining = excluded.capacity_remaining, published_at = excluded.published_at,
@@ -988,10 +1024,10 @@ insert into deals (
 ) values (
   '9541d847-e491-557a-ab7d-a6f6f0081fe4', '50035192-a9b4-59e3-a2a1-b3fcc8573741', 'd30b25b5-863b-5fad-9101-b85aab0ea884', 'bundle', 'service', 'Haircut, Spa and Styling Package',
   'Two-hour salon package for one', 'Two-hour salon package for one', 'ACTIVE', 3500, 1999,
-  null, null, null, 2, '2026-09-27T18:05:18.783Z', '2026-10-18T18:05:18.783Z',
+  null, null, null, 2, '2026-09-28T11:29:21.286Z', '2026-10-19T11:29:21.286Z',
   24, 9, true, null,
   'Valid at the listed outlet only. Cannot be combined with other offers. Management reserves the right of admission.', '{}'::jsonb, array['salon','spa','haircut','styling']::text[], st_setsrid(st_makepoint(77.6422, 12.9749), 4326)::geography, 5000, null,
-  '2026-09-27T18:05:18.783Z', 4.4, 161, 2210, 1130
+  '2026-09-28T11:29:21.286Z', 4.4, 161, 2210, 1130
 ) on conflict (id) do update set
   title = excluded.title, status = excluded.status, ends_at = excluded.ends_at,
   capacity_remaining = excluded.capacity_remaining, published_at = excluded.published_at,
@@ -1029,10 +1065,10 @@ insert into deals (
 ) values (
   'ab7e00fd-fbf1-525c-9565-3b1c41509b1e', '90fa7a39-869f-5079-976a-a0335a818442', '8785946c-77d1-52f2-9f19-9bbc370c59c2', 'free', 'service', 'Free 7-Day Gym Trial',
   'Full access, no card needed', 'Full access, no card needed', 'ACTIVE', 1400, 0,
-  null, null, null, 2, '2026-09-21T18:05:18.783Z', '2026-10-26T18:05:18.783Z',
+  null, null, null, 2, '2026-09-22T11:29:21.286Z', '2026-10-27T11:29:21.286Z',
   40, 22, false, null,
   'Valid at the listed outlet only. Cannot be combined with other offers. Management reserves the right of admission.', '{}'::jsonb, array['gym','free trial','fitness']::text[], st_setsrid(st_makepoint(77.64840000000001, 12.9096), 4326)::geography, 5000, null,
-  '2026-09-21T18:05:18.783Z', 4.2, 32, 1680, 720
+  '2026-09-22T11:29:21.286Z', 4.2, 32, 1680, 720
 ) on conflict (id) do update set
   title = excluded.title, status = excluded.status, ends_at = excluded.ends_at,
   capacity_remaining = excluded.capacity_remaining, published_at = excluded.published_at,
@@ -1065,10 +1101,10 @@ insert into deals (
 ) values (
   'b5e88c34-eedc-588f-90d6-908a6df5ac21', '4286346d-c530-50a4-b0c8-176d29777f78', '366cf5ca-a19e-5838-ae61-2db18b33075a', 'discount', 'service', 'AC Service at Home',
   'Deep clean and gas check, 90 minutes', 'Deep clean and gas check, 90 minutes', 'ACTIVE', 1200, 699,
-  null, null, null, 2, '2026-09-25T18:05:18.783Z', '2026-11-04T18:05:18.783Z',
+  null, null, null, 2, '2026-09-26T11:29:21.286Z', '2026-11-05T11:29:21.286Z',
   100, 61, true, null,
   'Valid at the listed outlet only. Cannot be combined with other offers. Management reserves the right of admission.', '{}'::jsonb, array['ac service','home repair','cleaning']::text[], st_setsrid(st_makepoint(77.68039999999999, 12.9314), 4326)::geography, 5000, null,
-  '2026-09-25T18:05:18.783Z', 4.3, 257, 3080, 1640
+  '2026-09-26T11:29:21.286Z', 4.3, 257, 3080, 1640
 ) on conflict (id) do update set
   title = excluded.title, status = excluded.status, ends_at = excluded.ends_at,
   capacity_remaining = excluded.capacity_remaining, published_at = excluded.published_at,
@@ -1100,10 +1136,10 @@ insert into deals (
 ) values (
   '9966ea63-1f0f-5ab9-ac2f-72861c7933c1', 'fc01da80-e6cc-5668-824d-114eb996d8c8', '8785946c-77d1-52f2-9f19-9bbc370c59c2', 'discount', 'service', 'Morning Yoga: 10-Class Pack',
   'Hatha and Vinyasa, 6:30 AM batch', 'Hatha and Vinyasa, 6:30 AM batch', 'ACTIVE', 4000, 2499,
-  null, null, null, 2, '2026-10-03T18:05:18.783Z', '2026-10-12T18:05:18.783Z',
+  null, null, null, 2, '2026-10-04T11:29:21.286Z', '2026-10-13T11:29:21.286Z',
   20, 7, true, null,
   'Valid at the listed outlet only. Cannot be combined with other offers. Management reserves the right of admission.', '{}'::jsonb, array['yoga','morning','class pack']::text[], st_setsrid(st_makepoint(77.58670000000001, 12.9053), 4326)::geography, 5000, null,
-  '2026-10-03T18:05:18.783Z', 4.7, 41, 980, 520
+  '2026-10-04T11:29:21.286Z', 4.7, 41, 980, 520
 ) on conflict (id) do update set
   title = excluded.title, status = excluded.status, ends_at = excluded.ends_at,
   capacity_remaining = excluded.capacity_remaining, published_at = excluded.published_at,
@@ -1140,10 +1176,10 @@ insert into deals (
 ) values (
   '7dfb3c5a-79b2-54ea-b51b-4860c59c0a25', '4286346d-c530-50a4-b0c8-176d29777f78', 'fe7c8a79-2fa4-5c5e-9e91-4d502fc609e3', 'service_package', 'service', 'Full Home Deep Clean',
   '2BHK, 4-person crew, 5 hours', '2BHK, 4-person crew, 5 hours', 'ACTIVE', 5500, 3499,
-  null, null, null, 2, '2026-09-19T18:05:18.783Z', '2026-11-02T18:05:18.783Z',
+  null, null, null, 2, '2026-09-20T11:29:21.286Z', '2026-11-03T11:29:21.286Z',
   30, 18, false, null,
   'Valid at the listed outlet only. Cannot be combined with other offers. Management reserves the right of admission.', '{}'::jsonb, array['deep clean','home','2bhk']::text[], st_setsrid(st_makepoint(77.68039999999999, 12.9314), 4326)::geography, 5000, null,
-  '2026-09-19T18:05:18.783Z', 4.3, 257, 1540, 810
+  '2026-09-20T11:29:21.286Z', 4.3, 257, 1540, 810
 ) on conflict (id) do update set
   title = excluded.title, status = excluded.status, ends_at = excluded.ends_at,
   capacity_remaining = excluded.capacity_remaining, published_at = excluded.published_at,
@@ -1175,10 +1211,10 @@ insert into deals (
 ) values (
   '4e9eba10-4d23-5ec1-9273-6fb905908847', '50035192-a9b4-59e3-a2a1-b3fcc8573741', 'da26d6ee-c6e1-5d50-a3bf-9507d5023b61', 'flash', 'service', 'Flash: Bridal Trial Makeup',
   'Two slots left this week', 'Two slots left this week', 'ACTIVE', 8000, 4500,
-  null, null, null, 2, '2026-10-05T18:05:18.783Z', '2026-10-06T13:17:18.783Z',
+  null, null, null, 2, '2026-10-06T11:29:21.286Z', '2026-10-07T06:41:21.286Z',
   4, 2, false, null,
   'Valid at the listed outlet only. Cannot be combined with other offers. Management reserves the right of admission.', '{}'::jsonb, array['bridal','makeup','trial','flash']::text[], st_setsrid(st_makepoint(77.6422, 12.9749), 4326)::geography, 5000, null,
-  '2026-10-05T18:05:18.783Z', 4.4, 161, 620, 280
+  '2026-10-06T11:29:21.286Z', 4.4, 161, 620, 280
 ) on conflict (id) do update set
   title = excluded.title, status = excluded.status, ends_at = excluded.ends_at,
   capacity_remaining = excluded.capacity_remaining, published_at = excluded.published_at,
@@ -1210,10 +1246,10 @@ insert into deals (
 ) values (
   '0f2cc62c-ff43-5dd6-9538-6a88eb4a47a7', '90ca2d3e-68af-532b-811e-be16a21e7925', '5a30ccec-777a-5017-8f6c-7b70892cd230', 'booking', 'event', 'Friday Night Comedy Show',
   'Four comics, 90 minutes, one drink included', 'An all-new line-up of Bengaluru stand-up regulars. Doors at 8 PM, show starts 8:30 PM sharp. Age 18 and above.', 'ACTIVE', 799, 499,
-  null, null, null, 2, '2026-10-01T18:05:18.783Z', '2026-10-08T18:05:18.783Z',
+  null, null, null, 2, '2026-10-02T11:29:21.286Z', '2026-10-09T11:29:21.286Z',
   120, 34, true, 'Tickets are non-refundable but transferable up to 24 hours before.',
   'Valid at the listed outlet only. Cannot be combined with other offers. Management reserves the right of admission.', '{}'::jsonb, array['comedy','standup','friday','night']::text[], st_setsrid(st_makepoint(77.62349999999999, 12.9382), 4326)::geography, 5000, null,
-  '2026-10-01T18:05:18.783Z', 4.7, 220, 5680, 3120
+  '2026-10-02T11:29:21.286Z', 4.7, 220, 5680, 3120
 ) on conflict (id) do update set
   title = excluded.title, status = excluded.status, ends_at = excluded.ends_at,
   capacity_remaining = excluded.capacity_remaining, published_at = excluded.published_at,
@@ -1246,10 +1282,10 @@ insert into deals (
 ) values (
   '7ce3d671-32cd-5ea9-bb14-3e91caaeb52a', 'a81e9a43-34ea-5c9c-a840-1d16783b2f3a', '5a6c6d9b-95cd-582d-84b9-49657dd742dd', 'booking', 'event', 'Indie Live: Rooftop Gig',
   'Three bands, food trucks, Saturday', 'Three bands, food trucks, Saturday', 'ACTIVE', 1200, 799,
-  null, null, null, 2, '2026-09-29T18:05:18.783Z', '2026-10-10T18:05:18.783Z',
+  null, null, null, 2, '2026-09-30T11:29:21.286Z', '2026-10-11T11:29:21.286Z',
   300, 142, true, null,
   'Valid at the listed outlet only. Cannot be combined with other offers. Management reserves the right of admission.', '{}'::jsonb, array['music','live','indie','rooftop']::text[], st_setsrid(st_makepoint(77.752, 12.967799999999999), 4326)::geography, 5000, null,
-  '2026-09-29T18:05:18.783Z', 4.5, 114, 3420, 1680
+  '2026-09-30T11:29:21.286Z', 4.5, 114, 3420, 1680
 ) on conflict (id) do update set
   title = excluded.title, status = excluded.status, ends_at = excluded.ends_at,
   capacity_remaining = excluded.capacity_remaining, published_at = excluded.published_at,
@@ -1281,10 +1317,10 @@ insert into deals (
 ) values (
   'c7c5d340-a2fb-5b98-9f62-71c33d879ea3', 'bccbf6eb-9147-544c-abe6-01e9ece66e64', '9db3e351-fc98-5e10-9b70-e28c8e44ceb3', 'experience', 'experience', 'Pottery Wheel Workshop',
   'Beginner session, take your piece home', 'Beginner session, take your piece home', 'ACTIVE', 2500, 1599,
-  null, null, null, 2, '2026-10-04T18:05:18.783Z', '2026-10-11T18:05:18.783Z',
+  null, null, null, 2, '2026-10-05T11:29:21.286Z', '2026-10-12T11:29:21.286Z',
   12, 3, true, null,
   'Valid at the listed outlet only. Cannot be combined with other offers. Management reserves the right of admission.', '{}'::jsonb, array['pottery','workshop','weekend','craft']::text[], st_setsrid(st_makepoint(77.5948, 12.926), 4326)::geography, 5000, null,
-  '2026-10-04T18:05:18.783Z', 4.8, 26, 1860, 940
+  '2026-10-05T11:29:21.286Z', 4.8, 26, 1860, 940
 ) on conflict (id) do update set
   title = excluded.title, status = excluded.status, ends_at = excluded.ends_at,
   capacity_remaining = excluded.capacity_remaining, published_at = excluded.published_at,
@@ -1318,10 +1354,10 @@ insert into deals (
 ) values (
   'da17cf87-af2f-5211-80d9-b70741b52a92', '21edbfa1-1b48-580d-8751-718462e11d59', '5a30ccec-777a-5017-8f6c-7b70892cd230', 'free', 'event', 'Open Mic Night: Free Entry',
   'Perform or just watch, Wednesdays', 'Perform or just watch, Wednesdays', 'ACTIVE', 300, 0,
-  null, null, null, 2, '2026-10-02T18:05:18.783Z', '2026-10-07T18:05:18.783Z',
+  null, null, null, 2, '2026-10-03T11:29:21.286Z', '2026-10-08T11:29:21.286Z',
   60, 41, false, null,
   'Valid at the listed outlet only. Cannot be combined with other offers. Management reserves the right of admission.', '{}'::jsonb, array['open mic','free','comedy','music']::text[], st_setsrid(st_makepoint(77.6422, 12.9689), 4326)::geography, 5000, null,
-  '2026-10-02T18:05:18.783Z', 4.4, 50, 2140, 1020
+  '2026-10-03T11:29:21.286Z', 4.4, 50, 2140, 1020
 ) on conflict (id) do update set
   title = excluded.title, status = excluded.status, ends_at = excluded.ends_at,
   capacity_remaining = excluded.capacity_remaining, published_at = excluded.published_at,
@@ -1353,10 +1389,10 @@ insert into deals (
 ) values (
   '872fde95-4653-50d6-b616-53380aa52144', 'a81e9a43-34ea-5c9c-a840-1d16783b2f3a', '33b45660-e3a8-5351-b02f-d4a7e97b86ce', 'flash', 'event', 'Last 20 Tickets: DJ Night',
   'Tonight, doors at 9 PM', 'Tonight, doors at 9 PM', 'ACTIVE', 1500, 899,
-  null, null, null, 2, '2026-10-05T18:05:18.783Z', '2026-10-06T03:41:18.783Z',
+  null, null, null, 2, '2026-10-06T11:29:21.286Z', '2026-10-06T21:05:21.286Z',
   200, 20, true, null,
   'Valid at the listed outlet only. Cannot be combined with other offers. Management reserves the right of admission.', '{}'::jsonb, array['dj','night','party','flash']::text[], st_setsrid(st_makepoint(77.752, 12.967799999999999), 4326)::geography, 5000, null,
-  '2026-10-05T18:05:18.783Z', 4.5, 114, 4210, 2240
+  '2026-10-06T11:29:21.286Z', 4.5, 114, 4210, 2240
 ) on conflict (id) do update set
   title = excluded.title, status = excluded.status, ends_at = excluded.ends_at,
   capacity_remaining = excluded.capacity_remaining, published_at = excluded.published_at,
@@ -1388,10 +1424,10 @@ insert into deals (
 ) values (
   'b017ffca-0e4a-5c2b-a58e-7256a717aae9', 'bccbf6eb-9147-544c-abe6-01e9ece66e64', '9db3e351-fc98-5e10-9b70-e28c8e44ceb3', 'experience', 'experience', 'Watercolour Basics for Beginners',
   'All materials provided, 3 hours', 'All materials provided, 3 hours', 'ACTIVE', 1800, 1199,
-  null, null, null, 2, '2026-09-26T18:05:18.783Z', '2026-10-17T18:05:18.783Z',
+  null, null, null, 2, '2026-09-27T11:29:21.286Z', '2026-10-18T11:29:21.286Z',
   15, 8, true, null,
   'Valid at the listed outlet only. Cannot be combined with other offers. Management reserves the right of admission.', '{}'::jsonb, array['painting','watercolour','workshop']::text[], st_setsrid(st_makepoint(77.5948, 12.926), 4326)::geography, 5000, null,
-  '2026-09-26T18:05:18.783Z', 4.8, 26, 940, 430
+  '2026-09-27T11:29:21.286Z', 4.8, 26, 940, 430
 ) on conflict (id) do update set
   title = excluded.title, status = excluded.status, ends_at = excluded.ends_at,
   capacity_remaining = excluded.capacity_remaining, published_at = excluded.published_at,
@@ -1423,10 +1459,10 @@ insert into deals (
 ) values (
   '03fffc3e-01a1-5752-98d7-d6747e7f00bf', '8de45ebe-c326-5ccc-8b9a-9a997d11af84', '64ad9e3e-4db4-5ed6-82ca-b26ccbd29aad', 'transport', 'transport', 'Airport Cab, Flat Fare',
   'Electronic City to KIA, sedan, all-in', 'Flat fare including tolls and parking. Book at least 3 hours ahead. Meet and greet at the pickup point.', 'ACTIVE', 1299, 499,
-  null, null, null, 2, '2026-09-22T18:05:18.783Z', '2026-10-27T18:05:18.783Z',
+  null, null, null, 2, '2026-09-23T11:29:21.286Z', '2026-10-28T11:29:21.286Z',
   80, 37, true, 'Free cancellation up to 1 hour before pickup.',
   'Valid at the listed outlet only. Cannot be combined with other offers. Management reserves the right of admission.', '{"vehicle":"Car"}'::jsonb, array['airport','cab','kia','flat fare']::text[], st_setsrid(st_makepoint(77.66120000000001, 12.8472), 4326)::geography, 5000, null,
-  '2026-09-22T18:05:18.783Z', 4.2, 482, 6480, 3840
+  '2026-09-23T11:29:21.286Z', 4.2, 482, 6480, 3840
 ) on conflict (id) do update set
   title = excluded.title, status = excluded.status, ends_at = excluded.ends_at,
   capacity_remaining = excluded.capacity_remaining, published_at = excluded.published_at,
@@ -1458,10 +1494,10 @@ insert into deals (
 ) values (
   'c8605dc9-3e27-5682-9fe2-b23ecde7c1bf', '443a1f29-45d6-5e23-85ec-dd582203d60e', '689ee33e-e400-55fb-bc7b-963ddfbd9d2d', 'discount', 'transport', 'Scooter Rental: Weekly Pack',
   'Helmet and 300 km included', 'Helmet and 300 km included', 'ACTIVE', 2800, 1799,
-  null, null, null, 2, '2026-09-30T18:05:18.783Z', '2026-10-22T18:05:18.783Z',
+  null, null, null, 2, '2026-10-01T11:29:21.286Z', '2026-10-23T11:29:21.286Z',
   25, 11, true, null,
   'Valid at the listed outlet only. Cannot be combined with other offers. Management reserves the right of admission.', '{"vehicle":"Scooty"}'::jsonb, array['scooter','rental','weekly','bike']::text[], st_setsrid(st_makepoint(77.6265, 12.9342), 4326)::geography, 5000, null,
-  '2026-09-30T18:05:18.783Z', 4.1, 73, 1920, 1040
+  '2026-10-01T11:29:21.286Z', 4.1, 73, 1920, 1040
 ) on conflict (id) do update set
   title = excluded.title, status = excluded.status, ends_at = excluded.ends_at,
   capacity_remaining = excluded.capacity_remaining, published_at = excluded.published_at,
@@ -1494,10 +1530,10 @@ insert into deals (
 ) values (
   'd016715a-bf2c-5ed4-8879-e292c334c502', '8de45ebe-c326-5ccc-8b9a-9a997d11af84', '64ad9e3e-4db4-5ed6-82ca-b26ccbd29aad', 'discount', 'transport', 'Outstation: Bengaluru to Mysuru',
   'Round trip, same day, SUV', 'Round trip, same day, SUV', 'ACTIVE', 6500, 4299,
-  null, null, null, 2, '2026-09-17T18:05:18.783Z', '2026-10-31T18:05:18.783Z',
+  null, null, null, 2, '2026-09-18T11:29:21.286Z', '2026-11-01T11:29:21.286Z',
   15, 6, false, null,
   'Valid at the listed outlet only. Cannot be combined with other offers. Management reserves the right of admission.', '{"vehicle":"Car"}'::jsonb, array['outstation','mysuru','road trip','suv']::text[], st_setsrid(st_makepoint(77.66120000000001, 12.8472), 4326)::geography, 5000, null,
-  '2026-09-17T18:05:18.783Z', 4.2, 482, 2240, 1320
+  '2026-09-18T11:29:21.286Z', 4.2, 482, 2240, 1320
 ) on conflict (id) do update set
   title = excluded.title, status = excluded.status, ends_at = excluded.ends_at,
   capacity_remaining = excluded.capacity_remaining, published_at = excluded.published_at,
@@ -1529,10 +1565,10 @@ insert into deals (
 ) values (
   '9a30484b-9868-54aa-baf5-edb026b037ba', '951411c2-90be-5a04-887a-b931811830c2', '793f6af4-5314-536c-ba3c-9c274271f017', 'property', 'property', '2BHK in HSR Layout',
   'Semi-furnished, Sector 7, no brokerage', 'East-facing 2BHK on the second floor with covered parking, 24x7 water and power backup. Walking distance to 27th Main.', 'ACTIVE', 42000, 38000,
-  '/mo', null, 76000, 2, '2026-09-28T18:05:18.783Z', '2026-11-14T18:05:18.783Z',
+  '/mo', null, 76000, 2, '2026-09-29T11:29:21.286Z', '2026-11-15T11:29:21.286Z',
   null, null, false, null,
   'Valid at the listed outlet only. Cannot be combined with other offers. Management reserves the right of admission.', '{"bhk":2,"area_sqft":1150,"furnishing":"Semi-furnished","floor":2,"parking":true}'::jsonb, array['2bhk','rent','hsr','semi furnished','no brokerage']::text[], st_setsrid(st_makepoint(77.64840000000001, 12.9146), 4326)::geography, 5000, null,
-  '2026-09-28T18:05:18.783Z', 4, 53, 3840, 2180
+  '2026-09-29T11:29:21.286Z', 4, 53, 3840, 2180
 ) on conflict (id) do update set
   title = excluded.title, status = excluded.status, ends_at = excluded.ends_at,
   capacity_remaining = excluded.capacity_remaining, published_at = excluded.published_at,
@@ -1565,10 +1601,10 @@ insert into deals (
 ) values (
   '77d91f55-127f-53f8-8a23-fa0016301d2c', '6943ae4a-bee6-5f97-995d-344103cf8822', '75fd42a8-2aee-5ffc-b1d0-84a3e6861938', 'property', 'property', 'Co-living Single Room, Marathahalli',
   'All bills, meals and housekeeping included', 'All bills, meals and housekeeping included', 'ACTIVE', 18000, 14500,
-  '/mo', null, null, 2, '2026-09-24T18:05:18.783Z', '2026-11-09T18:05:18.783Z',
+  '/mo', null, null, 2, '2026-09-25T11:29:21.286Z', '2026-11-10T11:29:21.286Z',
   null, null, false, null,
   'Valid at the listed outlet only. Cannot be combined with other offers. Management reserves the right of admission.', '{"bhk":1,"area_sqft":180,"furnishing":"Fully furnished","meals":true,"parking":false}'::jsonb, array['coliving','pg','single room','marathahalli','furnished']::text[], st_setsrid(st_makepoint(77.6964, 12.957099999999999), 4326)::geography, 5000, null,
-  '2026-09-24T18:05:18.783Z', 4.2, 99, 2680, 1540
+  '2026-09-25T11:29:21.286Z', 4.2, 99, 2680, 1540
 ) on conflict (id) do update set
   title = excluded.title, status = excluded.status, ends_at = excluded.ends_at,
   capacity_remaining = excluded.capacity_remaining, published_at = excluded.published_at,
@@ -1600,10 +1636,10 @@ insert into deals (
 ) values (
   'e5733bee-5336-5635-a415-976d411f2f89', 'f6987ee5-cf27-52f7-b278-c0e99ccd5b0c', '793f6af4-5314-536c-ba3c-9c274271f017', 'property', 'property', '3BHK in JP Nagar',
   'Fully furnished, gated community', 'Fully furnished, gated community', 'ACTIVE', 62000, 55000,
-  '/mo', null, null, 2, '2026-10-03T18:05:18.783Z', '2026-11-19T18:05:18.783Z',
+  '/mo', null, null, 2, '2026-10-04T11:29:21.286Z', '2026-11-20T11:29:21.286Z',
   null, null, false, null,
   'Valid at the listed outlet only. Cannot be combined with other offers. Management reserves the right of admission.', '{"bhk":3,"area_sqft":1680,"furnishing":"Fully furnished","floor":5,"parking":true}'::jsonb, array['3bhk','rent','jp nagar','furnished','gated']::text[], st_setsrid(st_makepoint(77.58370000000001, 12.9073), 4326)::geography, 5000, null,
-  '2026-10-03T18:05:18.783Z', 3.9, 24, 1480, 860
+  '2026-10-04T11:29:21.286Z', 3.9, 24, 1480, 860
 ) on conflict (id) do update set
   title = excluded.title, status = excluded.status, ends_at = excluded.ends_at,
   capacity_remaining = excluded.capacity_remaining, published_at = excluded.published_at,
@@ -1636,10 +1672,10 @@ insert into deals (
 ) values (
   '06853844-956c-5b10-9a2b-3fbec90e47dd', '951411c2-90be-5a04-887a-b931811830c2', '793f6af4-5314-536c-ba3c-9c274271f017', 'property', 'property', '1BHK Studio, HSR Sector 2',
   'Compact studio, ideal for one', 'Compact studio, ideal for one', 'ACTIVE', 24000, 19500,
-  '/mo', null, null, 2, '2026-10-01T18:05:18.783Z', '2026-11-12T18:05:18.783Z',
+  '/mo', null, null, 2, '2026-10-02T11:29:21.286Z', '2026-11-13T11:29:21.286Z',
   null, null, false, null,
   'Valid at the listed outlet only. Cannot be combined with other offers. Management reserves the right of admission.', '{"bhk":1,"area_sqft":620,"furnishing":"Semi-furnished","floor":3,"parking":true}'::jsonb, array['1bhk','studio','rent','hsr']::text[], st_setsrid(st_makepoint(77.64840000000001, 12.9146), 4326)::geography, 5000, null,
-  '2026-10-01T18:05:18.783Z', 4, 53, 2040, 1180
+  '2026-10-02T11:29:21.286Z', 4, 53, 2040, 1180
 ) on conflict (id) do update set
   title = excluded.title, status = excluded.status, ends_at = excluded.ends_at,
   capacity_remaining = excluded.capacity_remaining, published_at = excluded.published_at,
@@ -1671,10 +1707,10 @@ insert into deals (
 ) values (
   '9c93f54a-8f93-5c59-88b8-1f4af293b696', '2cb1264d-d81f-511d-a669-0b5786316a76', '828982f1-a006-50e5-8435-bb550869884e', 'business_offer', 'service', 'Private Office Under 50,000',
   '6-seat cabin, Indiranagar, all-inclusive', 'Lockable 6-seat cabin with high-speed internet, meeting-room credits, printing and pantry. Minimum 3-month term.', 'ACTIVE', 68000, 48000,
-  '/mo', null, null, 2, '2026-09-29T18:05:18.783Z', '2026-11-06T18:05:18.783Z',
+  '/mo', null, null, 2, '2026-09-30T11:29:21.286Z', '2026-11-07T11:29:21.286Z',
   8, 3, false, null,
   'Valid at the listed outlet only. Cannot be combined with other offers. Management reserves the right of admission.', '{"seats":6,"internet_mbps":300,"meeting_credits":20}'::jsonb, array['office','coworking','private cabin','indiranagar']::text[], st_setsrid(st_makepoint(77.6442, 12.9739), 4326)::geography, 5000, null,
-  '2026-09-29T18:05:18.783Z', 4.6, 146, 1860, 1240
+  '2026-09-30T11:29:21.286Z', 4.6, 146, 1860, 1240
 ) on conflict (id) do update set
   title = excluded.title, status = excluded.status, ends_at = excluded.ends_at,
   capacity_remaining = excluded.capacity_remaining, published_at = excluded.published_at,
@@ -1711,10 +1747,10 @@ insert into deals (
 ) values (
   '258b37ff-91b6-5e91-a0bd-c1b4d9fa06b3', '2cb1264d-d81f-511d-a669-0b5786316a76', '828982f1-a006-50e5-8435-bb550869884e', 'discount', 'service', 'Hot Desk Monthly Pass',
   'Any desk, any day, 24x7 access', 'Any desk, any day, 24x7 access', 'ACTIVE', 9000, 5999,
-  '/mo', null, null, 2, '2026-09-27T18:05:18.783Z', '2026-10-29T18:05:18.783Z',
+  '/mo', null, null, 2, '2026-09-28T11:29:21.286Z', '2026-10-30T11:29:21.286Z',
   40, 16, false, null,
   'Valid at the listed outlet only. Cannot be combined with other offers. Management reserves the right of admission.', '{}'::jsonb, array['hot desk','coworking','monthly']::text[], st_setsrid(st_makepoint(77.6442, 12.9739), 4326)::geography, 5000, null,
-  '2026-09-27T18:05:18.783Z', 4.6, 146, 2340, 1420
+  '2026-09-28T11:29:21.286Z', 4.6, 146, 2340, 1420
 ) on conflict (id) do update set
   title = excluded.title, status = excluded.status, ends_at = excluded.ends_at,
   capacity_remaining = excluded.capacity_remaining, published_at = excluded.published_at,
@@ -1746,10 +1782,10 @@ insert into deals (
 ) values (
   '0a2c54bb-332c-5f9e-a151-57f19e3fa703', '70bf88cf-a5a7-542a-a236-0633c85abef3', 'e0b3a889-11e4-5e8c-9bc8-09f5c81503b5', 'business_offer', 'service', 'Bulk Visiting Cards: 1000 Pcs',
   'Matte lamination, free design, 48h', 'Matte lamination, free design, 48h', 'ACTIVE', 3200, 1799,
-  null, null, null, 2, '2026-09-18T18:05:18.783Z', '2026-11-03T18:05:18.783Z',
+  null, null, null, 2, '2026-09-19T11:29:21.286Z', '2026-11-04T11:29:21.286Z',
   50, 34, false, null,
   'Valid at the listed outlet only. Cannot be combined with other offers. Management reserves the right of admission.', '{}'::jsonb, array['printing','visiting cards','bulk','b2b']::text[], st_setsrid(st_makepoint(77.6794, 12.929400000000001), 4326)::geography, 5000, null,
-  '2026-09-18T18:05:18.783Z', 4.1, 34, 820, 460
+  '2026-09-19T11:29:21.286Z', 4.1, 34, 820, 460
 ) on conflict (id) do update set
   title = excluded.title, status = excluded.status, ends_at = excluded.ends_at,
   capacity_remaining = excluded.capacity_remaining, published_at = excluded.published_at,
@@ -1786,10 +1822,10 @@ insert into deals (
 ) values (
   '7c6bc0a3-34cd-56cb-abd5-e036e7b83055', '70bf88cf-a5a7-542a-a236-0633c85abef3', 'e0b3a889-11e4-5e8c-9bc8-09f5c81503b5', 'discount', 'service', 'Shop Signage and Banners',
   'Flex printing, installation included', 'Flex printing, installation included', 'ACTIVE', 8500, 5900,
-  null, null, null, 2, '2026-09-16T18:05:18.783Z', '2026-11-01T18:05:18.783Z',
+  null, null, null, 2, '2026-09-17T11:29:21.286Z', '2026-11-02T11:29:21.286Z',
   20, 12, false, null,
   'Valid at the listed outlet only. Cannot be combined with other offers. Management reserves the right of admission.', '{}'::jsonb, array['signage','banner','printing','shop']::text[], st_setsrid(st_makepoint(77.6794, 12.929400000000001), 4326)::geography, 5000, null,
-  '2026-09-16T18:05:18.783Z', 4.1, 34, 540, 290
+  '2026-09-17T11:29:21.286Z', 4.1, 34, 540, 290
 ) on conflict (id) do update set
   title = excluded.title, status = excluded.status, ends_at = excluded.ends_at,
   capacity_remaining = excluded.capacity_remaining, published_at = excluded.published_at,
@@ -1821,10 +1857,10 @@ insert into deals (
 ) values (
   'dfe7bf5a-ca24-58dc-8a70-a894aeee671a', '971b2542-9184-56b8-a0b5-7656ec31ec3c', 'fa2b3dda-c5b1-5b0b-a893-6b6e7c93ae20', 'discount', 'product', 'Running Shoes: Flat 40% Off',
   'Selected models, all sizes', 'Selected models, all sizes', 'ACTIVE', 4499, 2699,
-  null, null, null, 2, '2026-09-30T18:05:18.783Z', '2026-10-13T18:05:18.783Z',
+  null, null, null, 2, '2026-10-01T11:29:21.286Z', '2026-10-14T11:29:21.286Z',
   200, 84, false, null,
   'Valid at the listed outlet only. Cannot be combined with other offers. Management reserves the right of admission.', '{}'::jsonb, array['shoes','running','sports','sale']::text[], st_setsrid(st_makepoint(77.6964, 12.9611), 4326)::geography, 5000, null,
-  '2026-09-30T18:05:18.783Z', 4.4, 687, 4120, 2080
+  '2026-10-01T11:29:21.286Z', 4.4, 687, 4120, 2080
 ) on conflict (id) do update set
   title = excluded.title, status = excluded.status, ends_at = excluded.ends_at,
   capacity_remaining = excluded.capacity_remaining, published_at = excluded.published_at,
@@ -1856,10 +1892,10 @@ insert into deals (
 ) values (
   'a23bab6e-8c8d-50b4-8168-ce06c908836e', '790ca9e5-8d10-5b46-b55e-1c62d8f619f6', 'ad81dc80-dfad-5eae-b7e5-7ed516cdcf32', 'discount', 'product', 'Wireless Earbuds Clearance',
   'Last season stock, 1-year warranty', 'Last season stock, 1-year warranty', 'ACTIVE', 3999, 1499,
-  null, null, null, 2, '2026-10-02T18:05:18.783Z', '2026-10-07T18:05:18.783Z',
+  null, null, null, 2, '2026-10-03T11:29:21.286Z', '2026-10-08T11:29:21.286Z',
   60, 19, false, null,
   'Valid at the listed outlet only. Cannot be combined with other offers. Management reserves the right of admission.', '{}'::jsonb, array['earbuds','electronics','clearance','wireless']::text[], st_setsrid(st_makepoint(77.6088, 12.9766), 4326)::geography, 5000, null,
-  '2026-10-02T18:05:18.783Z', 4, 85, 3280, 1740
+  '2026-10-03T11:29:21.286Z', 4, 85, 3280, 1740
 ) on conflict (id) do update set
   title = excluded.title, status = excluded.status, ends_at = excluded.ends_at,
   capacity_remaining = excluded.capacity_remaining, published_at = excluded.published_at,
@@ -1892,10 +1928,10 @@ insert into deals (
 ) values (
   'b58593d4-b252-5e15-952c-4defbec716cd', 'e60372fb-c6f8-59fd-aba6-dff17ed3f2e4', '3fc5a364-ffe6-532e-a222-2e818897332e', 'bundle', 'product', 'Organic Veggie Basket',
   '5 kg mixed seasonal produce', '5 kg mixed seasonal produce', 'ACTIVE', 850, 549,
-  null, null, null, 2, '2026-10-03T18:05:18.783Z', '2026-10-07T06:05:18.783Z',
+  null, null, null, 2, '2026-10-04T11:29:21.286Z', '2026-10-07T23:29:21.286Z',
   80, 42, false, null,
   'Valid at the listed outlet only. Cannot be combined with other offers. Management reserves the right of admission.', '{}'::jsonb, array['organic','vegetables','grocery','basket']::text[], st_setsrid(st_makepoint(77.64540000000001, 12.9136), 4326)::geography, 5000, null,
-  '2026-10-03T18:05:18.783Z', 4.5, 131, 1640, 920
+  '2026-10-04T11:29:21.286Z', 4.5, 131, 1640, 920
 ) on conflict (id) do update set
   title = excluded.title, status = excluded.status, ends_at = excluded.ends_at,
   capacity_remaining = excluded.capacity_remaining, published_at = excluded.published_at,
@@ -1927,10 +1963,10 @@ insert into deals (
 ) values (
   '31b30c93-88c6-5bcd-b650-3cc87dae5f36', '04159ac9-2a04-5195-ad19-8f322b0715f9', 'fa2b3dda-c5b1-5b0b-a893-6b6e7c93ae20', 'bxgy', 'product', 'Buy 2 Get 1: Cotton Shirts',
   'Handloom cotton, all colours', 'Handloom cotton, all colours', 'ACTIVE', 2970, 1980,
-  null, null, null, 2, '2026-09-25T18:05:18.783Z', '2026-10-20T18:05:18.783Z',
+  null, null, null, 2, '2026-09-26T11:29:21.286Z', '2026-10-21T11:29:21.286Z',
   100, 58, false, null,
   'Valid at the listed outlet only. Cannot be combined with other offers. Management reserves the right of admission.', '{}'::jsonb, array['shirts','cotton','bogo','handloom']::text[], st_setsrid(st_makepoint(77.62349999999999, 12.9342), 4326)::geography, 5000, null,
-  '2026-09-25T18:05:18.783Z', 4.1, 37, 1180, 640
+  '2026-09-26T11:29:21.286Z', 4.1, 37, 1180, 640
 ) on conflict (id) do update set
   title = excluded.title, status = excluded.status, ends_at = excluded.ends_at,
   capacity_remaining = excluded.capacity_remaining, published_at = excluded.published_at,
@@ -1962,10 +1998,10 @@ insert into deals (
 ) values (
   '02cb7c15-49d9-5884-9294-cec2eed9da0d', '971b2542-9184-56b8-a0b5-7656ec31ec3c', 'fa2b3dda-c5b1-5b0b-a893-6b6e7c93ae20', 'flash', 'product', 'Flash: Yoga Mats at 299',
   '6 mm thickness, 40 left', '6 mm thickness, 40 left', 'ACTIVE', 999, 299,
-  null, null, null, 2, '2026-10-05T18:05:18.783Z', '2026-10-06T06:05:18.783Z',
+  null, null, null, 2, '2026-10-06T11:29:21.286Z', '2026-10-06T23:29:21.286Z',
   40, 9, false, null,
   'Valid at the listed outlet only. Cannot be combined with other offers. Management reserves the right of admission.', '{}'::jsonb, array['yoga mat','flash','fitness']::text[], st_setsrid(st_makepoint(77.6964, 12.9611), 4326)::geography, 5000, null,
-  '2026-10-05T18:05:18.783Z', 4.4, 687, 2480, 1340
+  '2026-10-06T11:29:21.286Z', 4.4, 687, 2480, 1340
 ) on conflict (id) do update set
   title = excluded.title, status = excluded.status, ends_at = excluded.ends_at,
   capacity_remaining = excluded.capacity_remaining, published_at = excluded.published_at,
@@ -1997,10 +2033,10 @@ insert into deals (
 ) values (
   '34012003-f2a3-5124-a1fd-612dfc308d8d', 'e60372fb-c6f8-59fd-aba6-dff17ed3f2e4', '3fc5a364-ffe6-532e-a222-2e818897332e', 'free', 'product', 'Free Cold-Pressed Juice',
   'On grocery bills above 999', 'On grocery bills above 999', 'ACTIVE', 180, 0,
-  null, null, 999, 2, '2026-09-23T18:05:18.783Z', '2026-10-24T18:05:18.783Z',
+  null, null, 999, 2, '2026-09-24T11:29:21.286Z', '2026-10-25T11:29:21.286Z',
   120, 76, false, null,
   'Valid at the listed outlet only. Cannot be combined with other offers. Management reserves the right of admission.', '{}'::jsonb, array['juice','free','grocery']::text[], st_setsrid(st_makepoint(77.64540000000001, 12.9136), 4326)::geography, 5000, null,
-  '2026-09-23T18:05:18.783Z', 4.5, 131, 980, 440
+  '2026-09-24T11:29:21.286Z', 4.5, 131, 980, 440
 ) on conflict (id) do update set
   title = excluded.title, status = excluded.status, ends_at = excluded.ends_at,
   capacity_remaining = excluded.capacity_remaining, published_at = excluded.published_at,
@@ -2032,10 +2068,10 @@ insert into deals (
 ) values (
   '463c3290-c062-533d-b16b-315ce799d771', '790ca9e5-8d10-5b46-b55e-1c62d8f619f6', 'ad81dc80-dfad-5eae-b7e5-7ed516cdcf32', 'discount', 'product', 'Laptop Service and Upgrade',
   'SSD upgrade with free diagnostics', 'SSD upgrade with free diagnostics', 'ACTIVE', 6500, 4200,
-  null, null, null, 2, '2026-09-21T18:05:18.783Z', '2026-10-28T18:05:18.783Z',
+  null, null, null, 2, '2026-09-22T11:29:21.286Z', '2026-10-29T11:29:21.286Z',
   30, 21, false, null,
   'Valid at the listed outlet only. Cannot be combined with other offers. Management reserves the right of admission.', '{}'::jsonb, array['laptop','ssd','repair','upgrade']::text[], st_setsrid(st_makepoint(77.6088, 12.9766), 4326)::geography, 5000, null,
-  '2026-09-21T18:05:18.783Z', 4, 85, 1340, 780
+  '2026-09-22T11:29:21.286Z', 4, 85, 1340, 780
 ) on conflict (id) do update set
   title = excluded.title, status = excluded.status, ends_at = excluded.ends_at,
   capacity_remaining = excluded.capacity_remaining, published_at = excluded.published_at,
@@ -2068,10 +2104,10 @@ insert into deals (
 ) values (
   'cbf0c821-059b-5204-a11b-04b0ee9b48f5', '09f1805a-d1a3-5403-bb67-6e799b818249', 'fef09d24-c58d-5efd-9037-340f1b3ad588', 'experience', 'experience', 'Spoken Kannada Crash Course',
   '8 sessions, conversation-first', 'Learn everyday Kannada for autos, markets and neighbours. Small batches of 10, taught conversation-first with no grammar drills.', 'ACTIVE', 4500, 2999,
-  null, null, null, 2, '2026-10-03T18:05:18.783Z', '2026-10-15T18:05:18.783Z',
+  null, null, null, 2, '2026-10-04T11:29:21.286Z', '2026-10-16T11:29:21.286Z',
   10, 4, true, null,
   'Valid at the listed outlet only. Cannot be combined with other offers. Management reserves the right of admission.', '{}'::jsonb, array['kannada','language','class','course']::text[], st_setsrid(st_makepoint(77.6275, 12.9362), 4326)::geography, 5000, null,
-  '2026-10-03T18:05:18.783Z', 4.5, 110, 2840, 1680
+  '2026-10-04T11:29:21.286Z', 4.5, 110, 2840, 1680
 ) on conflict (id) do update set
   title = excluded.title, status = excluded.status, ends_at = excluded.ends_at,
   capacity_remaining = excluded.capacity_remaining, published_at = excluded.published_at,
@@ -2105,10 +2141,10 @@ insert into deals (
 ) values (
   '9ce24581-cee6-5caa-a9ac-b6dd132ae026', '25e7ee9f-53dd-5767-a3e6-82c1aaa2b272', '0a61a39f-b41f-5297-a47c-8d1dc96c0834', 'community', 'experience', 'Lake Cleanup Drive',
   'Sunday morning, gloves and breakfast provided', 'Sunday morning, gloves and breakfast provided', 'ACTIVE', 0, 0,
-  null, null, null, 2, '2026-10-02T18:05:18.783Z', '2026-10-09T18:05:18.783Z',
+  null, null, null, 2, '2026-10-03T11:29:21.286Z', '2026-10-10T11:29:21.286Z',
   100, 63, false, null,
   'Valid at the listed outlet only. Cannot be combined with other offers. Management reserves the right of admission.', '{}'::jsonb, array['volunteer','lake','cleanup','environment','free']::text[], st_setsrid(st_makepoint(77.5918, 12.923), 4326)::geography, 5000, null,
-  '2026-10-02T18:05:18.783Z', 4.9, 15, 1240, 380
+  '2026-10-03T11:29:21.286Z', 4.9, 15, 1240, 380
 ) on conflict (id) do update set
   title = excluded.title, status = excluded.status, ends_at = excluded.ends_at,
   capacity_remaining = excluded.capacity_remaining, published_at = excluded.published_at,
@@ -2140,10 +2176,10 @@ insert into deals (
 ) values (
   '3b0dfba7-8561-5ddd-bd27-bc4f508da362', '09f1805a-d1a3-5403-bb67-6e799b818249', 'fef09d24-c58d-5efd-9037-340f1b3ad588', 'discount', 'experience', 'Weekend Guitar Classes',
   'Beginner batch, guitar provided', 'Beginner batch, guitar provided', 'ACTIVE', 6000, 3999,
-  null, null, null, 2, '2026-09-29T18:05:18.783Z', '2026-10-19T18:05:18.783Z',
+  null, null, null, 2, '2026-09-30T11:29:21.286Z', '2026-10-20T11:29:21.286Z',
   12, 5, true, null,
   'Valid at the listed outlet only. Cannot be combined with other offers. Management reserves the right of admission.', '{}'::jsonb, array['guitar','music','class','weekend']::text[], st_setsrid(st_makepoint(77.6275, 12.9362), 4326)::geography, 5000, null,
-  '2026-09-29T18:05:18.783Z', 4.5, 110, 1480, 820
+  '2026-09-30T11:29:21.286Z', 4.5, 110, 1480, 820
 ) on conflict (id) do update set
   title = excluded.title, status = excluded.status, ends_at = excluded.ends_at,
   capacity_remaining = excluded.capacity_remaining, published_at = excluded.published_at,
@@ -2176,10 +2212,10 @@ insert into deals (
 ) values (
   '38ee8228-5570-5c3e-9d9f-099a8ef1784e', '25e7ee9f-53dd-5767-a3e6-82c1aaa2b272', '0a61a39f-b41f-5297-a47c-8d1dc96c0834', 'community', 'experience', 'Teach Coding to Kids',
   'Two hours a week, training given', 'Two hours a week, training given', 'ACTIVE', 0, 0,
-  null, null, null, 2, '2026-09-20T18:05:18.783Z', '2026-11-05T18:05:18.783Z',
+  null, null, null, 2, '2026-09-21T11:29:21.286Z', '2026-11-06T11:29:21.286Z',
   25, 14, false, null,
   'Valid at the listed outlet only. Cannot be combined with other offers. Management reserves the right of admission.', '{}'::jsonb, array['volunteer','teaching','coding','kids','free']::text[], st_setsrid(st_makepoint(77.5918, 12.923), 4326)::geography, 5000, null,
-  '2026-09-20T18:05:18.783Z', 4.9, 15, 680, 240
+  '2026-09-21T11:29:21.286Z', 4.9, 15, 680, 240
 ) on conflict (id) do update set
   title = excluded.title, status = excluded.status, ends_at = excluded.ends_at,
   capacity_remaining = excluded.capacity_remaining, published_at = excluded.published_at,
@@ -2211,10 +2247,10 @@ insert into deals (
 ) values (
   'a2af9ff1-8e5b-564f-b04a-e254d0eae53b', '3cf091f3-da67-589e-a983-6bea3407bb1a', 'c7220893-c3dc-5a11-8732-db7ff745b202', 'time_based', 'meal', 'Express Lunch Under 300',
   'Rice bowl, curry and dessert, 30 min', 'Rice bowl, curry and dessert, 30 min', 'ACTIVE', 420, 279,
-  null, null, null, 2, '2026-10-04T18:05:18.783Z', '2026-10-18T18:05:18.783Z',
+  null, null, null, 2, '2026-10-05T11:29:21.286Z', '2026-10-19T11:29:21.286Z',
   100, 73, false, null,
   'Valid at the listed outlet only. Cannot be combined with other offers. Management reserves the right of admission.', '{"cuisine":"Biryani"}'::jsonb, array['lunch','express','rice bowl','under 300','chicken']::text[], st_setsrid(st_makepoint(77.6504, 12.9126), 4326)::geography, 5000, null,
-  '2026-10-04T18:05:18.783Z', 4.4, 530, 2180, 1640
+  '2026-10-05T11:29:21.286Z', 4.4, 530, 2180, 1640
 ) on conflict (id) do update set
   title = excluded.title, status = excluded.status, ends_at = excluded.ends_at,
   capacity_remaining = excluded.capacity_remaining, published_at = excluded.published_at,
@@ -2250,10 +2286,10 @@ insert into deals (
 ) values (
   '3511aae7-41fa-5fa8-ae3b-5479ac3a33dc', 'd8333806-d180-5f57-bc38-0d94c0bdf565', 'a36142e3-32ec-55fa-8230-b37ff468054c', 'bundle', 'meal', 'Pizza and Pitcher Combo',
   '12-inch pizza with a beer pitcher', '12-inch pizza with a beer pitcher', 'ACTIVE', 1450, 999,
-  null, null, null, 2, '2026-09-28T18:05:18.783Z', '2026-10-14T18:05:18.783Z',
+  null, null, null, 2, '2026-09-29T11:29:21.286Z', '2026-10-15T11:29:21.286Z',
   50, 24, true, null,
   'Valid at the listed outlet only. Cannot be combined with other offers. Management reserves the right of admission.', '{"cuisine":"Italian","party_min":2,"party_max":3}'::jsonb, array['pizza','beer','combo','pub']::text[], st_setsrid(st_makepoint(77.6402, 12.9739), 4326)::geography, 5000, null,
-  '2026-09-28T18:05:18.783Z', 4.8, 873, 3640, 1920
+  '2026-09-29T11:29:21.286Z', 4.8, 873, 3640, 1920
 ) on conflict (id) do update set
   title = excluded.title, status = excluded.status, ends_at = excluded.ends_at,
   capacity_remaining = excluded.capacity_remaining, published_at = excluded.published_at,
@@ -2288,10 +2324,10 @@ insert into deals (
 ) values (
   'f771eab5-34e7-56af-89f9-4dd0e21f18a5', '00ee0e20-279c-524d-840d-5dc9bd738fed', '4836afd7-400f-5ee9-a11f-9a7cb54975a7', 'discount', 'meal', 'All-Day Breakfast Plate',
   'Eggs, sourdough, hash and juice', 'Eggs, sourdough, hash and juice', 'ACTIVE', 580, 399,
-  null, null, null, 2, '2026-10-01T18:05:18.783Z', '2026-10-16T18:05:18.783Z',
+  null, null, null, 2, '2026-10-02T11:29:21.286Z', '2026-10-17T11:29:21.286Z',
   70, 38, false, null,
   'Valid at the listed outlet only. Cannot be combined with other offers. Management reserves the right of admission.', '{"cuisine":"Continental"}'::jsonb, array['breakfast','eggs','brunch','all day']::text[], st_setsrid(st_makepoint(77.6432, 12.9709), 4326)::geography, 5000, null,
-  '2026-10-01T18:05:18.783Z', 4.5, 315, 1920, 1080
+  '2026-10-02T11:29:21.286Z', 4.5, 315, 1920, 1080
 ) on conflict (id) do update set
   title = excluded.title, status = excluded.status, ends_at = excluded.ends_at,
   capacity_remaining = excluded.capacity_remaining, published_at = excluded.published_at,
@@ -2323,10 +2359,10 @@ insert into deals (
 ) values (
   'b17118da-d2e5-5cf6-b636-8332357f87ed', '74625daa-6c7c-511b-a154-707c1ead0309', 'a36142e3-32ec-55fa-8230-b37ff468054c', 'discount', 'meal', 'Family Dinner Pack for 4',
   'Chapati, two curries, rice and sweet', 'Chapati, two curries, rice and sweet', 'ACTIVE', 980, 649,
-  null, null, null, 2, '2026-09-26T18:05:18.783Z', '2026-10-17T18:05:18.783Z',
+  null, null, null, 2, '2026-09-27T11:29:21.286Z', '2026-10-18T11:29:21.286Z',
   45, 27, false, null,
   'Valid at the listed outlet only. Cannot be combined with other offers. Management reserves the right of admission.', '{"cuisine":"South Indian","party_min":4,"party_max":4}'::jsonb, array['family','dinner','pack','vegetarian']::text[], st_setsrid(st_makepoint(77.5918, 12.926), 4326)::geography, 5000, null,
-  '2026-09-26T18:05:18.783Z', 4.3, 149, 1420, 760
+  '2026-09-27T11:29:21.286Z', 4.3, 149, 1420, 760
 ) on conflict (id) do update set
   title = excluded.title, status = excluded.status, ends_at = excluded.ends_at,
   capacity_remaining = excluded.capacity_remaining, published_at = excluded.published_at,
@@ -2359,10 +2395,10 @@ insert into deals (
 ) values (
   '07cc7a6f-d473-5413-b71d-8802e9162eaa', '6ead727c-ed9b-5fb0-9226-d0dd06513811', '3b77c2bd-2c5f-5309-9c28-bcf9fb996160', 'time_based', 'meal', 'Evening Tea and Pastry',
   'Any tea with a pastry, 4 to 7 PM', 'Any tea with a pastry, 4 to 7 PM', 'ACTIVE', 420, 249,
-  null, null, null, 2, '2026-09-24T18:05:18.783Z', '2026-10-21T18:05:18.783Z',
+  null, null, null, 2, '2026-09-25T11:29:21.286Z', '2026-10-22T11:29:21.286Z',
   60, 44, false, null,
   'Valid at the listed outlet only. Cannot be combined with other offers. Management reserves the right of admission.', '{"cuisine":"Desserts"}'::jsonb, array['tea','pastry','evening','cafe']::text[], st_setsrid(st_makepoint(77.60780000000001, 12.9736), 4326)::geography, 5000, null,
-  '2026-09-24T18:05:18.783Z', 4.2, 46, 860, 410
+  '2026-09-25T11:29:21.286Z', 4.2, 46, 860, 410
 ) on conflict (id) do update set
   title = excluded.title, status = excluded.status, ends_at = excluded.ends_at,
   capacity_remaining = excluded.capacity_remaining, published_at = excluded.published_at,
@@ -2394,10 +2430,10 @@ insert into deals (
 ) values (
   'a12dba12-8f3f-58fa-ba26-275637adf6cf', '848db70d-ed99-57db-9ac8-18e93ea3f538', 'c7220893-c3dc-5a11-8732-db7ff745b202', 'discount', 'meal', 'Bento Box Lunch',
   'Veg or chicken, miso and salad included', 'Veg or chicken, miso and salad included', 'ACTIVE', 650, 449,
-  null, null, null, 2, '2026-10-03T18:05:18.783Z', '2026-10-12T18:05:18.783Z',
+  null, null, null, 2, '2026-10-04T11:29:21.286Z', '2026-10-13T11:29:21.286Z',
   40, 21, false, null,
   'Valid at the listed outlet only. Cannot be combined with other offers. Management reserves the right of admission.', '{"cuisine":"Japanese"}'::jsonb, array['bento','lunch','japanese','chicken','veg']::text[], st_setsrid(st_makepoint(77.6402, 12.969899999999999), 4326)::geography, 5000, null,
-  '2026-10-03T18:05:18.783Z', 4.6, 120, 1180, 690
+  '2026-10-04T11:29:21.286Z', 4.6, 120, 1180, 690
 ) on conflict (id) do update set
   title = excluded.title, status = excluded.status, ends_at = excluded.ends_at,
   capacity_remaining = excluded.capacity_remaining, published_at = excluded.published_at,
@@ -2434,10 +2470,10 @@ insert into deals (
 ) values (
   '069c5b67-31b3-5644-83e8-9744bfc00ff7', '6851c178-95ba-5489-9b21-0e7d70d1168b', '8785946c-77d1-52f2-9f19-9bbc370c59c2', 'flash', 'service', 'Flash: Personal Training Pack',
   '10 sessions, one trainer, today only', '10 sessions, one trainer, today only', 'ACTIVE', 20000, 11999,
-  null, null, null, 2, '2026-10-05T18:05:18.783Z', '2026-10-06T10:53:18.783Z',
+  null, null, null, 2, '2026-10-06T11:29:21.286Z', '2026-10-07T04:17:21.286Z',
   6, 2, false, null,
   'Valid at the listed outlet only. Cannot be combined with other offers. Management reserves the right of admission.', '{}'::jsonb, array['personal training','flash','gym']::text[], st_setsrid(st_makepoint(77.6225, 12.9362), 4326)::geography, 5000, null,
-  '2026-10-05T18:05:18.783Z', 4.5, 368, 1640, 880
+  '2026-10-06T11:29:21.286Z', 4.5, 368, 1640, 880
 ) on conflict (id) do update set
   title = excluded.title, status = excluded.status, ends_at = excluded.ends_at,
   capacity_remaining = excluded.capacity_remaining, published_at = excluded.published_at,
@@ -2469,10 +2505,10 @@ insert into deals (
 ) values (
   'b1d3cd4a-4973-54e1-aa63-e62babfb7310', '90ca2d3e-68af-532b-811e-be16a21e7925', '5a30ccec-777a-5017-8f6c-7b70892cd230', 'booking', 'event', 'Sunday Improv Jam',
   'Audience-driven, 75 minutes', 'Audience-driven, 75 minutes', 'ACTIVE', 600, 349,
-  null, null, null, 2, '2026-10-04T18:05:18.783Z', '2026-10-10T18:05:18.783Z',
+  null, null, null, 2, '2026-10-05T11:29:21.286Z', '2026-10-11T11:29:21.286Z',
   80, 47, true, null,
   'Valid at the listed outlet only. Cannot be combined with other offers. Management reserves the right of admission.', '{}'::jsonb, array['improv','comedy','sunday']::text[], st_setsrid(st_makepoint(77.62349999999999, 12.9382), 4326)::geography, 5000, null,
-  '2026-10-04T18:05:18.783Z', 4.7, 220, 1340, 620
+  '2026-10-05T11:29:21.286Z', 4.7, 220, 1340, 620
 ) on conflict (id) do update set
   title = excluded.title, status = excluded.status, ends_at = excluded.ends_at,
   capacity_remaining = excluded.capacity_remaining, published_at = excluded.published_at,
@@ -2504,10 +2540,10 @@ insert into deals (
 ) values (
   'fe79d1b2-e645-5374-be50-229a087a2b18', '443a1f29-45d6-5e23-85ec-dd582203d60e', '689ee33e-e400-55fb-bc7b-963ddfbd9d2d', 'free', 'transport', 'First Ride Free: E-Bike',
   'Up to 10 km, new users', 'Up to 10 km, new users', 'ACTIVE', 150, 0,
-  null, null, null, 2, '2026-09-22T18:05:18.783Z', '2026-10-25T18:05:18.783Z',
+  null, null, null, 2, '2026-09-23T11:29:21.286Z', '2026-10-26T11:29:21.286Z',
   200, 127, false, null,
   'Valid at the listed outlet only. Cannot be combined with other offers. Management reserves the right of admission.', '{"vehicle":"Bike"}'::jsonb, array['ebike','free','first ride','rental']::text[], st_setsrid(st_makepoint(77.6265, 12.9342), 4326)::geography, 5000, null,
-  '2026-09-22T18:05:18.783Z', 4.1, 73, 2240, 1140
+  '2026-09-23T11:29:21.286Z', 4.1, 73, 2240, 1140
 ) on conflict (id) do update set
   title = excluded.title, status = excluded.status, ends_at = excluded.ends_at,
   capacity_remaining = excluded.capacity_remaining, published_at = excluded.published_at,
@@ -2539,10 +2575,10 @@ insert into deals (
 ) values (
   '3d488a92-862c-5dd6-a9e1-d80048d6a4f7', '50035192-a9b4-59e3-a2a1-b3fcc8573741', '0bec712a-cc76-53de-a48e-be7349f7d6aa', 'discount', 'service', 'Hydra Facial with Cleanup',
   '60 minutes, all skin types', 'Deep cleanse, exfoliation, extraction and hydration in one sitting, finished with a cooling mask. Patch test on request.', 'ACTIVE', 3200, 1899,
-  null, null, null, 2, '2026-10-03T18:05:18.783Z', '2026-10-23T18:05:18.783Z',
+  null, null, null, 2, '2026-10-04T11:29:21.286Z', '2026-10-24T11:29:21.286Z',
   24, 15, true, null,
   'Valid at the listed outlet only. Cannot be combined with other offers. Management reserves the right of admission.', '{}'::jsonb, array['facial','skin','hydra','glow']::text[], st_setsrid(st_makepoint(77.6422, 12.9749), 4326)::geography, 5000, null,
-  '2026-10-03T18:05:18.783Z', 4.4, 161, 980, 430
+  '2026-10-04T11:29:21.286Z', 4.4, 161, 980, 430
 ) on conflict (id) do update set
   title = excluded.title, status = excluded.status, ends_at = excluded.ends_at,
   capacity_remaining = excluded.capacity_remaining, published_at = excluded.published_at,
@@ -2579,10 +2615,10 @@ insert into deals (
 ) values (
   '45c2a87a-6d1e-5b1f-ba19-639d38ae5f43', 'f6987ee5-cf27-52f7-b278-c0e99ccd5b0c', 'cec8af58-092e-5c3e-968f-5a409fab0609', 'property', 'property', '3BHK Villa, JP Nagar',
   'Independent villa with terrace and garden', 'Two-floor independent villa in a quiet lane off 24th Main: three bedrooms, terrace, small garden and two-car parking.', 'ACTIVE', 85000, 76000,
-  '/mo', null, 152000, 2, '2026-10-01T18:05:18.783Z', '2026-11-09T18:05:18.783Z',
+  '/mo', null, 152000, 2, '2026-10-02T11:29:21.286Z', '2026-11-10T11:29:21.286Z',
   null, null, false, null,
   'Valid at the listed outlet only. Cannot be combined with other offers. Management reserves the right of admission.', '{"bhk":3,"area_sqft":2400,"furnishing":"Semi-furnished","parking":true}'::jsonb, array['3bhk','villa','independent','jp nagar','garden']::text[], st_setsrid(st_makepoint(77.58370000000001, 12.9073), 4326)::geography, 5000, null,
-  '2026-10-01T18:05:18.783Z', 3.9, 24, 1260, 640
+  '2026-10-02T11:29:21.286Z', 3.9, 24, 1260, 640
 ) on conflict (id) do update set
   title = excluded.title, status = excluded.status, ends_at = excluded.ends_at,
   capacity_remaining = excluded.capacity_remaining, published_at = excluded.published_at,
@@ -2615,10 +2651,10 @@ insert into deals (
 ) values (
   '958f3482-dde3-53af-9a72-8b4c1e0b8e8c', '443a1f29-45d6-5e23-85ec-dd582203d60e', '689ee33e-e400-55fb-bc7b-963ddfbd9d2d', 'discount', 'transport', 'Royal Enfield Weekend Rental',
   'Classic 350, Saturday to Monday', 'Classic 350, Saturday to Monday', 'ACTIVE', 3600, 2499,
-  null, null, null, 2, '2026-09-29T18:05:18.783Z', '2026-10-26T18:05:18.783Z',
+  null, null, null, 2, '2026-09-30T11:29:21.286Z', '2026-10-27T11:29:21.286Z',
   12, 5, true, null,
   'Valid at the listed outlet only. Cannot be combined with other offers. Management reserves the right of admission.', '{"vehicle":"Bike"}'::jsonb, array['bike','royal enfield','weekend','rental']::text[], st_setsrid(st_makepoint(77.6265, 12.9342), 4326)::geography, 5000, null,
-  '2026-09-29T18:05:18.783Z', 4.1, 73, 1420, 690
+  '2026-09-30T11:29:21.286Z', 4.1, 73, 1420, 690
 ) on conflict (id) do update set
   title = excluded.title, status = excluded.status, ends_at = excluded.ends_at,
   capacity_remaining = excluded.capacity_remaining, published_at = excluded.published_at,
@@ -2652,10 +2688,10 @@ insert into deals (
 ) values (
   'e8619fdf-f0dd-595c-8c78-9836dcc67979', '2a1be238-610d-556d-a98f-656d5d377cb8', 'af6de42d-0c76-5c90-a6cb-067412a028ad', 'service_package', 'service', 'Royal Enfield General Service',
   'Oil change, chain clean and a 30-point check', 'Periodic service by mechanics trained on Royal Enfield: engine oil and filter, chain clean and lube, brake and clutch adjustment, electricals check and a wash. Free pick-up and drop within 5 km. Any repair beyond the service is quoted before work starts.', 'ACTIVE', 2400, 1499,
-  null, null, null, 2, '2026-10-03T18:05:18.783Z', '2026-10-23T18:05:18.783Z',
+  null, null, null, 2, '2026-10-04T11:29:21.286Z', '2026-10-24T11:29:21.286Z',
   30, 11, true, null,
   'Valid at the listed outlet only. Cannot be combined with other offers. Management reserves the right of admission.', '{"vehicles":["royal-enfield"]}'::jsonb, array['royal enfield','bike service','oil change','repair','servicing']::text[], st_setsrid(st_makepoint(77.6275, 12.9332), 4326)::geography, 5000, null,
-  '2026-10-03T18:05:18.783Z', 4.6, 124, 1980, 1130
+  '2026-10-04T11:29:21.286Z', 4.6, 124, 1980, 1130
 ) on conflict (id) do update set
   title = excluded.title, status = excluded.status, ends_at = excluded.ends_at,
   capacity_remaining = excluded.capacity_remaining, published_at = excluded.published_at,
@@ -2693,10 +2729,10 @@ insert into deals (
 ) values (
   '9885161c-3dd0-5fc3-852d-d4a48188911c', '2a1be238-610d-556d-a98f-656d5d377cb8', 'af6de42d-0c76-5c90-a6cb-067412a028ad', 'bundle', 'product', 'Touring Kit for Royal Enfield',
   'Crash guard, saddle stays and tank bag, fitted', 'Everything for a long ride, fitted while you wait: a powder-coated crash guard, saddle stays for soft panniers and a magnetic tank bag. Fits the Classic, Bullet, Hunter, Meteor and Himalayan.', 'ACTIVE', 6200, 4299,
-  null, null, null, 2, '2026-10-01T18:05:18.783Z', '2026-10-17T18:05:18.783Z',
+  null, null, null, 2, '2026-10-02T11:29:21.286Z', '2026-10-18T11:29:21.286Z',
   15, 6, false, null,
   'Valid at the listed outlet only. Cannot be combined with other offers. Management reserves the right of admission.', '{"vehicles":["royal-enfield"]}'::jsonb, array['royal enfield','touring','accessories','crash guard']::text[], st_setsrid(st_makepoint(77.6275, 12.9332), 4326)::geography, 5000, null,
-  '2026-10-01T18:05:18.783Z', 4.6, 124, 860, 420
+  '2026-10-02T11:29:21.286Z', 4.6, 124, 860, 420
 ) on conflict (id) do update set
   title = excluded.title, status = excluded.status, ends_at = excluded.ends_at,
   capacity_remaining = excluded.capacity_remaining, published_at = excluded.published_at,
@@ -2733,10 +2769,10 @@ insert into deals (
 ) values (
   '840e0d98-de9f-5071-bc60-f0616a2c5934', '65aa880e-70ee-5ff0-9382-c568cf1440fe', 'af6de42d-0c76-5c90-a6cb-067412a028ad', 'discount', 'service', 'Bike Foam Wash and Polish',
   'Foam wash, chain lube and tyre shine in 30 minutes', 'Foam wash, chain lube and tyre shine in 30 minutes', 'ACTIVE', 350, 199,
-  null, null, null, 2, '2026-10-04T18:05:18.783Z', '2026-10-20T18:05:18.783Z',
+  null, null, null, 2, '2026-10-05T11:29:21.286Z', '2026-10-21T11:29:21.286Z',
   120, 74, false, null,
   'Valid at the listed outlet only. Cannot be combined with other offers. Management reserves the right of admission.', '{"vehicles":["bike","scooter"]}'::jsonb, array['bike wash','foam wash','polish','two wheeler']::text[], st_setsrid(st_makepoint(77.6444, 12.9136), 4326)::geography, 5000, null,
-  '2026-10-04T18:05:18.783Z', 4.4, 198, 1540, 980
+  '2026-10-05T11:29:21.286Z', 4.4, 198, 1540, 980
 ) on conflict (id) do update set
   title = excluded.title, status = excluded.status, ends_at = excluded.ends_at,
   capacity_remaining = excluded.capacity_remaining, published_at = excluded.published_at,
@@ -2768,10 +2804,10 @@ insert into deals (
 ) values (
   'cc387059-7da0-5f1e-bc6c-a28d6a3c45f7', '65aa880e-70ee-5ff0-9382-c568cf1440fe', 'af6de42d-0c76-5c90-a6cb-067412a028ad', 'discount', 'service', 'Car Foam Wash and Interior Clean',
   'Foam wash, vacuum and dashboard polish', 'Foam wash, vacuum and dashboard polish', 'ACTIVE', 1600, 899,
-  null, null, null, 2, '2026-10-02T18:05:18.783Z', '2026-10-15T18:05:18.783Z',
+  null, null, null, 2, '2026-10-03T11:29:21.286Z', '2026-10-16T11:29:21.286Z',
   60, 27, true, null,
   'Valid at the listed outlet only. Cannot be combined with other offers. Management reserves the right of admission.', '{"vehicles":["car"]}'::jsonb, array['car wash','interior cleaning','foam wash','detailing']::text[], st_setsrid(st_makepoint(77.6444, 12.9136), 4326)::geography, 5000, null,
-  '2026-10-02T18:05:18.783Z', 4.4, 198, 1320, 760
+  '2026-10-03T11:29:21.286Z', 4.4, 198, 1320, 760
 ) on conflict (id) do update set
   title = excluded.title, status = excluded.status, ends_at = excluded.ends_at,
   capacity_remaining = excluded.capacity_remaining, published_at = excluded.published_at,
@@ -2804,10 +2840,10 @@ insert into deals (
 ) values (
   '2ee5b686-4221-55d9-ad2d-45dca731a3a4', '187c74b7-3336-5406-ab39-ee82f8c10b96', 'af6de42d-0c76-5c90-a6cb-067412a028ad', 'discount', 'service', 'Wheel Alignment and Balancing',
   'Computerised alignment, all four wheels', 'Computerised alignment, all four wheels', 'ACTIVE', 900, 499,
-  null, null, null, 2, '2026-09-29T18:05:18.783Z', '2026-10-27T18:05:18.783Z',
+  null, null, null, 2, '2026-09-30T11:29:21.286Z', '2026-10-28T11:29:21.286Z',
   50, 31, false, null,
   'Valid at the listed outlet only. Cannot be combined with other offers. Management reserves the right of admission.', '{"vehicles":["car"]}'::jsonb, array['wheel alignment','balancing','tyres','car service']::text[], st_setsrid(st_makepoint(77.6764, 12.9334), 4326)::geography, 5000, null,
-  '2026-09-29T18:05:18.783Z', 4.2, 61, 720, 390
+  '2026-09-30T11:29:21.286Z', 4.2, 61, 720, 390
 ) on conflict (id) do update set
   title = excluded.title, status = excluded.status, ends_at = excluded.ends_at,
   capacity_remaining = excluded.capacity_remaining, published_at = excluded.published_at,
@@ -2845,10 +2881,10 @@ insert into deals (
 ) values (
   '3c52a0c6-ce25-54f5-93d4-d90b87f9c7ef', '187c74b7-3336-5406-ab39-ee82f8c10b96', 'af6de42d-0c76-5c90-a6cb-067412a028ad', 'service_package', 'service', 'Scooter General Service',
   'Activa, Jupiter, Access and more: oil, brakes, battery', 'Activa, Jupiter, Access and more: oil, brakes, battery', 'ACTIVE', 999, 649,
-  null, null, null, 2, '2026-09-30T18:05:18.783Z', '2026-10-21T18:05:18.783Z',
+  null, null, null, 2, '2026-10-01T11:29:21.286Z', '2026-10-22T11:29:21.286Z',
   40, 22, false, null,
   'Valid at the listed outlet only. Cannot be combined with other offers. Management reserves the right of admission.', '{"vehicles":["scooter"]}'::jsonb, array['scooter service','activa','jupiter','oil change','servicing']::text[], st_setsrid(st_makepoint(77.6764, 12.9334), 4326)::geography, 5000, null,
-  '2026-09-30T18:05:18.783Z', 4.2, 61, 1110, 640
+  '2026-10-01T11:29:21.286Z', 4.2, 61, 1110, 640
 ) on conflict (id) do update set
   title = excluded.title, status = excluded.status, ends_at = excluded.ends_at,
   capacity_remaining = excluded.capacity_remaining, published_at = excluded.published_at,
@@ -2885,10 +2921,10 @@ insert into deals (
 ) values (
   '8d7af938-11e2-589d-9a65-a6f099b85433', '187c74b7-3336-5406-ab39-ee82f8c10b96', 'af6de42d-0c76-5c90-a6cb-067412a028ad', 'service_package', 'service', 'Car Periodic Service',
   'Engine oil, filters and a 50-point inspection', 'Engine oil, filters and a 50-point inspection', 'ACTIVE', 4800, 2999,
-  null, null, null, 2, '2026-10-03T18:05:18.783Z', '2026-10-24T18:05:18.783Z',
+  null, null, null, 2, '2026-10-04T11:29:21.286Z', '2026-10-25T11:29:21.286Z',
   25, 9, true, null,
   'Valid at the listed outlet only. Cannot be combined with other offers. Management reserves the right of admission.', '{"vehicles":["car"]}'::jsonb, array['car service','oil change','servicing','inspection']::text[], st_setsrid(st_makepoint(77.6764, 12.9334), 4326)::geography, 5000, null,
-  '2026-10-03T18:05:18.783Z', 4.2, 61, 940, 520
+  '2026-10-04T11:29:21.286Z', 4.2, 61, 940, 520
 ) on conflict (id) do update set
   title = excluded.title, status = excluded.status, ends_at = excluded.ends_at,
   capacity_remaining = excluded.capacity_remaining, published_at = excluded.published_at,
@@ -2926,10 +2962,10 @@ insert into deals (
 ) values (
   'ef8ed9e6-3136-55c8-9d56-a58bdb6427d8', '971b2542-9184-56b8-a0b5-7656ec31ec3c', 'fa2b3dda-c5b1-5b0b-a893-6b6e7c93ae20', 'discount', 'product', 'Riding Jacket and Gloves: 30% Off',
   'CE-rated armour, for bikes and scooters', 'CE-rated armour, for bikes and scooters', 'ACTIVE', 5999, 4199,
-  null, null, null, 2, '2026-10-02T18:05:18.783Z', '2026-10-19T18:05:18.783Z',
+  null, null, null, 2, '2026-10-03T11:29:21.286Z', '2026-10-20T11:29:21.286Z',
   40, 18, false, null,
   'Valid at the listed outlet only. Cannot be combined with other offers. Management reserves the right of admission.', '{"vehicles":["bike","scooter"]}'::jsonb, array['riding gear','jacket','gloves','safety']::text[], st_setsrid(st_makepoint(77.6964, 12.9611), 4326)::geography, 5000, null,
-  '2026-10-02T18:05:18.783Z', 4.4, 687, 870, 450
+  '2026-10-03T11:29:21.286Z', 4.4, 687, 870, 450
 ) on conflict (id) do update set
   title = excluded.title, status = excluded.status, ends_at = excluded.ends_at,
   capacity_remaining = excluded.capacity_remaining, published_at = excluded.published_at,
@@ -2961,10 +2997,10 @@ insert into deals (
 ) values (
   '5b24f25f-93e0-53bc-9d45-f0a8b800f5ed', 'e269b113-9a0c-5e86-9d0b-b652c065b2c9', 'a36142e3-32ec-55fa-8230-b37ff468054c', 'discount', 'meal', 'Chicken Seekh Kebab Plate',
   'Four seekh kebabs, rumali roti and mint chutney', 'Four seekh kebabs, rumali roti and mint chutney', 'ACTIVE', 280, 179,
-  null, null, null, 2, '2026-10-04T18:05:18.783Z', '2026-10-17T18:05:18.783Z',
+  null, null, null, 2, '2026-10-05T11:29:21.286Z', '2026-10-18T11:29:21.286Z',
   100, 58, false, null,
   'Valid at the listed outlet only. Cannot be combined with other offers. Management reserves the right of admission.', '{"cuisine":"Mughlai"}'::jsonb, array['chicken','kebab','seekh','non-veg']::text[], st_setsrid(st_makepoint(77.6215, 12.9362), 4326)::geography, 5000, null,
-  '2026-10-04T18:05:18.783Z', 4.5, 288, 1680, 940
+  '2026-10-05T11:29:21.286Z', 4.5, 288, 1680, 940
 ) on conflict (id) do update set
   title = excluded.title, status = excluded.status, ends_at = excluded.ends_at,
   capacity_remaining = excluded.capacity_remaining, published_at = excluded.published_at,
@@ -2997,10 +3033,10 @@ insert into deals (
 ) values (
   '5f960082-5484-54a9-b274-6bc445e24e5e', 'e269b113-9a0c-5e86-9d0b-b652c065b2c9', 'c7220893-c3dc-5a11-8732-db7ff745b202', 'bundle', 'meal', 'Chicken Roll Combo',
   'Chicken tikka roll with fries and a cold drink', 'Chicken tikka roll with fries and a cold drink', 'ACTIVE', 240, 149,
-  null, null, null, 2, '2026-10-03T18:05:18.783Z', '2026-10-14T18:05:18.783Z',
+  null, null, null, 2, '2026-10-04T11:29:21.286Z', '2026-10-15T11:29:21.286Z',
   150, 96, false, null,
   'Valid at the listed outlet only. Cannot be combined with other offers. Management reserves the right of admission.', '{"cuisine":"Mughlai"}'::jsonb, array['chicken','roll','wrap','combo','non-veg']::text[], st_setsrid(st_makepoint(77.6215, 12.9362), 4326)::geography, 5000, null,
-  '2026-10-03T18:05:18.783Z', 4.5, 288, 2040, 1210
+  '2026-10-04T11:29:21.286Z', 4.5, 288, 2040, 1210
 ) on conflict (id) do update set
   title = excluded.title, status = excluded.status, ends_at = excluded.ends_at,
   capacity_remaining = excluded.capacity_remaining, published_at = excluded.published_at,
@@ -3032,10 +3068,10 @@ insert into deals (
 ) values (
   '0a66465f-e212-58e3-93e1-f9d534d2ff95', '3cf091f3-da67-589e-a983-6bea3407bb1a', 'a36142e3-32ec-55fa-8230-b37ff468054c', 'bundle', 'meal', 'Biryani Feast for 5',
   'Two biryanis, two starters, raita and dessert', 'Built for a table of four to six: one chicken and one mutton biryani (family size), chicken 65, paneer pepper fry, raita, salan and a gulab jamun each.', 'ACTIVE', 2400, 1599,
-  null, null, null, 2, '2026-10-03T18:05:18.783Z', '2026-10-16T18:05:18.783Z',
+  null, null, null, 2, '2026-10-04T11:29:21.286Z', '2026-10-17T11:29:21.286Z',
   30, 14, true, null,
   'Valid at the listed outlet only. Cannot be combined with other offers. Management reserves the right of admission.', '{"cuisine":"Biryani","party_min":4,"party_max":6}'::jsonb, array['biryani','group','feast','chicken','sharing']::text[], st_setsrid(st_makepoint(77.6504, 12.9126), 4326)::geography, 5000, null,
-  '2026-10-03T18:05:18.783Z', 4.4, 530, 1460, 820
+  '2026-10-04T11:29:21.286Z', 4.4, 530, 1460, 820
 ) on conflict (id) do update set
   title = excluded.title, status = excluded.status, ends_at = excluded.ends_at,
   capacity_remaining = excluded.capacity_remaining, published_at = excluded.published_at,
@@ -3068,10 +3104,10 @@ insert into deals (
 ) values (
   'e1ee4c7e-b974-5651-aacf-0394b57db22c', '3014cf86-a2de-5bc4-b891-2ee824fbd170', 'a36142e3-32ec-55fa-8230-b37ff468054c', 'bundle', 'meal', 'Tandoori Platter for 4',
   'Chicken tikka, paneer tikka, kebabs and a naan basket', 'Chicken tikka, paneer tikka, kebabs and a naan basket', 'ACTIVE', 1800, 1199,
-  null, null, null, 2, '2026-10-02T18:05:18.783Z', '2026-10-18T18:05:18.783Z',
+  null, null, null, 2, '2026-10-03T11:29:21.286Z', '2026-10-19T11:29:21.286Z',
   40, 19, false, null,
   'Valid at the listed outlet only. Cannot be combined with other offers. Management reserves the right of admission.', '{"cuisine":"North Indian","party_min":3,"party_max":5}'::jsonb, array['tandoori','platter','chicken','paneer','group']::text[], st_setsrid(st_makepoint(77.752, 12.9718), 4326)::geography, 5000, null,
-  '2026-10-02T18:05:18.783Z', 4.1, 56, 980, 540
+  '2026-10-03T11:29:21.286Z', 4.1, 56, 980, 540
 ) on conflict (id) do update set
   title = excluded.title, status = excluded.status, ends_at = excluded.ends_at,
   capacity_remaining = excluded.capacity_remaining, published_at = excluded.published_at,
@@ -3104,10 +3140,10 @@ insert into deals (
 ) values (
   '82df723d-4245-5b01-8e61-b66c1f6c7b30', '90ca2d3e-68af-532b-811e-be16a21e7925', '5a30ccec-777a-5017-8f6c-7b70892cd230', 'booking', 'event', 'Comedy Night: Group of 5',
   'Five tickets, a reserved table and one pitcher', 'Five tickets, a reserved table and one pitcher', 'ACTIVE', 3000, 1999,
-  null, null, null, 2, '2026-10-04T18:05:18.783Z', '2026-10-11T18:05:18.783Z',
+  null, null, null, 2, '2026-10-05T11:29:21.286Z', '2026-10-12T11:29:21.286Z',
   20, 8, true, null,
   'Valid at the listed outlet only. Cannot be combined with other offers. Management reserves the right of admission.', '{"party_min":5,"party_max":5}'::jsonb, array['comedy','group','friends','tickets']::text[], st_setsrid(st_makepoint(77.62349999999999, 12.9382), 4326)::geography, 5000, null,
-  '2026-10-04T18:05:18.783Z', 4.7, 220, 760, 410
+  '2026-10-05T11:29:21.286Z', 4.7, 220, 760, 410
 ) on conflict (id) do update set
   title = excluded.title, status = excluded.status, ends_at = excluded.ends_at,
   capacity_remaining = excluded.capacity_remaining, published_at = excluded.published_at,
@@ -3140,10 +3176,10 @@ insert into deals (
 ) values (
   '0a330f62-1d85-57e7-b222-4aba946c3221', '50035192-a9b4-59e3-a2a1-b3fcc8573741', 'd30b25b5-863b-5fad-9101-b85aab0ea884', 'bundle', 'service', 'Couple''s Spa Day',
   'Side-by-side massage and steam for two', 'Side-by-side massage and steam for two', 'ACTIVE', 5200, 3499,
-  null, null, null, 2, '2026-10-01T18:05:18.783Z', '2026-10-22T18:05:18.783Z',
+  null, null, null, 2, '2026-10-02T11:29:21.286Z', '2026-10-23T11:29:21.286Z',
   16, 7, true, null,
   'Valid at the listed outlet only. Cannot be combined with other offers. Management reserves the right of admission.', '{"party_min":2,"party_max":2}'::jsonb, array['spa','couple','massage','date']::text[], st_setsrid(st_makepoint(77.6422, 12.9749), 4326)::geography, 5000, null,
-  '2026-10-01T18:05:18.783Z', 4.4, 161, 1120, 680
+  '2026-10-02T11:29:21.286Z', 4.4, 161, 1120, 680
 ) on conflict (id) do update set
   title = excluded.title, status = excluded.status, ends_at = excluded.ends_at,
   capacity_remaining = excluded.capacity_remaining, published_at = excluded.published_at,
@@ -3180,10 +3216,10 @@ insert into deals (
 ) values (
   '7b7756f5-4187-5fb6-9481-f5e8fd8e3949', 'd8333806-d180-5f57-bc38-0d94c0bdf565', 'eb41bbd0-4d8e-5563-8ba1-baecd6130f67', 'bundle', 'meal', 'Party Pack: 3 Pitchers and Platters',
   'For six to eight friends, with a reserved table', 'For six to eight friends, with a reserved table', 'ACTIVE', 4200, 2999,
-  null, null, null, 2, '2026-10-03T18:05:18.783Z', '2026-10-13T18:05:18.783Z',
+  null, null, null, 2, '2026-10-04T11:29:21.286Z', '2026-10-14T11:29:21.286Z',
   15, 6, true, null,
   'Valid at the listed outlet only. Cannot be combined with other offers. Management reserves the right of admission.', '{"cuisine":"Bar Food","party_min":6,"party_max":8}'::jsonb, array['beer','party','group','pitchers','platter']::text[], st_setsrid(st_makepoint(77.6402, 12.9739), 4326)::geography, 5000, null,
-  '2026-10-03T18:05:18.783Z', 4.8, 873, 1290, 610
+  '2026-10-04T11:29:21.286Z', 4.8, 873, 1290, 610
 ) on conflict (id) do update set
   title = excluded.title, status = excluded.status, ends_at = excluded.ends_at,
   capacity_remaining = excluded.capacity_remaining, published_at = excluded.published_at,
@@ -3218,10 +3254,10 @@ insert into deals (
 ) values (
   'f41256aa-6196-5f4b-83f4-680b7f702dd2', 'a81e9a43-34ea-5c9c-a840-1d16783b2f3a', '5a6c6d9b-95cd-582d-84b9-49657dd742dd', 'bundle', 'event', 'Gig Tickets: Pack of 4',
   'Four entries to Saturday''s rooftop gig', 'Four entries to Saturday''s rooftop gig', 'ACTIVE', 2400, 1599,
-  null, null, null, 2, '2026-10-04T18:05:18.783Z', '2026-10-12T18:05:18.783Z',
+  null, null, null, 2, '2026-10-05T11:29:21.286Z', '2026-10-13T11:29:21.286Z',
   25, 12, false, null,
   'Valid at the listed outlet only. Cannot be combined with other offers. Management reserves the right of admission.', '{"party_min":4,"party_max":4}'::jsonb, array['gig','music','group','tickets']::text[], st_setsrid(st_makepoint(77.752, 12.967799999999999), 4326)::geography, 5000, null,
-  '2026-10-04T18:05:18.783Z', 4.5, 114, 690, 330
+  '2026-10-05T11:29:21.286Z', 4.5, 114, 690, 330
 ) on conflict (id) do update set
   title = excluded.title, status = excluded.status, ends_at = excluded.ends_at,
   capacity_remaining = excluded.capacity_remaining, published_at = excluded.published_at,
@@ -3253,10 +3289,10 @@ insert into deals (
 ) values (
   '7017060d-5a63-583a-b8ea-90bd293bc430', '4c782c56-acc4-5c15-9479-e4580088549d', '4836afd7-400f-5ee9-a11f-9a7cb54975a7', 'bundle', 'meal', 'Family Sunday Brunch for 4',
   'Two adults, two kids, unlimited spread', 'Two adults, two kids, unlimited spread', 'ACTIVE', 2600, 1799,
-  null, null, null, 2, '2026-10-02T18:05:18.783Z', '2026-10-14T18:05:18.783Z',
+  null, null, null, 2, '2026-10-03T11:29:21.286Z', '2026-10-15T11:29:21.286Z',
   20, 9, true, null,
   'Valid at the listed outlet only. Cannot be combined with other offers. Management reserves the right of admission.', '{"cuisine":"Continental","party_min":4,"party_max":4}'::jsonb, array['brunch','family','kids','sunday']::text[], st_setsrid(st_makepoint(77.6265, 12.9322), 4326)::geography, 5000, null,
-  '2026-10-02T18:05:18.783Z', 4.7, 104, 840, 420
+  '2026-10-03T11:29:21.286Z', 4.7, 104, 840, 420
 ) on conflict (id) do update set
   title = excluded.title, status = excluded.status, ends_at = excluded.ends_at,
   capacity_remaining = excluded.capacity_remaining, published_at = excluded.published_at,
@@ -3288,7 +3324,7 @@ insert into deals (
 ) values (
   'a938b460-cfde-5bc1-8483-f07cc5b9bf52', '0fdf1ba5-4070-53cb-82b0-a9f594d7d53c', 'a36142e3-32ec-55fa-8230-b37ff468054c', 'discount', 'meal', 'Festive Sweets Hamper',
   'Assorted box of 12, limited run', 'Assorted box of 12, limited run', 'SUBMITTED', 1200, 849,
-  null, null, null, 2, '2026-10-05T18:05:18.783Z', '2026-10-25T18:05:18.783Z',
+  null, null, null, 2, '2026-10-06T11:29:21.286Z', '2026-10-26T11:29:21.286Z',
   50, 50, false, null,
   'Valid at the listed outlet only. Cannot be combined with other offers. Management reserves the right of admission.', '{"cuisine":"Desserts"}'::jsonb, array['sweets','festive','hamper']::text[], st_setsrid(st_makepoint(77.6255, 12.9372), 4326)::geography, 5000, null,
   null, 4.6, 69, 0, 0
@@ -3322,7 +3358,7 @@ insert into deals (
 ) values (
   '017e13bd-3095-5a08-a02e-0d3941ff8ff0', '0fdf1ba5-4070-53cb-82b0-a9f594d7d53c', 'c7220893-c3dc-5a11-8732-db7ff745b202', 'bundle', 'meal', 'Corporate Lunch Subscription',
   'Weekday meals delivered to your office', 'Weekday meals delivered to your office', 'DRAFT', 6000, 4499,
-  '/mo', null, null, 2, '2026-10-05T18:05:18.783Z', '2026-11-04T18:05:18.783Z',
+  '/mo', null, null, 2, '2026-10-06T11:29:21.286Z', '2026-11-05T11:29:21.286Z',
   30, 30, false, null,
   'Valid at the listed outlet only. Cannot be combined with other offers. Management reserves the right of admission.', '{"cuisine":"South Indian"}'::jsonb, array['corporate','subscription','lunch']::text[], st_setsrid(st_makepoint(77.6255, 12.9372), 4326)::geography, 5000, null,
   null, 4.6, 69, 0, 0
@@ -3356,7 +3392,7 @@ insert into deals (
 ) values (
   '33e23a5b-fabe-5c6a-9b14-f681285d39e4', '0fdf1ba5-4070-53cb-82b0-a9f594d7d53c', '3b77c2bd-2c5f-5309-9c28-bcf9fb996160', 'discount', 'meal', 'Filter Coffee Unlimited',
   'Refills all evening', 'Refills all evening', 'REJECTED', 200, 99,
-  null, null, null, 2, '2026-10-04T18:05:18.783Z', '2026-10-23T18:05:18.783Z',
+  null, null, null, 2, '2026-10-05T11:29:21.286Z', '2026-10-24T11:29:21.286Z',
   80, 80, false, null,
   'Valid at the listed outlet only. Cannot be combined with other offers. Management reserves the right of admission.', '{"cuisine":"Cafe"}'::jsonb, array['coffee','unlimited']::text[], st_setsrid(st_makepoint(77.6255, 12.9372), 4326)::geography, 5000, 'The offer image does not show the actual product. Please upload a photo of the coffee being served and resubmit.',
   null, 4.6, 69, 0, 0
@@ -3390,7 +3426,7 @@ insert into deals (
 ) values (
   '7d6f1516-5035-58ec-9df1-2b5d4e5ae77b', '90fa7a39-869f-5079-976a-a0335a818442', '8785946c-77d1-52f2-9f19-9bbc370c59c2', 'discount', 'service', 'Annual Gym Membership',
   'Twelve months, locker included', 'Twelve months, locker included', 'SUBMITTED', 24000, 14999,
-  null, null, null, 2, '2026-10-05T18:05:18.783Z', '2026-10-30T18:05:18.783Z',
+  null, null, null, 2, '2026-10-06T11:29:21.286Z', '2026-10-31T11:29:21.286Z',
   40, 40, false, null,
   'Valid at the listed outlet only. Cannot be combined with other offers. Management reserves the right of admission.', '{}'::jsonb, array['gym','annual','membership']::text[], st_setsrid(st_makepoint(77.64840000000001, 12.9096), 4326)::geography, 5000, null,
   null, 4.2, 32, 0, 0
@@ -3424,7 +3460,7 @@ insert into deals (
 ) values (
   '59aac61d-496d-5ee0-ba3b-b606f0049a2a', 'f6987ee5-cf27-52f7-b278-c0e99ccd5b0c', 'cec8af58-092e-5c3e-968f-5a409fab0609', 'property', 'property', '4BHK Villa, Whitefield',
   'Private garden, gated layout', 'Private garden, gated layout', 'SUBMITTED', 110000, 95000,
-  '/mo', null, null, 2, '2026-10-05T18:05:18.783Z', '2026-11-19T18:05:18.783Z',
+  '/mo', null, null, 2, '2026-10-06T11:29:21.286Z', '2026-11-20T11:29:21.286Z',
   null, null, false, null,
   'Valid at the listed outlet only. Cannot be combined with other offers. Management reserves the right of admission.', '{"bhk":4,"area_sqft":3200,"furnishing":"Unfurnished","parking":true}'::jsonb, array['4bhk','villa','whitefield']::text[], st_setsrid(st_makepoint(77.58370000000001, 12.9073), 4326)::geography, 5000, null,
   null, 3.9, 24, 0, 0
@@ -3607,6 +3643,7 @@ insert into tags (id, slug) values ('5d55ba25-cc26-5b9f-abca-bd13e9d5ee54', 'pub
 insert into tags (id, slug) values ('61dfe0bf-f9bb-52d7-a85f-b402656ae4fb', 'rent') on conflict (slug) do nothing;
 insert into tags (id, slug) values ('d76a099d-4267-5a70-88c5-a8d21954660c', 'rental') on conflict (slug) do nothing;
 insert into tags (id, slug) values ('74d4896c-637a-514b-b7b9-99d86a48c9dd', 'repair') on conflict (slug) do nothing;
+insert into tags (id, slug) values ('5b51a31c-fc2e-5492-96f1-e183daad416e', 'reservation') on conflict (slug) do nothing;
 insert into tags (id, slug) values ('8093e65b-225a-5c5f-964e-d6b97565b254', 'rice bowl') on conflict (slug) do nothing;
 insert into tags (id, slug) values ('4339bfc3-f92f-59b7-916f-c503199b0bb5', 'riding gear') on conflict (slug) do nothing;
 insert into tags (id, slug) values ('325d5cf3-7335-5c01-9185-6142e05803f2', 'road trip') on conflict (slug) do nothing;
@@ -3643,6 +3680,7 @@ insert into tags (id, slug) values ('919230c0-4e10-5588-b6f0-99987c04c344', 'sun
 insert into tags (id, slug) values ('78a43dab-c084-5b47-8bc5-e7084d071563', 'sushi') on conflict (slug) do nothing;
 insert into tags (id, slug) values ('af84230a-ed8a-5f50-8be8-52f36d6cd300', 'suv') on conflict (slug) do nothing;
 insert into tags (id, slug) values ('3cc077f1-d4e4-5a50-af80-c251dc5234f0', 'sweets') on conflict (slug) do nothing;
+insert into tags (id, slug) values ('df2c6f31-d4c3-5254-9134-fbb93751e55b', 'table') on conflict (slug) do nothing;
 insert into tags (id, slug) values ('32aeecad-ef03-5c5c-9ea3-539a948e5045', 'tandoor') on conflict (slug) do nothing;
 insert into tags (id, slug) values ('7ca38c86-4292-5611-a196-db76764a145d', 'tandoori') on conflict (slug) do nothing;
 insert into tags (id, slug) values ('bd2725f7-b20c-5d25-bfe2-fa8f3bfb39c5', 'tea') on conflict (slug) do nothing;

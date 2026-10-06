@@ -125,23 +125,34 @@ export interface ChipProps {
   selected?: boolean;
   /** Trailing count, e.g. the tab chips on My Deals. */
   count?: number;
+  /** Shown but not choosable, e.g. a full time slot. */
+  disabled?: boolean;
 }
 
-export function Chip({ children, onPress, selected, count }: ChipProps) {
+export function Chip({ children, onPress, selected, count, disabled }: ChipProps) {
   return (
     <Pressable
       onPress={onPress}
+      disabled={disabled}
       accessibilityRole="button"
+      aria-disabled={disabled}
       {...pressedProps(!!selected)}
       // Chips are 36 px tall to sit in rows; the touch area reaches 44.
       hitSlop={4}
       style={({ pressed }) => [
         styles.chip,
         selected ? styles.chipOn : styles.chipOff,
-        pressed && styles.pressed,
+        disabled && styles.chipDisabled,
+        pressed && !disabled && styles.pressed,
       ]}
     >
-      <Text style={[styles.chipLabel, { color: selected ? color.onBrand : color.text }]}>
+      <Text
+        style={[
+          styles.chipLabel,
+          { color: selected ? color.onBrand : disabled ? color.textMuted : color.text },
+          disabled && styles.chipLabelDisabled,
+        ]}
+      >
         {children}
       </Text>
       {count !== undefined ? (
@@ -187,6 +198,13 @@ const styles = StyleSheet.create({
   pressed: {
     opacity: 0.85,
     transform: [{ scale: 0.98 }],
+  },
+  chipDisabled: {
+    backgroundColor: color.surfaceSoftAlt,
+    borderColor: color.surfaceSoftAlt,
+  },
+  chipLabelDisabled: {
+    textDecorationLine: 'line-through',
   },
   disabled: {
     opacity: 0.4,

@@ -45,8 +45,8 @@ begin
   perform assert((select count(*) from localities) = 10, 'localities seeded (10)');
   perform assert((select count(*) from categories) = 35, 'categories seeded (35)');
   perform assert((select count(*) from businesses) = 36, 'businesses seeded (36)');
-  perform assert((select count(*) from deals where status = 'ACTIVE') = 76,
-                 '59 ACTIVE deals');
+  perform assert((select count(*) from deals where status = 'ACTIVE') = 77,
+                 '77 ACTIVE deals');
   perform assert((select count(*) from deals where status = 'SUBMITTED') = 3,
                  '3 deals awaiting review');
   perform assert((select count(*) from deals where status = 'REJECTED') = 1,

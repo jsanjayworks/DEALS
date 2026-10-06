@@ -24,6 +24,7 @@ import {
   type AppViewer,
 } from '../data';
 import { DEFAULT_LOCALITY_ID, LOCALITIES } from '../data/seed-reference';
+import { nearestLocality } from '../lib/location';
 import type { LatLng, Locality } from '../data/types';
 
 export type AccountKind = keyof typeof demoAccounts;
@@ -59,6 +60,9 @@ const NO_STORAGE = {
  */
 export type AppMode = 'customer' | 'merchant';
 
+/** Where deals are measured from: the device's position, or an area picked by hand. */
+export type LocationSource = 'gps' | 'area';
+
 interface SessionState {
   /** The demo account last signed in (local backend). */
   account: AccountKind;
@@ -69,6 +73,13 @@ interface SessionState {
   mode: AppMode;
   setMode(mode: AppMode): void;
   localityId: string;
+  /** The device's last position, when the person chose "Use my location". */
+  geo: (LatLng & { at: number }) | null;
+  locationSource: LocationSource;
+  /** Whether Home has asked "use my location or choose an area" yet. */
+  locationAsked: boolean;
+  setGeo(point: LatLng): void;
+  markLocationAsked(): void;
   radiusM: number;
   recentSearches: string[];
   /** The customer's own vehicle (see data/vehicles.ts), for "everything for it". */
@@ -90,6 +101,18 @@ export const useSession = create<SessionState>()(
       mode: 'customer',
       setMode: (mode) => set({ mode }),
       localityId: DEFAULT_LOCALITY_ID,
+      geo: null,
+      locationSource: 'area',
+      locationAsked: false,
+      // The nearest area comes along, so anything that names an area still reads right.
+      setGeo: (point) =>
+        set({
+          geo: { ...point, at: Date.now() },
+          locationSource: 'gps',
+          locationAsked: true,
+          localityId: nearestLocality(point).locality.id,
+        }),
+      markLocationAsked: () => set({ locationAsked: true }),
       radiusM: 3000,
       recentSearches: [],
       vehicleId: null,
@@ -98,7 +121,7 @@ export const useSession = create<SessionState>()(
         signInAs(demoAccounts[kind]);
         set({ account: kind, demoSignedIn: true, demoUserId: demoAccounts[kind].id });
       },
-      setLocality: (id) => set({ localityId: id }),
+      setLocality: (id) => set({ localityId: id, locationSource: 'area', locationAsked: true }),
       setRadius: (m) => set({ radiusM: m }),
       addRecentSearch: (q) =>
         set((s) => {
@@ -123,6 +146,9 @@ export const useSession = create<SessionState>()(
         demoUserId: s.demoUserId,
         mode: s.mode,
         localityId: s.localityId,
+        geo: s.geo,
+        locationSource: s.locationSource,
+        locationAsked: s.locationAsked,
         radiusM: s.radiusM,
         recentSearches: s.recentSearches,
         vehicleId: s.vehicleId,
@@ -161,9 +187,32 @@ export function useLocality(): Locality {
   return LOCALITIES.find((l) => l.id === id) ?? LOCALITIES[0];
 }
 
-/** Search and feed centre. The locality centroid until device location lands. */
+/** Search and feed centre: the device's position when chosen, else the area's centre. */
 export function useOrigin(): LatLng {
-  return useLocality().centroid;
+  const geo = useSession((s) => (s.locationSource === 'gps' ? s.geo : null));
+  const locality = useLocality();
+  return geo ?? locality.centroid;
+}
+
+/**
+ * How to name where deals are measured from: "Your location, near
+ * Koramangala" or the area itself, and the word for "within 3 km of …".
+ */
+export function usePlace(): { name: string; detail: string; of: string; gps: boolean } {
+  const gps = useSession((s) => s.locationSource === 'gps' && s.geo !== null);
+  const locality = useLocality();
+  return gps
+    ? { name: 'Your location', detail: 'Near ' + locality.name, of: 'you', gps }
+    : { name: locality.name, detail: locality.city, of: locality.name, gps };
+}
+
+/** True once the saved session has been read back, so first-open prompts do not flash. */
+export function useSessionHydrated(): boolean {
+  return useSyncExternalStore(
+    (cb) => useSession.persist.onFinishHydration(cb),
+    () => useSession.persist.hasHydrated(),
+    () => false,
+  );
 }
 
 export function radiusLabel(m: number): string {

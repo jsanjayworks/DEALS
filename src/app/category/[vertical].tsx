@@ -24,7 +24,7 @@ import { useQuery } from '../../lib/useQuery';
 import { subheadGroups, topCategory, type Subhead, type SubheadGroup } from '../../search/facets';
 import { FilterSheet, SORT_OPTIONS } from '../../search/FilterSheet';
 import { EMPTY_FILTERS, describeFilters, removeFilter } from '../../search/parser';
-import { useLocality, useSession } from '../../state/session';
+import { useOrigin, usePlace, useSession } from '../../state/session';
 import { color, font, radius, size, space, theme, type } from '../../theme/tokens';
 import {
   Button,
@@ -65,9 +65,9 @@ export default function CategoryScreen() {
   const layout = useLayout();
   const insets = useSafeAreaInsets();
   const focused = useIsFocused();
-  const locality = useLocality();
+  const place = usePlace();
   const radiusM = useSession((s) => s.radiusM);
-  const origin = locality.centroid;
+  const origin = useOrigin();
 
   const [refine, setRefine] = useState<SearchFilters>(() => baseFilters(radiusM));
   /** The chosen subheading in each row, keyed by row. */
@@ -180,7 +180,7 @@ export default function CategoryScreen() {
                 </Text>
                 <Text style={styles.subtitle}>
                   {data
-                    ? data.all.length + ' deals within ' + (radiusKm < 1 ? radiusKm * 1000 + ' m' : radiusKm + ' km') + ' of ' + locality.name
+                    ? data.all.length + ' deals within ' + (radiusKm < 1 ? radiusKm * 1000 + ' m' : radiusKm + ' km') + ' of ' + place.of
                     : 'Loading'}
                 </Text>
               </View>

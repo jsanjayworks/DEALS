@@ -91,6 +91,15 @@ const SEED: DealSeed[] = [
     days: [1, 2, 3, 4], from: '16:00', to: '19:00', tags: ['beer', 'happy hours', 'craft', 'pub'],
     minAge: 21, views: 6240, searches: 2810, booking: true },
 
+  // The demo merchant's table booking: a cap per time slot, so 8 PM can fill up.
+  { id: 'd-077', attrs: { cuisine: 'South Indian', slot_capacity: 6, party_min: 4, party_max: 4 }, biz: 'biz-rangoli',
+    cat: 'cat-food-dinner', type: 'booking', kind: 'meal',
+    title: 'Family Dinner Table for 4', blurb: 'A reserved table, four thalis, filter coffee and dessert',
+    desc: 'A table for four held at your time, with a South Indian thali each, filter coffee and payasam. Tables are held for 15 minutes past your booking.',
+    mrp: 1600, price: 999, cta: 'reserve', also: ['call', 'directions'], cap: 120, left: 103, endsIn: 20, pubAgo: 3,
+    from: '18:00', to: '22:30', tags: ['table', 'dinner', 'family', 'reservation', 'thali'],
+    views: 1180, searches: 540, booking: true, cancel: 'Free cancellation up to 2 hours before your table.' },
+
   { id: 'd-006', attrs: { cuisine: 'South Indian' }, biz: 'biz-southspice', cat: 'cat-food-lunch', type: 'discount', kind: 'meal',
     title: 'Breakfast Combo: Idli Vada Coffee', blurb: 'Classic Bengaluru breakfast under 100',
     mrp: 150, price: 89, cta: 'claim', also: ['directions'], cap: 150, left: 112, endsIn: 25, pubAgo: 20,

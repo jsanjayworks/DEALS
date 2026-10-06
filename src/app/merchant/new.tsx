@@ -781,6 +781,23 @@ function RulesStep({ form, patch, errors }: StepProps) {
         </Group>
       ) : null}
 
+      {form.booking_required ? (
+        <>
+          <Field
+            label="Bookings per time slot (optional)"
+            value={form.slot_capacity}
+            onChangeText={(t) => patch({ slot_capacity: t.replace(/[^0-9]/g, '') })}
+            placeholder="e.g. 6 tables at 8 PM"
+            keyboardType="number-pad"
+            maxLength={3}
+            error={errors.slot_capacity}
+          />
+          <Text style={styles.hint}>
+            How many bookings one time can take: tables, chairs or bays. When a time fills up, customers see it as Full.
+          </Text>
+        </>
+      ) : null}
+
       <Group label="Who can use it">
         {AUDIENCES.map((a) => (
           <Chip key={a.value} selected={form.audience === a.value} onPress={() => patch({ audience: a.value })}>
@@ -968,7 +985,9 @@ function ReviewStep({
         form.max_qty_per_customer +
         ' each' +
         (form.min_age ? ' · ' + form.min_age + '+' : '') +
-        (form.booking_required ? ' · booking needed' : '') +
+        (form.booking_required
+          ? ' · booking needed' + (form.slot_capacity ? ', ' + form.slot_capacity + ' per time slot' : '')
+          : '') +
         (form.party ? ' · ' + partyLabel(form.party).toLowerCase() : '') +
         (form.vehicles.length ? ' · for ' + (vehicleFitLabel(form.vehicles) ?? 'vehicles') : ''),
     },

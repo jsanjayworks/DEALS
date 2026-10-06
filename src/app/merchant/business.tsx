@@ -16,6 +16,7 @@ import { useQuery } from '../../lib/useQuery';
 import { useBusiness } from '../../merchant/useBusiness';
 import { color, radius, space, status, type } from '../../theme/tokens';
 import { Button, Chip, EmptyState, Field, Header, Label, VerifiedBadge } from '../../components';
+import { PinLocation } from '../../merchant/PinLocation';
 
 export default function BusinessDetailsScreen() {
   const { business, loading, reload } = useBusiness();
@@ -50,6 +51,8 @@ function DetailsForm({
   const [email, setEmail] = useState(business.email ?? '');
   const [address, setAddress] = useState(business.address_line ?? '');
   const [localityId, setLocalityId] = useState<string | null>(business.locality_id || null);
+  /** The shop's exact position, when pinned with the device; with its area's name. */
+  const [pin, setPin] = useState<{ point: { lat: number; lng: number }; area: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
@@ -73,6 +76,7 @@ function DetailsForm({
         address_line: address.trim(),
         phone: phone.trim() || undefined,
         email: email.trim() || undefined,
+        location: pin?.point,
       });
       hapticSuccess();
       setSaved(true);
@@ -124,9 +128,26 @@ function DetailsForm({
         />
 
         <Label>Area</Label>
+        <PinLocation
+          pinned={pin?.area ?? null}
+          onFound={(point, area) => {
+            setPin({ point, area });
+            const id = localities.find((l) => l.name === area)?.id;
+            if (id) setLocalityId(id);
+            setError(null);
+            setSaved(false);
+          }}
+        />
         <View style={styles.chips}>
           {localities.map((l) => (
-            <Chip key={l.id} selected={l.id === localityId} onPress={() => edit(setLocalityId)(l.id)}>
+            <Chip
+              key={l.id}
+              selected={l.id === localityId}
+              onPress={() => {
+                if (pin && l.name !== pin.area) setPin(null);
+                edit(setLocalityId)(l.id);
+              }}
+            >
               {l.name}
             </Chip>
           ))}

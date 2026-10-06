@@ -442,6 +442,11 @@ export function createSupabaseDataSource(client: SupabaseClient): DataSource {
       return (data ?? []).map(rowToAction);
     },
 
+    async listSlotLoad(dealId) {
+      const rows = await rpc<{ slot_start: string; taken: number }[] | null>('deal_slot_load', { p_deal_id: dealId });
+      return (rows ?? []).map((r) => ({ slot_start: r.slot_start, taken: Number(r.taken) }));
+    },
+
     async listBusinessOrders(businessId) {
       const deals = cards(await rpc('business_deals', { p_business_id: businessId }));
       if (deals.length === 0) return [];

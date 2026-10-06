@@ -14,7 +14,7 @@
  * paint is already navy rather than a blank page.
  */
 
-import { useEffect } from 'react';
+import { useEffect, useSyncExternalStore } from 'react';
 import { Platform, StyleSheet, Text, View, type ViewStyle } from 'react-native';
 import Animated, {
   Easing,
@@ -33,6 +33,28 @@ const EXIT_MS = 400;
 const EASE = Easing.bezier(0.2, 0, 0, 1);
 
 const NAVY = theme.selected;
+
+// Whether the opening has finished, for anything that should wait for it
+// (Home's first-open location question). Phones have no opening to wait for.
+let launchDone = Platform.OS !== 'web';
+const launchListeners = new Set<() => void>();
+
+export function markLaunchDone(): void {
+  if (launchDone) return;
+  launchDone = true;
+  launchListeners.forEach((cb) => cb());
+}
+
+export function useLaunchDone(): boolean {
+  return useSyncExternalStore(
+    (cb) => {
+      launchListeners.add(cb);
+      return () => launchListeners.delete(cb);
+    },
+    () => launchDone,
+    () => false,
+  );
+}
 const GOLD = theme.onSelected ?? '#E2BE5A';
 
 export function LaunchSplash({ ready, onDone }: { ready: boolean; onDone?: () => void }) {

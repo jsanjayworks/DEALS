@@ -25,7 +25,7 @@ import { describeFilters, EMPTY_FILTERS, emptyFilters, parseQuery, removeFilter 
 import { relaxations } from '../search/relax';
 import { choiceLabel, choiceTags } from '../data/vehicles';
 import { FilterSheet, SORT_OPTIONS } from '../search/FilterSheet';
-import { useLocality, useSession } from '../state/session';
+import { useOrigin, usePlace, useSession } from '../state/session';
 import { cellWidth, useLayout } from '../ui/layout';
 import { color, font, radius, size, space, type } from '../theme/tokens';
 import {
@@ -102,8 +102,8 @@ export default function ResultsScreen() {
   const sessionRadius = useSession((s) => s.radiusM);
   const layout = useLayout();
   const cell = cellWidth(layout.contentWidth, layout.listColumns, space.md);
-  const locality = useLocality();
-  const origin = locality.centroid;
+  const place = usePlace();
+  const origin = useOrigin();
 
   // Read once: the screen owns its filters after it opens.
   const [filters, setFilters] = useState<SearchFilters>(() =>
@@ -186,7 +186,7 @@ export default function ResultsScreen() {
   };
 
   const chips = useMemo(() => describeFilters(filters), [filters]);
-  const centreName = filters.locality ?? locality.name;
+  const centreName = filters.locality ?? place.of;
   const radiusKm = filters.radius_km ?? 5;
 
   const openDeal = (deal: DealCardModel) => {

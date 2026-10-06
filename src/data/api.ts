@@ -257,6 +257,14 @@ export interface NewBusinessInput {
   description?: string;
   keywords?: string[];
   owner_role?: string;
+  /** The shop's exact position, when pinned with the device; else the area's centre. */
+  location?: { lat: number; lng: number };
+}
+
+/** How many bookings one time slot of a deal already holds. */
+export interface SlotLoad {
+  slot_start: string;
+  taken: number;
 }
 
 /** One customer order on a business's deals, for the merchant's Orders list. */
@@ -396,6 +404,8 @@ export interface DataSource {
   listDealActions(dealId: string): Promise<CustomerAction[]>;
   /** Orders on all of a business's deals, newest first. */
   listBusinessOrders(businessId: string): Promise<BusinessOrder[]>;
+  /** Bookings held per upcoming time slot of a deal, for marking full slots. Anyone may ask. */
+  listSlotLoad(dealId: string): Promise<SlotLoad[]>;
 
   // ---- admin ----
   listReviewQueue(): Promise<DealCardModel[]>;

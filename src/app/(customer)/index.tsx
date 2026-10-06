@@ -39,7 +39,10 @@ import {
   RADIUS_OPTIONS,
   radiusLabel,
   useLocality,
+  useOrigin,
+  usePlace,
   useSession,
+  useSessionHydrated,
   useViewer,
 } from '../../state/session';
 import { color, font, radius, space, theme, type } from '../../theme/tokens';
@@ -61,6 +64,9 @@ import { useTabBarSpace } from '../../ui/FloatingTabBar';
 import { Container, useLayout } from '../../ui/layout';
 import { setLaunchRect, type LaunchRect } from '../../ui/launch';
 import { VehicleCard } from '../../home/VehicleCard';
+import { LocationAsk } from '../../home/LocationAsk';
+import { useLaunchDone } from '../../ui/LaunchSplash';
+import { locateMe } from '../../lib/location';
 import { choiceLabel, choiceTags } from '../../data/vehicles';
 import type { TasteItem } from '../../data/api';
 import { reach } from '../../lib/a11y';
@@ -125,7 +131,15 @@ export default function HomeScreen() {
   const { onScroll } = useHideOnScroll();
 
   const locality = useLocality();
+  const place = usePlace();
   const setLocality = useSession((s) => s.setLocality);
+  const setGeo = useSession((s) => s.setGeo);
+  const locationAsked = useSession((s) => s.locationAsked);
+  const markLocationAsked = useSession((s) => s.markLocationAsked);
+  const hydrated = useSessionHydrated();
+  const launched = useLaunchDone();
+  const [locating, setLocating] = useState(false);
+  const [locationError, setLocationError] = useState<string | null>(null);
   const radiusM = useSession((s) => s.radiusM);
   const setRadius = useSession((s) => s.setRadius);
   const displayName = useDisplayName();
@@ -137,7 +151,21 @@ export default function HomeScreen() {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [greet] = useState(() => !greetedThisLaunch);
 
-  const origin = locality.centroid;
+  const origin = useOrigin();
+
+  /** Ask the device where we are; on success deals re-centre there. */
+  const findMe = async (): Promise<boolean> => {
+    setLocating(true);
+    setLocationError(null);
+    const found = await locateMe();
+    setLocating(false);
+    if (found.ok) {
+      setGeo(found.point);
+      return true;
+    }
+    setLocationError(found.message);
+    return false;
+  };
 
   // account is a dependency on purpose: switching demo accounts changes what
   // the feed may show, because age-restricted deals are hidden, not blocked.
@@ -268,7 +296,7 @@ export default function HomeScreen() {
               count={data ? data.nearbyCount : null}
               caption={
                 (data?.nearbyCount === 1 ? 'deal' : 'deals') +
-                ' live within ' + radiusLabel(radiusM) + ' of ' + locality.name
+                ' live within ' + radiusLabel(radiusM) + ' of ' + place.of
               }
               options={RADIUS_OPTIONS}
               radiusM={radiusM}
@@ -345,8 +373,8 @@ export default function HomeScreen() {
       </Animated.ScrollView>
 
       <HomeHeader
-        locality={locality.name}
-        city={locality.city}
+        locality={place.name}
+        city={place.detail}
         unread={data?.unread ?? 0}
         name={displayName}
         avatarUrl={viewer?.avatar_url ?? null}
@@ -361,7 +389,28 @@ export default function HomeScreen() {
         localities={LOCALITIES}
         selectedId={locality.id}
         onSelect={setLocality}
-        onClose={() => setPickerOpen(false)}
+        onClose={() => {
+          setPickerOpen(false);
+          setLocationError(null);
+        }}
+        usingLocation={place.gps}
+        onUseLocation={findMe}
+        locating={locating}
+        locationError={locationError}
+      />
+
+      <LocationAsk
+        // Once, on the first visit to Home, after the saved session is read and the opening has played.
+        visible={hydrated && launched && focused && !locationAsked && !pickerOpen}
+        locating={locating}
+        error={locationError}
+        onUseLocation={() => void findMe()}
+        onChooseArea={() => {
+          markLocationAsked();
+          setLocationError(null);
+          setPickerOpen(true);
+        }}
+        onClose={markLocationAsked}
       />
     </View>
   );

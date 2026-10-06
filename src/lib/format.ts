@@ -151,6 +151,23 @@ export function quantityLabel(actionType: CustomerActionType, quantity: number):
     : '× ' + quantity;
 }
 
+/** "8 PM" for a booked slot when the day is already said. */
+export function slotTimeLabel(iso: string): string {
+  const d = new Date(iso);
+  return timeLabel(d.getHours() + ':' + String(d.getMinutes()).padStart(2, '0'));
+}
+
+/** "Today", "Tomorrow", or "Sat 11 Oct", for grouping bookings by day. */
+export function dayHeading(iso: string, now: Date = new Date()): string {
+  const d = new Date(iso);
+  const day = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const diff = Math.round((day(d) - day(now)) / 86_400_000);
+  if (diff === 0) return 'Today';
+  if (diff === 1) return 'Tomorrow';
+  if (diff === -1) return 'Yesterday';
+  return DAY_SHORT[d.getDay()] + ' ' + d.getDate() + ' ' + MONTH_SHORT[d.getMonth()];
+}
+
 /** "4 Oct" for dates in lists. */
 export function dateLabel(iso: string): string {
   const d = new Date(iso);

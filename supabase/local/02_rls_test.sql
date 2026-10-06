@@ -948,4 +948,67 @@ begin
   perform assert(v_km < 0.01, 'moving to HSR Layout moves the live deals with it');
 end $$;
 
+-- ------------------------------------------------- a cap per time slot (0014)
+do $$
+declare
+  i ids;
+  v_deal  uuid;
+  v_slot  timestamptz := date_trunc('day', now()) + interval '3 days 20 hours';
+  v_act   customer_actions;
+  v_taken int;
+  v_msg   text := '';
+begin
+  select * into i from ids;
+  -- A live booking deal nobody has touched; one table per time, no other rule in the way.
+  select d.id into v_deal from deals d
+   where d.status = 'ACTIVE' and d.booking_required
+     and not exists (select 1 from customer_actions c where c.deal_id = d.id)
+   order by d.id limit 1;
+  perform assert(v_deal is not null, 'found a booking deal for the slot test');
+  update deals set attributes = attributes || '{"slot_capacity": 1}'::jsonb,
+                   capacity_remaining = greatest(coalesce(capacity_remaining, 0), 10)
+   where id = v_deal;
+  update deal_eligibility set advance_booking_hours = null, min_age = null, audience = 'everyone'
+   where deal_id = v_deal;
+
+  perform set_config('app.current_user_id', i.customer::text, true);
+  set local role authenticated;
+  v_act := take_deal_action(v_deal, 'reserve', 1, v_slot, '{}'::jsonb);
+  reset role;
+  perform assert(v_act.slot_start = v_slot, 'a customer books the 8 PM slot');
+
+  perform set_config('app.current_user_id', '', true);
+  set local role anon;
+  select taken into v_taken from deal_slot_load(v_deal) where slot_start = v_slot;
+  reset role;
+  perform assert(v_taken = 1, 'anyone can see that slot holds one booking');
+
+  begin
+    perform set_config('app.current_user_id', i.admin::text, true);
+    set local role authenticated;
+    perform take_deal_action(v_deal, 'reserve', 1, v_slot, '{}'::jsonb);
+  exception when others then
+    v_msg := sqlerrm;
+  end;
+  reset role;
+  perform assert(v_msg ilike '%full%', 'someone else is refused the full slot, by the slot cap');
+
+  perform set_config('app.current_user_id', i.admin::text, true);
+  set local role authenticated;
+  v_act := take_deal_action(v_deal, 'reserve', 1, v_slot + interval '1 hour', '{}'::jsonb);
+  reset role;
+  perform assert(v_act.id is not null, 'the next hour still books');
+
+  perform set_config('app.current_user_id', i.customer::text, true);
+  set local role authenticated;
+  perform cancel_action((select id from customer_actions
+                          where deal_id = v_deal and customer_id = i.customer and slot_start = v_slot));
+  reset role;
+  perform set_config('app.current_user_id', i.merchant::text, true);
+  set local role authenticated;
+  v_act := take_deal_action(v_deal, 'reserve', 1, v_slot, '{}'::jsonb);
+  reset role;
+  perform assert(v_act.id is not null, 'a cancelled booking frees its slot');
+end $$;
+
 select '--- RLS assertions passed ---' as result;

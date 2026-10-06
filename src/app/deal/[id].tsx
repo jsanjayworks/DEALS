@@ -113,7 +113,7 @@ function eligibilityLines(deal: DealCardModel): string[] {
 }
 
 /** Shown elsewhere on the page: group size and vehicles under "Who can use it". */
-const NOT_A_TAG = new Set(['party_min', 'party_max', 'vehicles']);
+const NOT_A_TAG = new Set(['party_min', 'party_max', 'vehicles', 'slot_capacity']);
 
 function attributeLabel(key: string, value: AttributeValue): string | null {
   if (value === false || NOT_A_TAG.has(key) || Array.isArray(value)) return null;

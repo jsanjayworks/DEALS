@@ -13,6 +13,7 @@ import { dealParty } from '../data/party';
 import { dealVehicleTags } from '../data/vehicles';
 import { matchPhoto } from '../data/photo-library';
 import { keywordsFrom } from './classify';
+import { slotCapacity } from '../data/booking';
 import type {
   AttributeValue,
   AudienceKind,
@@ -54,6 +55,8 @@ export interface WizardForm {
   max_qty_per_customer: string;
   booking_required: boolean;
   advance_booking_hours: string;
+  /** Most bookings one time slot takes, e.g. tables at 8 PM; empty for no limit. */
+  slot_capacity: string;
   audience: AudienceKind;
   min_age: number | null;
   min_spend: string;
@@ -160,6 +163,7 @@ export function emptyForm(now: Date = new Date()): WizardForm {
     max_qty_per_customer: '2',
     booking_required: false,
     advance_booking_hours: '',
+    slot_capacity: '',
     audience: 'everyone',
     min_age: null,
     min_spend: '',
@@ -203,6 +207,7 @@ export function fromDeal(d: Deal): WizardForm {
     max_qty_per_customer: str(d.max_qty_per_customer),
     booking_required: d.booking_required,
     advance_booking_hours: str(d.eligibility.advance_booking_hours),
+    slot_capacity: str(slotCapacity(d.attributes)),
     audience: d.eligibility.audience,
     min_age: d.eligibility.min_age,
     min_spend: str(d.eligibility.min_spend),
@@ -240,6 +245,10 @@ function attributesOf(f: WizardForm): Record<string, AttributeValue> {
   delete out.party_min;
   delete out.party_max;
   delete out.vehicles;
+  delete out.slot_capacity;
+  // A per-slot cap only means something when customers pick a time.
+  const perSlot = f.booking_required ? num(f.slot_capacity) : null;
+  if (perSlot != null && perSlot >= 1 && Number.isInteger(perSlot)) out.slot_capacity = perSlot;
   if (f.party) {
     out.party_min = f.party[0];
     out.party_max = f.party[1];
@@ -370,6 +379,10 @@ export function validateStep(step: StepKey, f: WizardForm): FieldErrors {
         const h = num(f.advance_booking_hours);
         if (f.advance_booking_hours.trim() && (h == null || h < 0 || h > 168)) {
           e.advance_booking_hours = 'Between 0 and 168 hours';
+        }
+        const perSlot = num(f.slot_capacity);
+        if (f.slot_capacity.trim() && (perSlot == null || perSlot < 1 || perSlot > 500 || !Number.isInteger(perSlot))) {
+          e.slot_capacity = 'A whole number from 1 to 500, or leave it empty for no limit';
         }
       }
       if (f.min_spend.trim() && (num(f.min_spend) ?? -1) < 0) {

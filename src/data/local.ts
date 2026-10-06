@@ -23,11 +23,13 @@ import { SEED_ADMIN_QUEUE_DEALS, SEED_DEALS, SEED_PIPELINE_DEALS } from './seed-
 import { dealToCard, haversineKm } from './mapping';
 import { matchPhoto } from './photo-library';
 import { PAY_METHOD_LABEL, paymentOf } from '../lib/payment';
+import { SLOT_HOLDING, slotCapacity, slotKey } from './booking';
 import {
   RuleViolation,
   type ActionWithDeal,
   type AppViewer,
   type BusinessOrder,
+  type SlotLoad,
   type DataSource,
   type DealDraftInput,
   type FeedQuery,
@@ -172,7 +174,8 @@ function seedActions(): CustomerAction[] {
   const now = Date.now();
   const out: CustomerAction[] = [];
   for (const deal of SEED_DEALS) {
-    if (deal.business_id !== DEMO_BUSINESS_ID || deal.capacity_total == null) continue;
+    // Bookings have their own seeding, with times (seedBookings).
+    if (deal.business_id !== DEMO_BUSINESS_ID || deal.capacity_total == null || deal.booking_required) continue;
     const taken = deal.capacity_total - (deal.capacity_remaining ?? deal.capacity_total);
     for (let i = 0; i < taken; i++) {
       const daysAgo = (i * 29) / Math.max(taken, 1) + 0.1;
@@ -210,12 +213,90 @@ function seedActions(): CustomerAction[] {
   return out;
 }
 
+/** Names for the seeded customers, so the merchant's orders read like real ones. */
+const SEED_NAMES = [
+  'Ananya Rao', 'Rahul Menon', 'Fatima Sheikh', 'Karthik Iyer', 'Sneha Patil', 'Arjun Nair', 'Divya Shetty',
+  'Vikram Reddy', 'Meghna Das', 'Rohan Kulkarni', 'Priya Hegde', 'Imran Khan', 'Kavya Gowda', 'Nikhil Jain',
+];
+
+function seedCustomers(): LocalViewer[] {
+  return Array.from({ length: 37 }, (_, i) => ({
+    id: 'usr-seed-' + i,
+    full_name: SEED_NAMES[i % SEED_NAMES.length],
+    phone: '',
+    email: '',
+    date_of_birth: null,
+    is_yolo_verified: false,
+    is_admin: false,
+    business_ids: [],
+  }));
+}
+
+/** An instant in IST: today plus `days`, at hh:mm. Slots are built the same way in the app. */
+function istAt(days: number, hh: number, mm = 0): Date {
+  const ist = new Date(Date.now() + 330 * 60_000);
+  const midnight = Date.UTC(ist.getUTCFullYear(), ist.getUTCMonth(), ist.getUTCDate()) - 330 * 60_000;
+  return new Date(midnight + days * 86_400_000 + (hh * 60 + mm) * 60_000);
+}
+
+/**
+ * Table bookings on the demo merchant's dinner table: a few tonight, and
+ * tomorrow at 8 PM every table taken, so "Full" shows in the booking sheet
+ * and Today's bookings has something in it.
+ */
+function seedBookings(): CustomerAction[] {
+  const deal = SEED_DEALS.find((d) => d.id === 'd-077');
+  if (!deal) return [];
+  const plan: [number, number, number][] = [
+    // [days from today, hour, how many]
+    [0, 19, 2],
+    [0, 20, 3],
+    [0, 21, 1],
+    [1, 19, 2],
+    [1, 20, slotCapacity(deal.attributes) ?? 6],
+    [2, 20, 3],
+  ];
+  const out: CustomerAction[] = [];
+  let n = 0;
+  for (const [days, hour, count] of plan) {
+    const slot = istAt(days, hour);
+    for (let i = 0; i < count; i++, n++) {
+      let code = '';
+      for (let k = 0; k < 6; k++) code += CODE_CHARS[(n * 11 + k * 7 + 5) % CODE_CHARS.length];
+      out.push({
+        id: 'act-book-' + n,
+        deal_id: deal.id,
+        customer_id: 'usr-seed-' + ((n * 5) % 37),
+        action_type: 'reserve',
+        // Tonight's earlier tables have been and gone.
+        status: slot.getTime() < Date.now() ? 'redeemed' : 'confirmed',
+        quantity: 4,
+        slot_start: slot.toISOString(),
+        redemption_code: 'YOLO-' + code,
+        payload: {
+          payment: {
+            status: 'paid',
+            method: (['upi', 'card', 'upi', 'netbanking'] as const)[n % 4],
+            amount: deal.deal_price,
+            currency: 'INR',
+            order_id: 'ORD-' + code,
+            paid_at: new Date(slot.getTime() - (2 + (n % 30)) * 3_600_000).toISOString(),
+            mock: true,
+          },
+        },
+        created_at: new Date(Math.min(Date.now() - 60_000 * (n + 1), slot.getTime() - (2 + (n % 30)) * 3_600_000)).toISOString(),
+      });
+    }
+  }
+  return out;
+}
+
 export function createStore(viewer: LocalViewer = DEMO_CUSTOMER): LocalStore {
   return {
     deals: [...SEED_DEALS, ...SEED_PIPELINE_DEALS, ...SEED_ADMIN_QUEUE_DEALS].map((d) => ({
       ...d,
     })),
-    actions: seedActions(),
+    actions: [...seedActions(), ...seedBookings()],
     notifications: [],
     history: [],
     saved: new Set<string>(),
@@ -225,14 +306,16 @@ export function createStore(viewer: LocalViewer = DEMO_CUSTOMER): LocalStore {
     tickets: [],
     views: [],
     savedAt: new Map<string, number>(),
-    users: Object.fromEntries([DEMO_CUSTOMER, DEMO_MERCHANT, DEMO_ADMIN].map((u) => [u.id, u])),
+    users: Object.fromEntries([DEMO_CUSTOMER, DEMO_MERCHANT, DEMO_ADMIN, ...seedCustomers()].map((u) => [u.id, u])),
     viewer,
   };
 }
 
 // ----------------------------------------------------------- persistence ----
 
-const STORAGE_KEY = 'yolo-demo-data-v1';
+// Bumped when the seed data changes shape or gains deals, so old snapshots give way to it.
+const STORAGE_KEY = 'yolo-demo-data-v2';
+const OLD_KEYS = ['yolo-demo-data-v1'];
 
 function webStorage(): Storage | null {
   try {
@@ -288,6 +371,7 @@ export function loadStore(): LocalStore {
   const ls = webStorage();
   if (!ls) return store;
   try {
+    for (const k of OLD_KEYS) ls.removeItem(k);
     const raw = ls.getItem(STORAGE_KEY);
     if (!raw) return store;
     const s = JSON.parse(raw) as Snapshot;
@@ -693,7 +777,7 @@ export function createLocalDataSource(
         rating_count: 0,
         locality_id: locality.id,
         address_line: address,
-        location: locality.centroid,
+        location: input.location ?? locality.centroid,
         description: input.description?.trim() || null,
         keywords: input.keywords ?? [],
         owner_role: input.owner_role?.trim() || null,
@@ -724,12 +808,14 @@ export function createLocalDataSource(
       const biz = BUSINESSES.find((b) => b.id === businessId);
       if (!biz) throw new RuleViolation('Business not found');
       const moved = biz.locality_id !== locality.id;
-      Object.assign(biz, { name, phone, email, address_line: address });
-      if (moved) {
-        Object.assign(biz, { locality_id: locality.id, location: locality.centroid });
+      Object.assign(biz, { name, phone, email, address_line: address, locality_id: locality.id });
+      // A pinned position wins; a new area without one uses the area's centre.
+      const to = input.location ?? (moved ? locality.centroid : null);
+      if (to) {
+        biz.location = to;
         for (const d of store.deals) {
           if (d.business_id === businessId && !['EXPIRED', 'ARCHIVED', 'COMPLETED'].includes(d.status)) {
-            d.location = locality.centroid;
+            d.location = to;
           }
         }
       }
@@ -974,6 +1060,20 @@ export function createLocalDataSource(
         existing: store.actions.filter((a) => a.customer_id === store.viewer.id),
       });
       if (!verdict.ok) throw new RuleViolation(verdict.reason ?? 'Not allowed');
+
+      // One time slot takes only so many bookings (0014_slot_capacity.sql does the same).
+      const perSlot = slotCapacity(deal.attributes);
+      if (input.slot_start && perSlot != null) {
+        const at = slotKey(input.slot_start);
+        const held = store.actions.filter(
+          (a) =>
+            a.deal_id === deal.id &&
+            a.slot_start != null &&
+            slotKey(a.slot_start) === at &&
+            (SLOT_HOLDING as readonly string[]).includes(a.status),
+        ).length;
+        if (held >= perSlot) throw new RuleViolation('That time is full. Pick another time.');
+      }
 
       if (deal.capacity_remaining != null) {
         deal.capacity_remaining -= quantity;
@@ -1301,6 +1401,19 @@ export function createLocalDataSource(
       const deal = findDeal(dealId);
       if (!isMember(deal.business_id)) throw new RuleViolation('Not your deal');
       return store.actions.filter((a) => a.deal_id === dealId);
+    },
+
+    async listSlotLoad(dealId): Promise<SlotLoad[]> {
+      const now = Date.now();
+      const load = new Map<number, number>();
+      for (const a of store.actions) {
+        if (a.deal_id !== dealId || a.slot_start == null) continue;
+        if (!(SLOT_HOLDING as readonly string[]).includes(a.status)) continue;
+        const at = slotKey(a.slot_start);
+        if (at < now) continue;
+        load.set(at, (load.get(at) ?? 0) + 1);
+      }
+      return [...load].map(([at, taken]) => ({ slot_start: new Date(at).toISOString(), taken }));
     },
 
     async listBusinessOrders(businessId): Promise<BusinessOrder[]> {

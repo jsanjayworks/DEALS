@@ -3,7 +3,8 @@
  *
  * "Needs attention" comes first among the lists because a rejected deal is
  * earning nothing until it is fixed, and a draft nobody submits never goes live.
- * Recent orders sit right under the actions: who took what, and what they paid.
+ * Today's bookings come first after the actions, by time, as a host stand
+ * reads them; recent orders follow: who took what, and what they paid.
  */
 
 import { useCallback, useState } from 'react';
@@ -12,7 +13,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { backend, db, type BusinessOrder } from '../../../data';
 import type { DealCardModel } from '../../../data/types';
-import { ACTION_STATUS_LABEL, quantityLabel, shortAgo } from '../../../lib/format';
+import { ACTION_STATUS_LABEL, quantityLabel, shortAgo, slotLabel } from '../../../lib/format';
+import { slotKey } from '../../../data/booking';
+import { BookingRow } from '../../../merchant/BookingRow';
 import { PAY_METHOD_LABEL, paymentOf } from '../../../lib/payment';
 import { useQuery } from '../../../lib/useQuery';
 import { MerchantDealRow } from '../../../merchant/DealRow';
@@ -40,6 +43,18 @@ export default function MerchantDashboard() {
       db.listNotifications(),
       db.listBusinessOrders(businessId).catch(() => [] as BusinessOrder[]),
     ]);
+    // Today's bookings by time, cancelled ones left out; and how many are still to come.
+    const midnight = new Date();
+    midnight.setHours(0, 0, 0, 0);
+    const dayStart = midnight.getTime();
+    const dayEnd = dayStart + 86_400_000;
+    const live = (o: BusinessOrder) => o.status !== 'cancelled' && o.status !== 'expired';
+    const todayBookings = orders
+      .filter((o) => o.slot_start && live(o) && slotKey(o.slot_start) >= dayStart && slotKey(o.slot_start) < dayEnd)
+      .sort((a, b) => slotKey(a.slot_start!) - slotKey(b.slot_start!));
+    const laterBookings = orders.filter((o) => o.slot_start && live(o) && slotKey(o.slot_start) >= dayEnd).length;
+    const takesBookings = deals.some((d) => d.booking_required) || orders.some((o) => o.slot_start);
+
     // Paid online in the chosen period, cancelled orders left out.
     const since = Date.now() - days * 86_400_000;
     const sales = orders
@@ -50,6 +65,9 @@ export default function MerchantDashboard() {
       deals,
       orders,
       sales,
+      todayBookings,
+      laterBookings,
+      takesBookings,
       unread: notifications.filter((n) => n.read_at === null).length,
     };
   }, [businessId, days]);
@@ -181,6 +199,44 @@ export default function MerchantDashboard() {
         </View>
       </View>
 
+      {data?.takesBookings ? (
+        <View style={styles.section}>
+          <View style={styles.sectionHead}>
+            <Text style={styles.sectionTitle}>
+              {'Today’s bookings' + (data.todayBookings.length ? ' · ' + data.todayBookings.length : '')}
+            </Text>
+            <Pressable
+              onPress={() => router.push('/merchant/bookings')}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel="See all bookings"
+            >
+              <Text style={styles.seeAll}>See all</Text>
+            </Pressable>
+          </View>
+          {data.todayBookings.length > 0 ? (
+            <View style={styles.orders}>
+              {data.todayBookings.slice(0, 8).map((b, i, shown) => (
+                <BookingRow
+                  key={b.id}
+                  booking={b}
+                  last={i === shown.length - 1}
+                  onPress={() => router.push({ pathname: '/merchant/deal/[id]', params: { id: b.deal_id } })}
+                />
+              ))}
+            </View>
+          ) : (
+            <Text style={styles.noBookings}>
+              No bookings today.
+              {data.laterBookings ? ' ' + data.laterBookings + ' coming up on the next days.' : ''}
+            </Text>
+          )}
+          {data.todayBookings.length > 8 ? (
+            <Text style={styles.noBookings}>And {data.todayBookings.length - 8} more today, under See all.</Text>
+          ) : null}
+        </View>
+      ) : null}
+
       {orders.length > 0 ? (
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Recent orders</Text>
@@ -254,6 +310,8 @@ function OrderRow({ order, last, onPress }: { order: BusinessOrder; last: boolea
         ? 'Enquiry'
         : 'Free';
   const meta = [
+    // A booking says when first: that is what the merchant plans around.
+    order.slot_start ? slotLabel(order.slot_start) : null,
     ACTION_STATUS_LABEL[order.status],
     quantityLabel(order.action_type, order.quantity),
     paid ? paid.order_id : order.redemption_code,
@@ -297,6 +355,10 @@ const styles = StyleSheet.create({
   screen: {
     flex: 1,
     backgroundColor: color.background,
+  },
+  noBookings: {
+    ...type.caption,
+    color: color.textSecondary,
   },
   orders: {
     borderRadius: radius.xl,

@@ -33,6 +33,7 @@ const EXACT: Record<string, string> = {
   '/merchant/insights': 'Insights',
   '/merchant/verify': 'Get YOLO Verified',
   '/merchant/business': 'Business details',
+  '/merchant/bookings': 'Bookings',
   '/admin': 'Review queue',
   '/admin/businesses': 'Business verification',
   '/admin/reports': 'Reports',

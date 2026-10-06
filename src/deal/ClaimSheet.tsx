@@ -15,10 +15,12 @@
  * payload, so the order, My Deals and the merchant's orders all show it.
  */
 
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import QRCode from 'react-native-qrcode-svg';
 import { db, RuleViolation } from '../data';
+import { slotCapacity, slotKey } from '../data/booking';
+import { useQuery } from '../lib/useQuery';
 import { useViewer } from '../state/session';
 import type { CustomerAction, CustomerActionType, DealCardModel } from '../data/types';
 import { checkAction, mintsCode } from '../domain/rules';
@@ -71,12 +73,15 @@ function toMinutes(t: string): number {
   return (h || 0) * 60 + (m || 0);
 }
 
+/** Whether a start time has no room left, given bookings held per slot. */
+type IsFull = (t: Date) => boolean;
+
 /**
  * Up to a week of days the deal runs on that still have a time to book,
  * stopping at its end date. A day with nothing left (today, late in the
- * evening) is skipped rather than offered empty.
+ * evening, or every table taken) is skipped rather than offered empty.
  */
-function slotDays(deal: DealCardModel, actionType: CustomerActionType, now: Date): SlotDay[] {
+function slotDays(deal: DealCardModel, actionType: CustomerActionType, now: Date, isFull: IsFull): SlotDay[] {
   const out: SlotDay[] = [];
   const allowed = deal.availability.days;
   const end = new Date(deal.ends_at).getTime();
@@ -85,7 +90,7 @@ function slotDays(deal: DealCardModel, actionType: CustomerActionType, now: Date
     if (allowed.length > 0 && !allowed.includes(p.dow)) continue;
     if (istInstant(p.y, p.m, p.d, 0, 0).getTime() > end) break;
     const times = slotTimes(deal, p, actionType, now);
-    if (times.length === 0) continue;
+    if (times.length === 0 || times.every(isFull)) continue;
     const label = i === 0 ? 'Today' : i === 1 ? 'Tomorrow' : DAY_SHORT[p.dow] + ' ' + p.d;
     out.push({ key: p.y + '-' + p.m + '-' + p.d, label, ...p, times });
   }
@@ -185,9 +190,23 @@ function ClaimSheetOpen({
     (deal.booking_required && actionType !== 'enquiry');
   const isEnquiry = actionType === 'enquiry';
 
+  // Bookings already held per time slot, when the deal caps each slot.
+  const perSlot = needsSlot ? slotCapacity(deal.attributes) : null;
+  const fetchLoad = useCallback(
+    () => (perSlot != null ? db.listSlotLoad(deal.id) : Promise.resolve([])),
+    [deal.id, perSlot],
+  );
+  const { data: load, reload: reloadLoad } = useQuery(fetchLoad);
+  const held = useMemo(() => new Map((load ?? []).map((l) => [slotKey(l.slot_start), l.taken])), [load]);
+  const left = useCallback(
+    (t: Date) => (perSlot == null ? null : Math.max(0, perSlot - (held.get(t.getTime()) ?? 0))),
+    [perSlot, held],
+  );
+  const isFull = useCallback((t: Date) => left(t) === 0, [left]);
+
   const days = useMemo(
-    () => (needsSlot ? slotDays(deal, actionType, now) : []),
-    [deal, needsSlot, actionType, now],
+    () => (needsSlot ? slotDays(deal, actionType, now, isFull) : []),
+    [deal, needsSlot, actionType, now, isFull],
   );
   const day = days.find((d) => d.key === dayKey) ?? days[0] ?? null;
   const times = day?.times ?? [];
@@ -208,7 +227,9 @@ function ClaimSheetOpen({
     existing,
   });
 
-  const canSubmit = verdict.ok && !noTimes && (!needsSlot || slot !== null) && !submitting;
+  // A slot picked before the counts arrived, or taken since, is no longer offered.
+  const slotFull = slot !== null && isFull(new Date(slot));
+  const canSubmit = verdict.ok && !noTimes && !slotFull && (!needsSlot || slot !== null) && !submitting;
 
   const submit = async (payment?: MockPayment) => {
     setSubmitting(true);
@@ -231,7 +252,12 @@ function ClaimSheetOpen({
         (e instanceof RuleViolation ? e.message : 'Something went wrong. Please try again.') +
           (payment ? ' Nothing was charged.' : ''),
       );
-      if (payment) setStage('pay');
+      // Someone may have taken the last table meanwhile: show the slots as they are now.
+      if (perSlot != null) {
+        reloadLoad();
+        setSlot(null);
+        if (payment) setStage('form');
+      } else if (payment) setStage('pay');
     } finally {
       setSubmitting(false);
     }
@@ -317,7 +343,7 @@ function ClaimSheetOpen({
             >
               {noTimes
                 ? 'No times left'
-                : needsSlot && !slot
+                : needsSlot && (!slot || slotFull)
                   ? 'Pick a time'
                   : pays && total != null
                     ? 'Continue to pay ' + inr(total)
@@ -404,20 +430,29 @@ function ClaimSheetOpen({
               <View style={styles.chips}>
                 {times.map((t) => {
                   const iso = t.toISOString();
+                  const room = left(t);
+                  const full = room === 0;
                   return (
                     <Chip
                       key={iso}
-                      selected={slot === iso}
+                      selected={slot === iso && !full}
+                      disabled={full}
                       onPress={() => {
                         hapticTap();
                         setSlot(iso);
+                        setError(null);
                       }}
                     >
-                      {istTimeLabel(t)}
+                      {istTimeLabel(t) + (full ? ' · Full' : room != null && room <= 2 ? ' · ' + room + ' left' : '')}
                     </Chip>
                   );
                 })}
               </View>
+              {perSlot != null ? (
+                <Text style={styles.slotNote}>
+                  {perSlot === 1 ? 'One booking' : 'Up to ' + perSlot + ' bookings'} per time. Full times are crossed out.
+                </Text>
+              ) : null}
             </>
           ) : null}
         </View>
@@ -668,6 +703,11 @@ function PaymentStep({
 const styles = StyleSheet.create({
   methods: {
     gap: space.sm,
+  },
+  slotNote: {
+    ...type.small,
+    color: color.textMuted,
+    marginTop: space.sm,
   },
   method: {
     flexDirection: 'row',

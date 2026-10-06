@@ -42,6 +42,12 @@
           "photosPermission": "YOLO Deals uses your photos to set your profile picture.",
           "cameraPermission": "YOLO Deals uses the camera to take your profile picture."
         }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "YOLO Deals uses your location to show the deals nearest to you."
+        }
       ]
     ],
     "scheme": "yolodeals",

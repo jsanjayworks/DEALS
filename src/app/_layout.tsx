@@ -24,7 +24,7 @@ import { Fraunces_600SemiBold } from '@expo-google-fonts/fraunces/600SemiBold';
 import { color } from '../theme/tokens';
 import { installFocusRing } from '../lib/focus-ring';
 import { ChromeProvider } from '../ui/chrome';
-import { LaunchSplash } from '../ui/LaunchSplash';
+import { LaunchSplash, markLaunchDone } from '../ui/LaunchSplash';
 import { LoadErrorBanner } from '../ui/LoadErrorBanner';
 import { PageTitle } from '../ui/PageTitle';
 
@@ -55,7 +55,10 @@ export default function RootLayout() {
     Fraunces_600SemiBold,
   });
   const [splashDone, setSplashDone] = useState(!WEB);
-  const endSplash = useCallback(() => setSplashDone(true), []);
+  const endSplash = useCallback(() => {
+    setSplashDone(true);
+    markLaunchDone();
+  }, []);
 
   useEffect(() => {
     // Hide on error too: a missing font should degrade to the system face,

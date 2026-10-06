@@ -24,6 +24,8 @@ import { useLocality, useSession, useViewer, useViewerReady } from '../state/ses
 import { color, space, type } from '../theme/tokens';
 import { Button, Chip, Field, Header, Label } from '../components';
 import { AutoCategory } from '../merchant/AutoCategory';
+import { PinLocation } from '../merchant/PinLocation';
+import type { LatLng } from '../data/types';
 import { classifyOffering, keywordsFrom } from '../merchant/classify';
 
 export default function ListBusinessScreen() {
@@ -90,6 +92,8 @@ function SetupForm({
   // Matched by slug: the seed and Supabase share slugs, not ids.
   const categoryId = refs?.categories.find((c) => c.slug === slug)?.id ?? null;
   const [pickedLocality, setPickedLocality] = useState<string | null>(null);
+  /** The shop's exact position, when pinned with the device; with its area's name. */
+  const [pin, setPin] = useState<{ point: LatLng; area: string } | null>(null);
   const [address, setAddress] = useState('');
   const [phone, setPhone] = useState(defaultPhone);
   const [busy, setBusy] = useState(false);
@@ -125,6 +129,7 @@ function SetupForm({
         locality_id: localityId,
         address_line: address.trim(),
         phone: phone.trim() || undefined,
+        location: pin?.point,
         description: [does.trim(), sells.trim()].filter(Boolean).join('. '),
         keywords: keywordsFrom(does, sells),
         owner_role: role.trim() || undefined,
@@ -199,9 +204,27 @@ function SetupForm({
         />
 
         <Label>Area</Label>
+        <PinLocation
+          pinned={pin?.area ?? null}
+          onFound={(point, area) => {
+            setPin({ point, area });
+            // Matched by name: the seed and Supabase share names, not ids.
+            const id = refs?.localities.find((l) => l.name === area)?.id;
+            if (id) setPickedLocality(id);
+            setError(null);
+          }}
+        />
         <View style={styles.kinds}>
           {(refs?.localities ?? []).map((l) => (
-            <Chip key={l.id} selected={l.id === localityId} onPress={() => edit(setPickedLocality)(l.id)}>
+            <Chip
+              key={l.id}
+              selected={l.id === localityId}
+              onPress={() => {
+                // Choosing an area by hand uses its centre, not the pin.
+                if (pin && l.name !== pin.area) setPin(null);
+                edit(setPickedLocality)(l.id);
+              }}
+            >
               {l.name}
             </Chip>
           ))}

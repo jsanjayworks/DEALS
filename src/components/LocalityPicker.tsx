@@ -1,7 +1,7 @@
 /**
- * The "Deals around" picker. Choosing a locality re-centres every feed and
- * search on its centroid, the same re-centring search_deals does when a query
- * names a place.
+ * The "Deals around" picker: the device's own location at the top, then the
+ * areas. Choosing an area re-centres every feed and search on its centroid,
+ * the same re-centring search_deals does when a query names a place.
  */
 
 import { Pressable, StyleSheet, Text, View } from 'react-native';
@@ -16,6 +16,12 @@ export interface LocalityPickerProps {
   selectedId: string;
   onSelect: (id: string) => void;
   onClose: () => void;
+  /** Deals are measured from the device's position, not an area. */
+  usingLocation?: boolean;
+  /** "Use my current location"; resolves true when it worked. */
+  onUseLocation?: () => Promise<boolean>;
+  locating?: boolean;
+  locationError?: string | null;
 }
 
 export function LocalityPicker({
@@ -24,11 +30,39 @@ export function LocalityPicker({
   selectedId,
   onSelect,
   onClose,
+  usingLocation = false,
+  onUseLocation,
+  locating = false,
+  locationError = null,
 }: LocalityPickerProps) {
   return (
     <Sheet visible={visible} onClose={onClose} title="Deals around">
+      {onUseLocation ? (
+        <>
+          <Pressable
+            onPress={() => {
+              void onUseLocation().then((ok) => ok && onClose());
+            }}
+            disabled={locating}
+            accessibilityRole="radio"
+            aria-checked={usingLocation}
+            style={({ pressed }) => [styles.row, pressed && styles.pressed]}
+          >
+            <View style={[styles.pin, usingLocation && styles.pinOn]}>
+              <Icon name="map" size={18} color={usingLocation ? color.white : color.brand} />
+            </View>
+            <View style={styles.text}>
+              <Text style={styles.name}>{locating ? 'Finding you…' : 'Use my current location'}</Text>
+              <Text style={styles.city}>Deals sorted by distance from where you are</Text>
+            </View>
+            {usingLocation ? <Icon name="check" size={20} color={color.brand} strokeWidth={2.2} /> : null}
+          </Pressable>
+          {locationError ? <Text style={styles.error}>{locationError}</Text> : null}
+          <Text style={styles.or}>Or choose an area</Text>
+        </>
+      ) : null}
       {localities.map((l) => {
-        const selected = l.id === selectedId;
+        const selected = !usingLocation && l.id === selectedId;
         return (
           <Pressable
             key={l.id}
@@ -87,5 +121,16 @@ const styles = StyleSheet.create({
   city: {
     ...type.small,
     color: color.textSecondary,
+  },
+  error: {
+    ...type.captionMedium,
+    color: color.alert,
+    marginBottom: space.sm,
+  },
+  or: {
+    ...type.overline,
+    color: color.textMuted,
+    marginTop: space.md,
+    marginBottom: space.xs,
   },
 });
