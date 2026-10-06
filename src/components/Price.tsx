@@ -9,6 +9,7 @@
 import { StyleSheet, Text, View } from 'react-native';
 import { color, distanceLabel, font, inr, type } from '../theme/tokens';
 import { Icon } from './Icon';
+import { partyLabel } from '../data/party';
 
 export interface PriceProps {
   /** The price being charged. */
@@ -41,10 +42,12 @@ export interface MetaProps {
   distanceKm: number | null;
   rating: number;
   ratingCount?: number;
+  /** A group deal's size, smallest and largest party. */
+  party?: [number, number] | null;
 }
 
-/** Distance and rating, the two facts every card carries. */
-export function Meta({ distanceKm, rating, ratingCount }: MetaProps) {
+/** Distance and rating, the two facts every card carries, and a group deal's size. */
+export function Meta({ distanceKm, rating, ratingCount, party }: MetaProps) {
   return (
     <View style={styles.metaRow}>
       {distanceKm != null ? (
@@ -64,6 +67,12 @@ export function Meta({ distanceKm, rating, ratingCount }: MetaProps) {
       ) : (
         <Text style={styles.metaText}>New</Text>
       )}
+      {party ? (
+        <View style={styles.metaItem} accessibilityLabel={partyLabel(party)}>
+          <Icon name="users" size={13} color={color.textSecondary} />
+          <Text style={styles.metaText}>{partyLabel(party, true)}</Text>
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -101,8 +110,10 @@ const styles = StyleSheet.create({
   },
   metaRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     alignItems: 'center',
-    gap: 12,
+    columnGap: 12,
+    rowGap: 2,
   },
   metaItem: {
     flexDirection: 'row',

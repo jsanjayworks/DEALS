@@ -4,7 +4,7 @@
  * It edits a draft copy and only hands it back on "Show deals", so closing the
  * sheet throws the changes away instead of re-querying on every tap. Every
  * control maps to one SearchFilters field, the same fields the parser fills,
- * which is why a typed "under ₹500" and a tapped "Under ₹500" are identical.
+ * which is why a typed "under ₹500" and a tapped "Up to ₹500" are identical.
  */
 
 import { useState, type ReactNode } from 'react';
@@ -14,6 +14,9 @@ import type { DealTypeCode, SearchFilters, SortKey } from '../data/types';
 import { color, space, type } from '../theme/tokens';
 import { Button, Chip, Label, Sheet } from '../components';
 import { EMPTY_FILTERS } from './parser';
+import { PARTY_OPTIONS, partyFilterLabel } from '../data/party';
+import { choiceLabel, choiceTags } from '../data/vehicles';
+import { useSession } from '../state/session';
 
 export const SORT_OPTIONS: { key: SortKey; label: string }[] = [
   { key: 'relevance', label: 'Relevance' },
@@ -24,10 +27,10 @@ export const SORT_OPTIONS: { key: SortKey; label: string }[] = [
 
 const PRICE_OPTIONS: { label: string; max: number | null }[] = [
   { label: 'Any', max: null },
-  { label: 'Under ₹200', max: 200 },
-  { label: 'Under ₹500', max: 500 },
-  { label: 'Under ₹1,000', max: 1000 },
-  { label: 'Under ₹2,000', max: 2000 },
+  { label: 'Up to ₹200', max: 200 },
+  { label: 'Up to ₹500', max: 500 },
+  { label: 'Up to ₹1,000', max: 1000 },
+  { label: 'Up to ₹2,000', max: 2000 },
 ];
 
 const DISTANCE_OPTIONS: { label: string; km: number | null }[] = [
@@ -41,7 +44,7 @@ const DISTANCE_OPTIONS: { label: string; km: number | null }[] = [
 const TIME_OPTIONS: { label: string; value: SearchFilters['time_of_day'] }[] = [
   { label: 'Any time', value: null },
   { label: 'Morning', value: 'morning' },
-  { label: 'Lunch', value: 'lunch' },
+  { label: 'Lunchtime', value: 'lunch' },
   { label: 'Evening', value: 'evening' },
   { label: 'Night', value: 'night' },
 ];
@@ -77,6 +80,16 @@ export function FilterSheet(props: FilterSheetProps) {
 
 function FilterSheetOpen({ visible, filters, onApply, onClose, hideCategory }: FilterSheetProps) {
   const [draft, setDraft] = useState(filters);
+  const vehicleId = useSession((s) => s.vehicleId);
+  const myVehicle = choiceLabel(vehicleId);
+  const myTags = choiceTags(vehicleId);
+  const forMine = myTags.length > 0 && draft.vehicle_tags.join() === myTags.join();
+  // A typed size like "4-5 people" has no chip of its own; show it as one.
+  const typedParty =
+    (draft.party_min !== null || draft.party_max !== null) &&
+    !PARTY_OPTIONS.some((o) => o.min === draft.party_min && o.max === draft.party_max)
+      ? partyFilterLabel(draft.party_min, draft.party_max)
+      : null;
 
   const patch = (p: Partial<SearchFilters>) => setDraft((d) => ({ ...d, ...p }));
 
@@ -165,6 +178,40 @@ function FilterSheetOpen({ visible, filters, onApply, onClose, hideCategory }: F
           </Chip>
         ))}
       </Group>
+
+      <Group label="Who's going">
+        <Chip
+          selected={draft.party_min === null && draft.party_max === null}
+          onPress={() => patch({ party_min: null, party_max: null })}
+        >
+          Anyone
+        </Chip>
+        {PARTY_OPTIONS.map((o) => (
+          <Chip
+            key={o.label}
+            selected={draft.party_min === o.min && draft.party_max === o.max}
+            onPress={() => patch({ party_min: o.min, party_max: o.max })}
+          >
+            {o.label}
+          </Chip>
+        ))}
+        {typedParty ? (
+          <Chip selected onPress={() => undefined}>
+            {typedParty}
+          </Chip>
+        ) : null}
+      </Group>
+
+      {myVehicle ? (
+        <Group label="Vehicle">
+          <Chip selected={draft.vehicle_tags.length === 0} onPress={() => patch({ vehicle_tags: [] })}>
+            Any
+          </Chip>
+          <Chip selected={forMine} onPress={() => patch({ vehicle_tags: myTags })}>
+            {'For ' + (myVehicle.startsWith('your ') ? myVehicle : 'my ' + myVehicle)}
+          </Chip>
+        </Group>
+      ) : null}
 
       <Group label="When">
         {TIME_OPTIONS.map((o) => (

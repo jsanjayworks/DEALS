@@ -12,17 +12,27 @@
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
+        "backgroundColor": "#16325C",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
-      "package": "com.yolo.deals"
+      "package": "com.yolo.deals",
+      "permissions": [
+        "android.permission.RECORD_AUDIO"
+      ]
     },
     "web": {
+      "output": "server",
       "favicon": "./assets/favicon.png",
-      "bundler": "metro"
+      "bundler": "metro",
+      "name": "YOLO Deals: offers near you in Bengaluru",
+      "shortName": "YOLO Deals",
+      "description": "Live deals from local restaurants, salons, garages, gyms and more near you. Claim in a tap, show your code, save.",
+      "lang": "en-IN",
+      "themeColor": "#16325C",
+      "backgroundColor": "#F4F5F8"
     },
     "plugins": [
       "expo-router",
@@ -37,6 +47,13 @@
     "scheme": "yolodeals",
     "experiments": {
       "typedRoutes": true
-    }
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "48ac153f-806f-41dc-aefe-3e53c3939116"
+      }
+    },
+    "owner": "jsanjayworks"
   }
 }

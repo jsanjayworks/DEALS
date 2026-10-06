@@ -106,7 +106,12 @@ export function DealTiles({
 
       <View style={styles.tile}>
         <Text style={styles.kicker}>When</Text>
-        <Text style={[styles.big, styles.mid]} numberOfLines={1} adjustsFontSizeToFit>
+        {/* Shrinks for a long window ("12 PM–3:30 PM"): the web build cannot fit text to its box. */}
+        <Text
+          style={[styles.big, styles.mid, (window ?? days).length > 10 && styles.long]}
+          numberOfLines={1}
+          adjustsFontSizeToFit
+        >
           {window ?? days}
         </Text>
         <Text style={[styles.sub, deal.ending_soon && { color: color.alert }]} numberOfLines={1}>
@@ -205,6 +210,11 @@ const styles = StyleSheet.create({
   mid: {
     fontSize: 21,
     lineHeight: 28,
+  },
+  long: {
+    fontSize: 16,
+    lineHeight: 28,
+    letterSpacing: -0.3,
   },
   unit: {
     fontFamily: font.medium,

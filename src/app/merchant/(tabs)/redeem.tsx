@@ -9,7 +9,8 @@
 
 import { useRef, useState } from 'react';
 import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { db, RuleViolation } from '../../../data';
+import { backend, db, RuleViolation } from '../../../data';
+import { DEMO_REDEEM_CODE } from '../../../data/local';
 import type { CustomerAction, DealCardModel } from '../../../data/types';
 import { ACTION_LABEL, slotLabel } from '../../../lib/format';
 import { hapticSuccess } from '../../../lib/device';
@@ -35,6 +36,8 @@ export default function RedeemScreen() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [recent, setRecent] = useState<Redeemed[]>([]);
+  /** The green confirmation belongs to the last attempt only. */
+  const [justRedeemed, setJustRedeemed] = useState(false);
   const input = useRef<TextInput>(null);
 
   const body = normalise(code).slice(PREFIX.length);
@@ -44,11 +47,13 @@ export default function RedeemScreen() {
     if (!ready) return;
     setBusy(true);
     setError(null);
+    setJustRedeemed(false);
     try {
       const action = await db.redeemAction(PREFIX + body);
       const deal = await db.getDeal(action.deal_id);
       hapticSuccess();
       setRecent((r) => [{ action, deal, at: new Date() }, ...r].slice(0, 10));
+      setJustRedeemed(true);
       setCode('');
       input.current?.focus();
     } catch (e) {
@@ -65,6 +70,9 @@ export default function RedeemScreen() {
       <Header title="Redeem a code" dark />
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <Text style={styles.lead}>Type the code the customer shows you.</Text>
+        {backend === 'local' ? (
+          <Text style={styles.demoHint}>Demo: the demo customer holds {DEMO_REDEEM_CODE} for the dosa deal.</Text>
+        ) : null}
 
         <View style={[styles.codeBox, error && styles.codeBoxError]}>
           <Text style={styles.prefix}>{PREFIX}</Text>
@@ -76,7 +84,7 @@ export default function RedeemScreen() {
               setError(null);
             }}
             onSubmitEditing={() => void redeem()}
-            placeholder="AB12CD"
+            placeholder="K7M2QX"
             placeholderTextColor={color.textMuted}
             autoCapitalize="characters"
             autoCorrect={false}
@@ -98,7 +106,7 @@ export default function RedeemScreen() {
           </Button>
         </View>
 
-        {last ? (
+        {last && justRedeemed ? (
           <View style={styles.success} accessibilityLiveRegion="polite">
             <View style={styles.tick}>
               <Icon name="check" size={22} color={color.onCta} strokeWidth={2.4} />
@@ -153,6 +161,11 @@ const styles = StyleSheet.create({
     padding: space.xl,
     paddingBottom: space.xxxl,
   },
+  demoHint: {
+    ...type.caption,
+    color: color.textSecondary,
+    marginTop: space.xs,
+  },
   lead: {
     ...type.body,
     color: color.textSecondary,
@@ -179,6 +192,9 @@ const styles = StyleSheet.create({
   },
   codeInput: {
     flex: 1,
+    // Without this the web input keeps its 20-character default width and
+    // pushes the whole column sideways on a phone.
+    minWidth: 0,
     height: '100%',
     fontFamily: font.bold,
     fontSize: 28,

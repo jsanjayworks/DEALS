@@ -78,10 +78,81 @@ const STATUS: Record<SupportTicket['status'], { label: string; tone: 'pending' |
   closed: { label: 'Closed', tone: 'neutral' },
 };
 
+/** One request as a conversation, with a box to answer back. */
+function TicketItem({
+  ticket: t,
+  last,
+  highlighted,
+  onSent,
+}: {
+  ticket: SupportTicket;
+  last: boolean;
+  highlighted: boolean;
+  onSent: () => void;
+}) {
+  const [text, setText] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const send = async () => {
+    if (text.trim().length < 2) return setError('Write your message first');
+    setBusy(true);
+    setError(null);
+    try {
+      await db.followUpSupportTicket(t.id, text.trim());
+      setText('');
+      hapticSuccess();
+      onSent();
+    } catch (e) {
+      setError(e instanceof RuleViolation ? e.message : 'That did not send. Try again.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <View style={[styles.ticket, !last && styles.line, highlighted && styles.ticketHighlighted]}>
+      <View style={styles.ticketHead}>
+        <Text style={styles.ticketTopic}>{TOPIC_LABEL[t.topic]}</Text>
+        <StatusPill label={STATUS[t.status].label} tone={STATUS[t.status].tone} />
+      </View>
+      {t.messages.map((m, i) => (
+        <View key={i} style={m.author === 'team' ? styles.reply : styles.mine}>
+          <Text style={styles.replyBy}>{(m.author === 'team' ? 'YOLO support' : 'You') + ' · ' + dateLabel(m.created_at)}</Text>
+          <Text style={styles.para}>{m.body}</Text>
+        </View>
+      ))}
+      {t.status === 'open' ? (
+        <Text style={styles.small}>We will reply here, and you will get a notification.</Text>
+      ) : null}
+      {t.status !== 'open' ? (
+        <View style={styles.followUp}>
+          <TextInput
+            value={text}
+            onChangeText={(v) => {
+              setText(v);
+              setError(null);
+            }}
+            placeholder={t.status === 'closed' ? 'Still need help? Write to reopen this' : 'Reply to YOLO support'}
+            placeholderTextColor={color.textMuted}
+            multiline
+            accessibilityLabel={'Reply about ' + TOPIC_LABEL[t.topic]}
+            style={styles.followInput}
+          />
+          {error ? <Text style={styles.error}>{error}</Text> : null}
+          <Button small variant="secondary" loading={busy} onPress={() => void send()}>
+            Send
+          </Button>
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
 export default function HelpScreen() {
   const insets = useSafeAreaInsets();
   const viewer = useViewer();
-  const params = useLocalSearchParams<{ action?: string; topic?: string }>();
+  const params = useLocalSearchParams<{ action?: string; topic?: string; ticket?: string }>();
   const close = () => (router.canGoBack() ? router.back() : router.replace('/profile'));
 
   const fetchAll = useCallback(async () => {
@@ -102,6 +173,25 @@ export default function HelpScreen() {
           <Text style={styles.title} accessibilityRole="header">
             How can we help?
           </Text>
+
+          {/* A returning customer's own requests come first: that is usually why they are here. */}
+          {data && data.tickets.length > 0 ? (
+            <>
+              <Text style={styles.section}>Your requests</Text>
+              <View style={styles.card}>
+                {data.tickets.map((t, i) => (
+                  <TicketItem
+                    key={t.id}
+                    ticket={t}
+                    last={i === data.tickets.length - 1}
+                    highlighted={params.ticket === t.id}
+                    onSent={reload}
+                  />
+                ))}
+              </View>
+              <Text style={styles.section}>Answers</Text>
+            </>
+          ) : null}
 
           <View style={styles.card}>
             {FAQ.map((f, i) => (
@@ -130,33 +220,6 @@ export default function HelpScreen() {
             </View>
           )}
 
-          {data && data.tickets.length > 0 ? (
-            <>
-              <Text style={styles.section}>Your requests</Text>
-              <View style={styles.card}>
-                {data.tickets.map((t, i) => (
-                  <View key={t.id} style={[styles.ticket, i < data.tickets.length - 1 && styles.line]}>
-                    <View style={styles.ticketHead}>
-                      <Text style={styles.ticketTopic}>{TOPIC_LABEL[t.topic]}</Text>
-                      <StatusPill label={STATUS[t.status].label} tone={STATUS[t.status].tone} />
-                    </View>
-                    <Text style={styles.para} numberOfLines={3}>
-                      {t.message}
-                    </Text>
-                    <Text style={styles.small}>Sent {dateLabel(t.created_at)}</Text>
-                    {t.reply ? (
-                      <View style={styles.reply}>
-                        <Text style={styles.replyBy}>YOLO support{t.replied_at ? ' · ' + dateLabel(t.replied_at) : ''}</Text>
-                        <Text style={styles.para}>{t.reply}</Text>
-                      </View>
-                    ) : (
-                      <Text style={styles.small}>Our reply will appear here, and you will get a notification.</Text>
-                    )}
-                  </View>
-                ))}
-              </View>
-            </>
-          ) : null}
         </ScrollView>
       </KeyboardAvoidingView>
     </View>
@@ -465,5 +528,30 @@ const styles = StyleSheet.create({
     ...type.smallMedium,
     fontFamily: font.semibold,
     color: color.brand,
+  },
+  mine: {
+    marginTop: space.sm,
+    gap: 2,
+  },
+  ticketHighlighted: {
+    backgroundColor: color.surfaceSoftAlt,
+    borderRadius: radius.lg,
+  },
+  followUp: {
+    marginTop: space.sm,
+    gap: space.sm,
+    alignItems: 'flex-start',
+  },
+  followInput: {
+    alignSelf: 'stretch',
+    minHeight: 64,
+    padding: space.md,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: color.border,
+    backgroundColor: color.surface,
+    textAlignVertical: 'top',
+    ...type.body,
+    color: color.text,
   },
 });

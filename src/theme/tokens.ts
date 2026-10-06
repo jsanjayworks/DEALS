@@ -450,10 +450,11 @@ export function distanceLabel(km: number): string {
  * Aqua sits under 3:1 against white, so every chart that uses it must print its
  * values as text beside the marks.
  */
+/** In the brand's own colours: navy, gold, and a soft steel blue that tells them apart. */
 export const chart = {
-  series1: '#2A78D6',
-  series2: '#EB6834',
-  series3: '#1BAF7A',
+  series1: '#16325C',
+  series2: '#D6A93A',
+  series3: '#7C93B8',
   /** Single-series bars, where identity is not in question. */
   single: color.brand,
   track: color.border,

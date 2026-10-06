@@ -36,7 +36,7 @@ import {
 import { useQuery } from '../../lib/useQuery';
 import { useBusiness } from '../../merchant/useBusiness';
 import { color, radius, space, type } from '../../theme/tokens';
-import { Button, Chip, Field, Header, Icon, Label } from '../../components';
+import { Button, Chip, EmptyState, Field, Header, Icon, Label } from '../../components';
 
 const ROLES: { key: VerificationInput['owner_role']; label: string }[] = [
   { key: 'owner', label: 'Owner' },
@@ -62,9 +62,24 @@ export default function VerifyBusinessScreen() {
 
   return (
     <View style={styles.screen}>
-      <Header title="Get YOLO Verified" onBack={close} />
-      {/* Mounted once the last request is known, so a declined one comes back pre-filled. */}
-      {business && data ? (
+      <Header title="Get YOLO Verified" dark onBack={close} />
+      {/* Already verified, or a request is waiting: say so instead of an empty form. */}
+      {business && business.verification_status === 'verified' ? (
+        <EmptyState
+          icon="shield"
+          title="You are YOLO Verified"
+          body={business.name + ' shows the badge on every deal. Nothing more to do here.'}
+          action={<Button onPress={close}>Back to the dashboard</Button>}
+        />
+      ) : business && data?.last?.status === 'submitted' ? (
+        <EmptyState
+          icon="clock"
+          title="Your request is in review"
+          body="We check the registration details within two working days and notify you either way."
+          action={<Button onPress={close}>Back to the dashboard</Button>}
+        />
+      ) : business && data ? (
+        // Mounted once the last request is known, so a declined one comes back pre-filled.
         <VerifyForm business={business} last={data.last} isFood={data.isFood} onDone={close} />
       ) : null}
     </View>

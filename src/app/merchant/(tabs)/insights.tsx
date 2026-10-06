@@ -29,6 +29,7 @@ interface DealRow {
 function pct(part: number, whole: number): string {
   if (whole <= 0) return '–';
   const p = (part / whole) * 100;
+  if (p > 0 && p < 0.1) return '<0.1%';
   return (p < 1 && p > 0 ? p.toFixed(1) : Math.round(p)) + '%';
 }
 
@@ -322,6 +323,9 @@ const styles = StyleSheet.create({
   barTrack: {
     flex: 1,
     height: 8,
+    borderRadius: 4,
+    backgroundColor: chart.track,
+    overflow: 'hidden',
   },
   bar: {
     height: '100%',

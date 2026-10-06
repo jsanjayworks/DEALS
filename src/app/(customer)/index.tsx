@@ -33,7 +33,7 @@ import { LOCALITIES, TOP_CATEGORIES } from '../../data/seed-reference';
 import { db } from '../../data';
 import type { Category, DealCardModel, FeedSection } from '../../data/types';
 import { useQuery } from '../../lib/useQuery';
-import { SUGGESTED_QUERIES } from '../../search/parser';
+import { SUGGESTED_QUERIES, emptyFilters } from '../../search/parser';
 import {
   useDisplayName,
   RADIUS_OPTIONS,
@@ -59,6 +59,11 @@ import { CountCard } from '../../home/CountCard';
 import { useHideOnScroll } from '../../ui/chrome';
 import { useTabBarSpace } from '../../ui/FloatingTabBar';
 import { Container, useLayout } from '../../ui/layout';
+import { setLaunchRect, type LaunchRect } from '../../ui/launch';
+import { VehicleCard } from '../../home/VehicleCard';
+import { choiceLabel, choiceTags } from '../../data/vehicles';
+import type { TasteItem } from '../../data/api';
+import { reach } from '../../lib/a11y';
 
 function greeting(now = new Date()): string {
   const h = now.getHours();
@@ -93,6 +98,21 @@ interface HomeData {
   ending: DealCardModel[];
   /** Deals at ₹200 or less, and a few of their categories to name. */
   under: { count: number; names: string };
+  /** Deals near them ranked by what they like; empty until they have a history. */
+  forYou: DealCardModel[];
+  because: string | undefined;
+  /** Deals for their vehicle within reach, when they have picked one. */
+  vehicleCount: number | null;
+}
+
+/** "Because you like chicken and dinner": the strongest tag and category. */
+function becauseLine(taste: TasteItem[]): string | undefined {
+  const tag = taste.find((t) => t.kind === 'tag');
+  const cat = taste.find((t) => t.kind === 'category');
+  const names = [tag?.label, cat?.label.toLowerCase()].filter(
+    (x, i, all): x is string => !!x && all.indexOf(x) === i,
+  );
+  return names.length ? 'Because you like ' + names.join(' and ') : undefined;
 }
 
 const UNDER = 200;
@@ -108,10 +128,12 @@ export default function HomeScreen() {
   const setLocality = useSession((s) => s.setLocality);
   const radiusM = useSession((s) => s.radiusM);
   const setRadius = useSession((s) => s.setRadius);
-  const account = useSession((s) => s.account);
   const displayName = useDisplayName();
   const viewer = useViewer();
+  // Re-read when the signed-in person changes, demo accounts included.
+  const account = viewer?.id ?? null;
   const mode = useSession((s) => s.mode);
+  const vehicleId = useSession((s) => s.vehicleId);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [greet] = useState(() => !greetedThisLaunch);
 
@@ -121,9 +143,24 @@ export default function HomeScreen() {
   // the feed may show, because age-restricted deals are hidden, not blocked.
   const fetchHome = useCallback(async (): Promise<HomeData> => {
     void account;
-    const [all, notifications, ...lists] = await Promise.all([
+    void viewer;
+    const vehicleTags = choiceTags(vehicleId);
+    const [all, notifications, forYou, taste, vehicleDeals, ...lists] = await Promise.all([
       db.feedNearby({ origin, radius_m: radiusM, section: 'near_you', limit: 200 }),
       db.listNotifications(),
+      db.feedForYou({ origin, radius_m: Math.max(radiusM, 5000), limit: 12 }).catch(() => []),
+      db.getMyTaste().catch(() => []),
+      vehicleTags.length
+        ? db
+            .searchDeals({
+              q: '',
+              filters: { ...emptyFilters(), vehicle_tags: vehicleTags, radius_km: 10 },
+              origin,
+              limit: 1,
+            })
+            .then((r) => r.total)
+            .catch(() => null)
+        : Promise.resolve(null),
       ...SECTIONS.map((section: FeedSection) =>
         // Trending runs to a top 20; the other rails stop at 12.
         db.feedNearby({ origin, radius_m: radiusM, section, limit: section === 'trending' ? 20 : 12 }),
@@ -150,8 +187,11 @@ export default function HomeScreen() {
         count: cheap.length,
         names: cheapNames.slice(0, 3).join(', ') + (cheapNames.length > 3 ? '…' : ''),
       },
+      forYou: forYou as DealCardModel[],
+      because: becauseLine(taste as TasteItem[]),
+      vehicleCount: vehicleDeals as number | null,
     };
-  }, [origin, radiusM, account]);
+  }, [origin, radiusM, account, viewer, vehicleId]);
 
   const { data, loading } = useQuery(fetchHome);
 
@@ -173,12 +213,18 @@ export default function HomeScreen() {
   }, []);
   const openSpotlight = useCallback((d: DealCardModel) => openDeal(d, 'spotlight'), [openDeal]);
 
-  const openCategory = useCallback(
-    (c: Category) => router.push({ pathname: '/category/[vertical]', params: { vertical: c.vertical } }),
-    [],
-  );
+  const openCategory = useCallback((c: Category, from: LaunchRect | null) => {
+    setLaunchRect(from);
+    router.push({ pathname: '/category/[vertical]', params: { vertical: c.vertical } });
+  }, []);
 
   // The radius is read when tapped, not captured, so these never go stale.
+  const openVehicle = useCallback(() => {
+    const id = useSession.getState().vehicleId;
+    if (id) router.push({ pathname: '/results', params: { vehicle: id, radius: '10000' } });
+    else router.push('/vehicle');
+  }, []);
+
   const seeAllNear = useCallback(
     () => router.push({ pathname: '/results', params: { radius: String(useSession.getState().radiusM) } }),
     [],
@@ -220,7 +266,10 @@ export default function HomeScreen() {
 
             <CountCard
               count={data ? data.nearbyCount : null}
-              caption={'deals live within ' + radiusLabel(radiusM) + ' of ' + locality.name}
+              caption={
+                (data?.nearbyCount === 1 ? 'deal' : 'deals') +
+                ' live within ' + radiusLabel(radiusM) + ' of ' + locality.name
+              }
               options={RADIUS_OPTIONS}
               radiusM={radiusM}
               onRadius={setRadius}
@@ -251,6 +300,10 @@ export default function HomeScreen() {
                 onPress={openCategory}
               />
             </View>
+
+            <View style={styles.vehicle}>
+              <VehicleCard label={choiceLabel(vehicleId)} count={data?.vehicleCount ?? null} onPress={openVehicle} />
+            </View>
           </Container>
         </View>
 
@@ -270,6 +323,13 @@ export default function HomeScreen() {
               loading={loading}
               onOpen={openDeal}
               onSeeAll={seeAllNear}
+            />
+            <Rail
+              title="Picked for you"
+              note={data?.because}
+              deals={data?.forYou}
+              loading={false}
+              onOpen={openDeal}
             />
             <Rail title="Trending" ranked deals={rails?.trending} loading={loading} onOpen={openDeal} />
             <Rail
@@ -391,6 +451,7 @@ function RailSection({
   onSeeAll,
   ranked,
   compact,
+  note,
 }: {
   title: string;
   deals: DealCardModel[] | undefined;
@@ -399,6 +460,8 @@ function RailSection({
   onSeeAll?: () => void;
   ranked?: boolean;
   compact?: boolean;
+  /** A line under the title: why these deals. */
+  note?: string;
 }) {
   const layout = useLayout();
   const scroller = useRef<ScrollView>(null);
@@ -418,12 +481,19 @@ function RailSection({
     <View style={styles.section}>
       <Container>
         <View style={styles.sectionHead}>
-          <Text style={styles.sectionTitle} accessibilityRole="header">
-            {title}
-            {ranked && list.length > 3 ? <Text style={styles.sectionCount}>{'  Top ' + list.length}</Text> : null}
-          </Text>
+          <View style={styles.sectionTitleCol}>
+            <Text style={styles.sectionTitle} accessibilityRole="header">
+              {title}
+              {ranked && list.length > 3 ? <Text style={styles.sectionCount}>{'  Top ' + list.length}</Text> : null}
+            </Text>
+            {note ? (
+              <Text style={styles.sectionNote} numberOfLines={1}>
+                {note}
+              </Text>
+            ) : null}
+          </View>
           {onSeeAll ? (
-            <Pressable onPress={onSeeAll} accessibilityRole="button" hitSlop={8} style={styles.seeAll}>
+            <Pressable onPress={onSeeAll} accessibilityRole="button" hitSlop={8} style={[styles.seeAll, reach(8)]}>
               <Text style={styles.seeAllText}>See all</Text>
               <Icon name="chev" size={14} color={color.text} strokeWidth={2} />
             </Pressable>
@@ -567,6 +637,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     marginBottom: space.md,
+  },
+  sectionTitleCol: {
+    flex: 1,
+    minWidth: 0,
+  },
+  sectionNote: {
+    ...type.caption,
+    color: color.textSecondary,
+  },
+  vehicle: {
+    marginTop: space.md,
   },
   sectionTitle: {
     fontFamily: font.display,

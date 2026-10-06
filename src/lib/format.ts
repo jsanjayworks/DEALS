@@ -143,6 +143,14 @@ export function slotLabel(iso: string): string {
 
 const MONTH_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
+/** "2 people" for a table, a slot or a seat; "× 2" for things, like two coffees. */
+export function quantityLabel(actionType: CustomerActionType, quantity: number): string | null {
+  if (quantity <= 1) return null;
+  return actionType === 'booking' || actionType === 'reserve' || actionType === 'registration'
+    ? quantity + ' people'
+    : '× ' + quantity;
+}
+
 /** "4 Oct" for dates in lists. */
 export function dateLabel(iso: string): string {
   const d = new Date(iso);

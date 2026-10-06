@@ -43,9 +43,9 @@ end $$;
 do $$
 begin
   perform assert((select count(*) from localities) = 10, 'localities seeded (10)');
-  perform assert((select count(*) from categories) = 34, 'categories seeded (34)');
-  perform assert((select count(*) from businesses) = 32, 'businesses seeded (32)');
-  perform assert((select count(*) from deals where status = 'ACTIVE') = 59,
+  perform assert((select count(*) from categories) = 35, 'categories seeded (35)');
+  perform assert((select count(*) from businesses) = 36, 'businesses seeded (36)');
+  perform assert((select count(*) from deals where status = 'ACTIVE') = 76,
                  '59 ACTIVE deals');
   perform assert((select count(*) from deals where status = 'SUBMITTED') = 3,
                  '3 deals awaiting review');
@@ -234,6 +234,128 @@ begin
 end $$;
 
 -- ---------------------------------------------------------------------------
+-- 4b. Smart search — any-word matching, word prefixes, group sizes, vehicles
+-- ---------------------------------------------------------------------------
+do $$
+declare
+  v_n     int;
+  v_top   text;
+  v_re    jsonb := '["royal-enfield","re-classic-350","re-bullet-350","re-hunter-350","re-meteor-350","re-himalayan","bike"]';
+  v_bad   boolean := false;
+begin
+  perform act_as('customer@yolodeals.in');
+
+  -- "i want chicken foods under 200": the app sends what is left of the words.
+  perform assert(
+    (select count(*) = 2 and bool_and(deal_price <= 200) and bool_and(title like 'Chicken%')
+     from search_deals('{"q":"i want chicken foods under 200","keywords":["chicken"],"vertical":"food","price_max":200,"radius_km":10}'::jsonb,
+                       12.9352, 77.6245, 50)),
+    'search: chicken under 200 finds the two chicken deals and nothing dearer');
+
+  -- A stray word no longer empties the results; it only ranks lower.
+  select count(*) into v_n from search_deals(
+    '{"keywords":["chicken","qwertyuiop"],"vertical":"food","radius_km":10}'::jsonb, 12.9352, 77.6245, 50);
+  perform assert(v_n >= 2, 'search: any word may match, so a stray word does not empty the list');
+
+  -- Word prefixes: "veg" is not "non-veg"; "kebabs" finds "kebab".
+  perform assert(
+    not exists (select 1 from search_deals('{"keywords":["veg"],"radius_km":30}'::jsonb, 12.9352, 77.6245, 100)
+                where title = 'Chicken Seekh Kebab Plate'),
+    'search: "veg" does not match a non-veg deal');
+  perform assert(
+    exists (select 1 from search_deals('{"keywords":["kebabs"],"radius_km":30}'::jsonb, 12.9352, 77.6245, 100)
+            where title = 'Chicken Seekh Kebab Plate'),
+    'search: a plural finds the singular');
+
+  -- Group deals: 4-5 people overlaps 4-6 and 3-5, not a brunch for two.
+  perform assert(
+    (select count(*) > 0
+        and bool_and((attributes->>'party_min')::int <= 5 and (attributes->>'party_max')::int >= 4)
+     from search_deals('{"party_min":4,"party_max":5,"radius_km":30}'::jsonb, 12.9352, 77.6245, 100)),
+    'search: a group of 4-5 gets only deals sized for it');
+  perform assert(
+    exists (select 1 from search_deals('{"party_min":4,"party_max":5,"radius_km":30}'::jsonb, 12.9352, 77.6245, 100)
+            where title = 'Biryani Feast for 5')
+    and not exists (select 1 from search_deals('{"party_min":4,"party_max":5,"radius_km":30}'::jsonb, 12.9352, 77.6245, 100)
+            where title = 'Weekend Brunch for Two'),
+    'search: the feast for 4-6 is in, the brunch for two is out');
+  perform assert(
+    (select bool_and(title in ('Weekend Brunch for Two', 'Sushi Platter for Two', 'Coffee Meeting Combo',
+                               'Couple''s Spa Day', 'Pizza and Pitcher Combo', 'Happy Hours: Craft Beer Pitchers'))
+     from search_deals('{"party_min":2,"party_max":2,"radius_km":30}'::jsonb, 12.9352, 77.6245, 100)),
+    'search: a couple gets the deals for two');
+
+  -- Vehicles: every deal for a Royal Enfield, in any category, specialists first.
+  select title into v_top from search_deals(
+    jsonb_build_object('vehicle_tags', v_re, 'radius_km', 30), 12.9352, 77.6245, 50) limit 1;
+  perform assert(v_top in ('Royal Enfield General Service', 'Touring Kit for Royal Enfield'),
+                 'search: a Royal Enfield specialist ranks first');
+  perform assert(
+    (select bool_and(title <> 'Car Foam Wash and Interior Clean')
+        and bool_or(title = 'Bike Foam Wash and Polish')
+        and bool_or(vertical = 'retail')
+     from search_deals(jsonb_build_object('vehicle_tags', v_re, 'radius_km', 30), 12.9352, 77.6245, 50)),
+    'search: the bike wash and riding gear come too, the car wash does not');
+  select title into v_top from search_deals(
+    '{"vehicle_tags":["honda-activa","honda","scooter"],"radius_km":30}'::jsonb, 12.9352, 77.6245, 50) limit 1;
+  perform assert(v_top = 'Scooter General Service', 'search: an Activa gets the scooter service first');
+
+  -- Attribute shapes are enforced.
+  begin
+    update deals set attributes = attributes || '{"party_min":"two"}'::jsonb
+    where id = (select id from deals where title = 'Biryani Feast for 5');
+  exception when check_violation then
+    v_bad := true;
+  end;
+  perform assert(v_bad, 'a group size must be a number');
+end $$;
+
+-- ---------------------------------------------------------------------------
+-- 4c. Taste — what someone opens, saves and claims reorders "For you"
+-- ---------------------------------------------------------------------------
+do $$
+declare
+  v_me   uuid;
+  v_n    int;
+  v_top  text;
+begin
+  perform act_as(null);
+  select count(*) into v_n from feed_for_you(12.9352, 77.6245, 10000, 12);
+  perform assert(v_n = 0, 'taste: a signed-out visitor gets no For-you rail');
+
+  v_me := act_as('customer@yolodeals.in');
+  delete from deal_events where profile_id = v_me;
+  delete from saved_deals where profile_id = v_me;
+  select count(*) into v_n from my_taste();
+  perform assert(v_n = 0 or exists (select 1 from customer_actions where customer_id = v_me),
+                 'taste: nothing learned before any signal');
+
+  -- Opens two chicken deals and saves one.
+  perform record_deal_events(jsonb_build_array(
+    jsonb_build_object('deal_id', (select id from deals where title = 'Chicken Roll Combo'), 'event_type', 'view', 'source', 'test'),
+    jsonb_build_object('deal_id', (select id from deals where title = 'Chicken Seekh Kebab Plate'), 'event_type', 'view', 'source', 'test')));
+  insert into saved_deals (profile_id, deal_id)
+  values (v_me, (select id from deals where title = 'Chicken Seekh Kebab Plate'));
+
+  perform assert(
+    (select key from my_taste() where kind = 'tag' order by weight desc limit 1) = 'chicken',
+    'taste: chicken is the strongest tag');
+  perform assert(
+    (select key from my_taste() where kind = 'category' order by weight desc limit 1) = 'dinner',
+    'taste: the saved deal''s category leads');
+
+  select count(*) into v_n from feed_for_you(12.9352, 77.6245, 10000, 12);
+  perform assert(v_n > 0, 'taste: For you has deals once there is a signal');
+  perform assert(
+    (select bool_and(category_slug = 'dinner' or category_slug = 'lunch' or 'chicken' = any (tags))
+     from feed_for_you(12.9352, 77.6245, 10000, 12)),
+    'taste: everything in For you shares the category or a tag');
+
+  delete from deal_events where profile_id = v_me;
+  delete from saved_deals where profile_id = v_me;
+end $$;
+
+-- ---------------------------------------------------------------------------
 -- 5. Action engine — code minting, capacity, duplicate guard
 -- ---------------------------------------------------------------------------
 do $$
@@ -261,6 +383,9 @@ begin
   order by d.id desc
   limit 1;
   perform assert(v_deal is not null, 'found an all-day claim deal to test');
+  -- The suite runs at any hour: open the test deal round the clock, so a
+  -- late-night run does not fail on the deal's closing time.
+  update deal_availability set start_time = '00:00', end_time = '23:59' where deal_id = v_deal;
   raise notice 'NOTE  claim test deal: %',
     (select title from deals where id = v_deal);
 
@@ -337,6 +462,9 @@ begin
   order by d.id
   limit 1;
   perform assert(v_deal is not null, 'found a second deal for the sell-out test');
+  -- The suite runs at any hour: open the test deal round the clock, so a
+  -- late-night run does not fail on the deal's closing time.
+  update deal_availability set start_time = '00:00', end_time = '23:59' where deal_id = v_deal;
   raise notice 'NOTE  sell-out test deal: %',
     (select title from deals where id = v_deal);
 

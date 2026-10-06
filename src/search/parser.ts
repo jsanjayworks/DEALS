@@ -13,10 +13,15 @@
  *   "Lunch under ₹500 within 2km"  ->  food · lunch · max ₹500 · 2 km
  *   "2bhk in HSR under 40000"      ->  property · HSR Layout · 2 BHK · max ₹40,000
  *   "friday night events"          ->  events · Friday · night
+ *   "chicken foods under 200"      ->  food · max ₹200 · "chicken"
+ *   "dinner for 4-5 people"        ->  food · dinner · 4–5 people
+ *   "royal enfield service"        ->  every deal for a Royal Enfield
  */
 
 import { CATEGORIES, LOCALITIES } from '../data/seed-reference';
 import type { DealTypeCode, SearchFilters, SortKey, Vertical } from '../data/types';
+import { partyFilterLabel } from '../data/party';
+import { findVehicleMention, vehicleFilterLabel } from '../data/vehicles';
 
 export const EMPTY_FILTERS: SearchFilters = {
   keywords: [],
@@ -30,11 +35,26 @@ export const EMPTY_FILTERS: SearchFilters = {
   day_of_week: [],
   deal_types: [],
   attributes: {},
+  party_min: null,
+  party_max: null,
+  vehicle_tags: [],
   verified_only: false,
   min_rating: null,
   ending_soon: false,
   sort: 'relevance',
 };
+
+/** A fresh copy, so nobody mutates the shared arrays in EMPTY_FILTERS. */
+export function emptyFilters(): SearchFilters {
+  return {
+    ...EMPTY_FILTERS,
+    keywords: [],
+    day_of_week: [],
+    deal_types: [],
+    attributes: {},
+    vehicle_tags: [],
+  };
+}
 
 /** Words that carry no filtering signal and should not become keywords. */
 const STOP_WORDS = new Set([
@@ -43,11 +63,33 @@ const STOP_WORDS = new Set([
   'deal', 'deals', 'offer', 'offers', 'discount', 'discounts', 'best', 'good', 'show',
   'find', 'get', 'want', 'need', 'looking', 'under', 'below', 'above', 'over', 'within',
   'upto', 'rs', 'inr', 'than', 'less', 'more', 'cheap', 'cheapest', 'please',
+  'can', 'you', 'we', 'us', 'our', 'go', 'going', 'where', 'what', 'which', 'something',
+  'like', 'have', 'has', 'there', 'some', 'all', 'every', 'everything', 'stuff', 'things',
+  'thing', 'options', 'option', 'items', 'item', 'place', 'places', 'spot', 'spots',
+  'nice', 'great', 'tasty', 'yummy', 'awesome', 'cool', 'top', 'popular', 'famous',
+  'people', 'persons', 'person', 'pax', 'guests', 'ppl', 'folks',
+]);
+
+/**
+ * Words that only name a vertical or a category. Once the filter is set they
+ * add nothing as keywords, and as keywords they would hide good matches: a
+ * kebab deal never says "food".
+ */
+const CATEGORY_ONLY_WORDS = new Set([
+  'food', 'foods', 'eat', 'eating', 'restaurant', 'restaurants', 'meal', 'meals', 'dish',
+  'dishes', 'lunch', 'dinner', 'breakfast', 'brunch', 'cafe', 'retail', 'shop', 'shopping',
+  'store', 'stores', 'events', 'event', 'shows', 'tickets', 'mobility', 'travel', 'property',
+  'services', 'service', 'business', 'outing',
 ]);
 
 /** Everyday words mapped to the taxonomy, so plain speech finds the vertical. */
 const VERTICAL_SYNONYMS: Record<string, Vertical> = {
-  food: 'food', eat: 'food', eating: 'food', restaurant: 'food', restaurants: 'food',
+  food: 'food', foods: 'food', eat: 'food', eating: 'food', restaurant: 'food', restaurants: 'food',
+  chicken: 'food', mutton: 'food', paneer: 'food', kebab: 'food', kebabs: 'food',
+  roll: 'food', rolls: 'food', wrap: 'food', fish: 'food', prawns: 'food', seafood: 'food',
+  burger: 'food', burgers: 'food', momos: 'food', noodles: 'food', pasta: 'food',
+  sandwich: 'food', snacks: 'food', starters: 'food', tandoori: 'food', veg: 'food',
+  'non-veg': 'food', nonveg: 'food', dish: 'food', dishes: 'food',
   lunch: 'food', dinner: 'food', breakfast: 'food', brunch: 'food', coffee: 'food',
   cafe: 'food', chai: 'food', tea: 'food', biryani: 'food', pizza: 'food', beer: 'food',
   bar: 'food', pub: 'food', drinks: 'food', meal: 'food', meals: 'food', thali: 'food',
@@ -138,6 +180,53 @@ function parseAmount(raw: string): number | null {
   return Math.round(n);
 }
 
+/** Renting or riding a vehicle, as opposed to looking after your own. */
+const RENTAL_WORDS = /\b(?:rent|rental|rentals|hire|ride|rides|cab|cabs|taxi|trip|outstation|airport|drive)\b/;
+
+const NUMBER_WORDS: Record<string, number> = {
+  one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10,
+  twelve: 12,
+};
+const N = '(\\d{1,2}|one|two|three|four|five|six|seven|eight|nine|ten|twelve)';
+const PEOPLE = '(?:people|persons?|pax|guests?|members?|friends|adults|ppl|folks|of us)';
+/** After "for 3", these mean it was not a head count: "for 3 months". */
+const NOT_PEOPLE = /^\s*(?:km|kms|m|mins?|minutes?|hours?|hrs?|days?|nights?|weeks?|months?|years?|bhk|k|rs|%|am|pm|pieces?|pcs|kg)\b/;
+
+const toCount = (w: string) => NUMBER_WORDS[w] ?? parseInt(w, 10);
+
+/** The group size in normalised query text, and the words that said it. */
+function findParty(text: string): { min: number | null; max: number | null; match: string } | null {
+  const lead = '(?:for|group of|party of|table for|team of|gang of|we are|we re)';
+  const counted = [
+    // "4-5 people", "4 to 5 persons", "for 4 or 5 people", "6 friends"
+    new RegExp('(?:\\b' + lead + '\\s+)?\\b' + N + '(?:\\s*(?:-|to|or)\\s*' + N + ')?\\s+' + PEOPLE + '\\b'),
+    // "for 5", "group of 6", "table for 2-3"
+    new RegExp('\\b' + lead + '\\s+' + N + '(?:\\s*(?:-|to|or)\\s*' + N + ')?\\b'),
+  ];
+  for (const re of counted) {
+    const m = text.match(re);
+    if (!m) continue;
+    const after = text.slice((m.index ?? 0) + m[0].length);
+    if (NOT_PEOPLE.test(after)) continue;
+    const a = toCount(m[1]);
+    const b = m[2] ? toCount(m[2]) : a;
+    if (!Number.isFinite(a) || a < 1 || a > 50 || b < a || b > 50) continue;
+    return { min: a, max: b, match: m[0].trim() };
+  }
+
+  const worded: [RegExp, number | null, number | null][] = [
+    [/\b(?:just me|solo|alone|by myself|myself)\b/, 1, 1],
+    [/\b(?:couple|couples|date night|date|two of us|with (?:my )?(?:wife|husband|girlfriend|boyfriend|partner|gf|bf))\b/, 2, 2],
+    [/\b(?:family|families)\b/, 3, 6],
+    [/\b(?:group|groups|gang|squad|friends|team outing)\b/, 3, null],
+  ];
+  for (const [re, min, max] of worded) {
+    const m = text.match(re);
+    if (m) return { min, max, match: m[0] };
+  }
+  return null;
+}
+
 export interface ParseResult {
   filters: SearchFilters;
   /** Human-readable chips, in display order. */
@@ -145,13 +234,7 @@ export interface ParseResult {
 }
 
 export function parseQuery(input: string): ParseResult {
-  const filters: SearchFilters = {
-    ...EMPTY_FILTERS,
-    day_of_week: [],
-    deal_types: [],
-    attributes: {},
-    keywords: [],
-  };
+  const filters = emptyFilters();
   const raw = input.trim();
   if (!raw) return { filters, chips: [] };
 
@@ -201,6 +284,15 @@ export function parseQuery(input: string): ParseResult {
         eat(new RegExp(bare[0].replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
       }
     }
+  }
+
+  // ---- group size -------------------------------------------------------
+  // "for 5 people", "4-5 persons", "group of 6", "table for 2", "a couple".
+  const party = findParty(text);
+  if (party) {
+    filters.party_min = party.min;
+    filters.party_max = party.max;
+    eat(new RegExp(party.match.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
   }
 
   // ---- radius -----------------------------------------------------------
@@ -269,13 +361,15 @@ export function parseQuery(input: string): ParseResult {
   }
 
   // ---- time of day ------------------------------------------------------
-  if (/\bbreakfast\b|\bmorning\b|\bsunrise\b/.test(text)) {
+  // Meal words (breakfast, lunch, dinner) already pick their category; a
+  // time window on top would hide a dinner deal that starts at 7.
+  if (/\bmorning\b|\bsunrise\b/.test(text)) {
     filters.time_of_day = 'morning';
-  } else if (/\blunch\b|\bafternoon\b|\bmidday\b/.test(text)) {
+  } else if (/\bafternoon\b|\bmidday\b/.test(text)) {
     filters.time_of_day = 'lunch';
   } else if (/\bevening\b|\bsunset\b|\bhigh tea\b/.test(text)) {
     filters.time_of_day = 'evening';
-  } else if (/\bnight\b|\bdinner\b|\blate\b/.test(text)) {
+  } else if (/\bnight\b|\blate\b/.test(text)) {
     filters.time_of_day = 'night';
   }
 
@@ -307,6 +401,22 @@ export function parseQuery(input: string): ParseResult {
   for (const [re, code] of DEAL_TYPE_PATTERNS) {
     if (re.test(text) && !filters.deal_types.includes(code)) {
       filters.deal_types.push(code);
+    }
+  }
+
+  // ---- vehicle ----------------------------------------------------------
+  // "royal enfield service", "car wash", "activa": every deal for that
+  // vehicle, in any category. Renting or riding one is a different question
+  // ("bike rental"), which the categories already answer.
+  if (!RENTAL_WORDS.test(text)) {
+    const mention = findVehicleMention(text.replace(/\s+/g, ' '));
+    if (mention) {
+      filters.vehicle_tags = mention.tags;
+      for (const phrase of mention.phrases) {
+        eat(new RegExp('(^|\\s)' + phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?=\\s|$)', 'g'));
+      }
+      // "service" and "repair" say nothing once the vehicle is known.
+      eat(/\b(?:service|services|servicing|maintenance|mechanic|garage|repair|repairs|fix|fixing|care|work)\b/g);
     }
   }
 
@@ -348,18 +458,22 @@ export function parseQuery(input: string): ParseResult {
 
   // ---- leftover keywords ------------------------------------------------
   filters.keywords = words.filter(
-    (w) => w.length > 2 && !STOP_WORDS.has(w) && !/^\d+$/.test(w),
+    (w) =>
+      w.length > 2 &&
+      !STOP_WORDS.has(w) &&
+      !/^\d+$/.test(w) &&
+      !(CATEGORY_ONLY_WORDS.has(w) && (filters.vertical || filters.category_slug)),
   );
 
   return { filters, chips: describeFilters(filters) };
 }
 
-/** Distinct from the Lunch and Dinner categories, which often appear alongside. */
+/** The filter sheet's words, with Lunchtime kept apart from the Lunch category. */
 const TIME_OF_DAY_LABEL: Record<NonNullable<SearchFilters['time_of_day']>, string> = {
-  morning: 'Mornings',
+  morning: 'Morning',
   lunch: 'Lunchtime',
-  evening: 'Evenings',
-  night: 'Late night',
+  evening: 'Evening',
+  night: 'Night',
 };
 
 /** The removable chips under the search bar: how the query was understood. */
@@ -380,10 +494,10 @@ export function describeFilters(f: SearchFilters): ParseResult['chips'] {
     });
   }
   if (f.price_max != null) {
-    chips.push({ key: 'price_max', label: 'Max ₹' + f.price_max.toLocaleString('en-IN') });
+    chips.push({ key: 'price_max', label: 'Up to ₹' + f.price_max.toLocaleString('en-IN') });
   }
   if (f.price_min != null) {
-    chips.push({ key: 'price_min', label: 'Min ₹' + f.price_min.toLocaleString('en-IN') });
+    chips.push({ key: 'price_min', label: 'From ₹' + f.price_min.toLocaleString('en-IN') });
   }
   if (f.time_of_day) chips.push({ key: 'time_of_day', label: TIME_OF_DAY_LABEL[f.time_of_day] });
   if (f.day_of_week.length > 0) {
@@ -399,6 +513,10 @@ export function describeFilters(f: SearchFilters): ParseResult['chips'] {
   for (const [k, v] of Object.entries(f.attributes)) {
     chips.push({ key: 'attributes', label: k === 'bhk' ? v + ' BHK' : k + ': ' + v });
   }
+  const party = partyFilterLabel(f.party_min, f.party_max);
+  if (party) chips.push({ key: 'party_min', label: party });
+  const vehicle = vehicleFilterLabel(f.vehicle_tags);
+  if (vehicle) chips.push({ key: 'vehicle_tags', label: vehicle });
   for (const t of f.deal_types) {
     const labels: Partial<Record<DealTypeCode, string>> = {
       free: 'Free',
@@ -452,6 +570,14 @@ export function removeFilter(f: SearchFilters, key: keyof SearchFilters): Search
     case 'keywords':
       next.keywords = [];
       break;
+    case 'party_min':
+    case 'party_max':
+      next.party_min = null;
+      next.party_max = null;
+      break;
+    case 'vehicle_tags':
+      next.vehicle_tags = [];
+      break;
     default:
       (next as unknown as Record<string, unknown>)[key] = null;
   }
@@ -460,6 +586,9 @@ export function removeFilter(f: SearchFilters, key: keyof SearchFilters): Search
 
 /** Suggestions shown on the focused, empty search screen. */
 export const SUGGESTED_QUERIES: readonly string[] = [
+  'Chicken under ₹200',
+  'Dinner for 4-5 people',
+  'Royal Enfield service',
   'Lunch under ₹300 near me',
   'Coffee meeting near Koramangala',
   'Friday night events',

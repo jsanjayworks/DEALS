@@ -20,7 +20,7 @@ import { dateLabel } from '../../lib/format';
 import { CONSTITUTION_LABEL, GST_PORTAL_URL, LICENCE_LABEL, stateOfGstin } from '../../lib/india-ids';
 import { hapticSuccess } from '../../lib/device';
 import { useQuery } from '../../lib/useQuery';
-import { color, radius, space, type } from '../../theme/tokens';
+import { color, radius, space, status as statusColor, type } from '../../theme/tokens';
 import { Button, EmptyState, Field, Header, Icon } from '../../components';
 
 export default function BusinessVerificationScreen() {
@@ -30,11 +30,15 @@ export default function BusinessVerificationScreen() {
   const [reason, setReason] = useState('');
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [last, setLast] = useState<string | null>(null);
+  const [last, setLast] = useState<{ text: string; approved: boolean } | null>(null);
+  /** Errors belong to one business's card: the one acted on. */
+  const [errorFor, setErrorFor] = useState<string | null>(null);
 
   const decide = async (req: VerificationRequest, approve: boolean) => {
-    if (!approve && !reason.trim()) {
-      setError('Say what is missing. The owner sees this.');
+    setErrorFor(req.business_id);
+    // The server wants a reason the owner can act on: at least a few words.
+    if (!approve && reason.trim().length < 5) {
+      setError('Say what is missing, in a few words. The owner sees this.');
       return;
     }
     setBusy(req.business_id);
@@ -42,7 +46,7 @@ export default function BusinessVerificationScreen() {
     try {
       await db.reviewBusiness(req.business_id, approve, approve ? undefined : reason.trim());
       if (approve) hapticSuccess();
-      setLast(req.name + (approve ? ' is now YOLO Verified.' : ' was declined.'));
+      setLast({ text: req.name + (approve ? ' is now YOLO Verified.' : ' was declined.'), approved: approve });
       setDeclining(null);
       setReason('');
       reload();
@@ -57,7 +61,7 @@ export default function BusinessVerificationScreen() {
 
   return (
     <View style={styles.screen}>
-      <Header title="Business verification" dark onBack={() => router.back()} />
+      <Header title="Business verification" dark onBack={() => (router.canGoBack() ? router.back() : router.replace('/profile'))} />
       <FlatList
         data={queue}
         keyExtractor={(r) => r.business_id}
@@ -65,8 +69,8 @@ export default function BusinessVerificationScreen() {
         ListHeaderComponent={
           <>
             {last ? (
-              <Text style={styles.banner} accessibilityLiveRegion="polite">
-                {last}
+              <Text style={[styles.banner, !last.approved && styles.bannerDeclined]} accessibilityLiveRegion="polite">
+                {last.text}
               </Text>
             ) : null}
             {queue.length > 0 ? <Text style={styles.count}>{queue.length} waiting</Text> : null}
@@ -101,7 +105,7 @@ export default function BusinessVerificationScreen() {
                       hitSlop={6}
                       style={styles.portal}
                     >
-                      <Text style={styles.portalText}>Check it: GST portal → Search Taxpayer →</Text>
+                      <Text style={styles.portalText}>Check on the GST portal (Search Taxpayer)</Text>
                     </Pressable>
                   </>
                 ) : (
@@ -133,12 +137,16 @@ export default function BusinessVerificationScreen() {
                     setReason(t);
                     setError(null);
                   }}
-                  placeholder="The registered name does not match the GST record"
-                  error={error}
+                  placeholder="e.g. name differs from GST record"
+                  error={errorFor === item.business_id ? error : null}
                   accessibilityLabel="Reason for declining"
                 />
               ) : null}
 
+              {/* A failed Verify says why; the decline field shows its own error. */}
+              {!isDeclining && error && errorFor === item.business_id ? (
+                <Text style={styles.error}>{error}</Text>
+              ) : null}
               <View style={styles.actions}>
                 {isDeclining ? (
                   <>
@@ -226,11 +234,19 @@ const styles = StyleSheet.create({
   },
   banner: {
     ...type.captionMedium,
-    color: color.text,
-    backgroundColor: color.deal,
+    color: statusColor.active.fg,
+    backgroundColor: statusColor.active.bg,
     padding: space.md,
     borderRadius: radius.lg,
     marginBottom: space.md,
+  },
+  bannerDeclined: {
+    color: statusColor.pending.fg,
+    backgroundColor: statusColor.pending.bg,
+  },
+  error: {
+    ...type.captionMedium,
+    color: color.alert,
   },
   count: {
     ...type.caption,

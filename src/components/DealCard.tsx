@@ -29,6 +29,7 @@ import {
   type CardBadge,
 } from '../lib/format';
 import type { DealCardModel } from '../data/types';
+import { dealParty } from '../data/party';
 import { ctaLabel } from '../data/mapping';
 import { Badge, DiscountBadge, VerifiedBadge } from './Badges';
 import { Icon } from './Icon';
@@ -47,13 +48,24 @@ export interface DealCardProps {
   style?: StyleProp<ViewStyle>;
   /** Hide the distance where there is no "here" to measure from (the admin queue). */
   showDistance?: boolean;
+  /** Hide "Claim Deal →" where the card is not a shop window (the admin queue). */
+  showCta?: boolean;
 }
 
 // expo-image reads a bare string as a URL, so the blurhash must be wrapped.
 const PLACEHOLDER = { blurhash: 'L6Pj0^i_.AyE_3t7t7R**0o#DgR4' };
 
-export function DealCard({ deal, variant = 'large', onPress, badge, style, showDistance = true }: DealCardProps) {
+export function DealCard({
+  deal,
+  variant = 'large',
+  onPress,
+  badge,
+  style,
+  showDistance = true,
+  showCta = true,
+}: DealCardProps) {
   const flag = badge === undefined ? badgeFor(deal) : badge;
+  const party = dealParty(deal.attributes);
   // A free deal says Free once; "100% OFF" beside it is noise.
   const discount = deal.deal_price === 0 ? 0 : Math.round(deal.discount_pct ?? 0);
   const { handlers, liftStyle, zoomStyle } = useHoverPress({
@@ -144,7 +156,7 @@ export function DealCard({ deal, variant = 'large', onPress, badge, style, showD
             </Text>
             {flag ? <Badge kind={flag} /> : null}
           </View>
-          <Text style={styles.title} numberOfLines={1}>
+          <Text style={styles.title} numberOfLines={2}>
             {deal.title}
           </Text>
           <Text style={styles.business} numberOfLines={1}>
@@ -152,10 +164,14 @@ export function DealCard({ deal, variant = 'large', onPress, badge, style, showD
           </Text>
           <Price now={deal.deal_price} was={deal.original_price} unit={deal.price_unit} />
           <View style={styles.listFooter}>
-            <Meta distanceKm={showDistance ? deal.distance_km : null} rating={deal.rating_avg} />
-            <Text style={styles.cta} numberOfLines={1}>
-              {ctaLabel(deal.primary_cta)} {'→'}
-            </Text>
+            <View style={styles.listMeta}>
+              <Meta distanceKm={showDistance ? deal.distance_km : null} rating={deal.rating_avg} party={party} />
+            </View>
+            {showCta ? (
+              <Text style={styles.cta} numberOfLines={1}>
+                {ctaLabel(deal.primary_cta)} {'→'}
+              </Text>
+            ) : null}
           </View>
         </View>
       </>,
@@ -176,7 +192,10 @@ export function DealCard({ deal, variant = 'large', onPress, badge, style, showD
 
       <View style={styles.body}>
         <View style={styles.titleRow}>
-          <Text style={[styles.title, styles.flexShrink]} numberOfLines={1}>
+          <Text
+            style={[styles.title, styles.flexShrink, !isLarge && styles.titleTwoLines]}
+            numberOfLines={isLarge ? 1 : 2}
+          >
             {deal.title}
           </Text>
           {isLarge && deal.is_verified ? <VerifiedBadge compact /> : null}
@@ -184,7 +203,7 @@ export function DealCard({ deal, variant = 'large', onPress, badge, style, showD
         <Text style={styles.business} numberOfLines={1}>
           {deal.business.name}
         </Text>
-        <Meta distanceKm={showDistance ? deal.distance_km : null} rating={deal.rating_avg} />
+        <Meta distanceKm={showDistance ? deal.distance_km : null} rating={deal.rating_avg} party={party} />
         <View style={styles.priceGap}>
           <Price now={deal.deal_price} was={deal.original_price} unit={deal.price_unit} />
         </View>
@@ -408,10 +427,20 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: 8,
   },
+  /** Distance and rating wrap onto a second line before the action is cut. */
+  listMeta: {
+    flexShrink: 1,
+    minWidth: 0,
+  },
   cta: {
     fontFamily: font.semibold,
     fontSize: 12,
     color: color.brand,
+    flexShrink: 0,
+  },
+  /** Grid cells keep the same height whether the title takes one line or two. */
+  titleTwoLines: {
+    minHeight: 44,
   },
   when: {
     ...type.small,

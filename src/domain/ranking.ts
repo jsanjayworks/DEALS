@@ -117,9 +117,33 @@ export function scoreDeal({
 }
 
 /**
+ * What a search word is matched by: lower case, a plural's trailing "s"
+ * dropped ("kebabs" finds "kebab"). Mirrored by search_stem() in SQL.
+ */
+export function searchStem(term: string): string {
+  const t = term.toLowerCase();
+  return t.length > 3 && t.endsWith('s') && !t.endsWith('ss') ? t.slice(0, -1) : t;
+}
+
+/**
+ * True when a word in `text` starts with `stem`: "biry" finds "biryani", but
+ * "veg" does not find "non-veg" and "tea" does not find "steak". A hyphen
+ * joins a word, so "non-veg" is one word.
+ */
+export function startsWord(text: string, stem: string): boolean {
+  let i = text.indexOf(stem);
+  while (i !== -1) {
+    if (i === 0 || !/[a-z0-9-]/.test(text[i - 1])) return true;
+    i = text.indexOf(stem, i + 1);
+  }
+  return false;
+}
+
+/**
  * Text relevance without Postgres full-text search: title matches weigh most,
- * then tags, then the descriptions. Mirrors the setweight(A/B/C) ordering of
- * the generated search_vector column.
+ * then tags, then category, business and the descriptions. Each word counts
+ * on its own, so a deal that matches some of the words still shows, ranked
+ * below one that matches them all. Mirrors search_deals() in SQL.
  */
 export function textRelevance(deal: DealCardModel, terms: string[]): number {
   if (terms.length === 0) return 0.5;
@@ -132,11 +156,44 @@ export function textRelevance(deal: DealCardModel, terms: string[]): number {
 
   let hits = 0;
   for (const term of terms) {
-    if (title.includes(term)) hits += 1.0;
-    else if (tags.includes(term)) hits += 0.7;
-    else if (cat.includes(term)) hits += 0.6;
-    else if (biz.includes(term)) hits += 0.5;
-    else if (body.includes(term)) hits += 0.4;
+    const stem = searchStem(term);
+    if (startsWord(title, stem)) hits += 1.0;
+    else if (startsWord(tags, stem)) hits += 0.7;
+    else if (startsWord(cat, stem)) hits += 0.6;
+    else if (startsWord(biz, stem)) hits += 0.5;
+    else if (startsWord(body, stem)) hits += 0.4;
   }
   return Math.min(hits / terms.length, 1);
+}
+
+const VEHICLE_KINDS = ['bike', 'scooter', 'car'];
+
+/**
+ * How closely a deal's vehicle tags fit the vehicle searched for. `wanted`
+ * starts with the tag the person named (see data/vehicles.ts). A deal for
+ * exactly that model or brand scores 1, one for a related model or brand
+ * 0.85, one for the whole kind of vehicle 0.6; a deal that also covers other
+ * kinds is less of a specialist and keeps 85% of that. Mirrors
+ * vehicle_relevance() in SQL.
+ */
+export function vehicleRelevance(fits: string[], wanted: string[]): number {
+  if (wanted.length === 0 || fits.length === 0) return 0;
+  let w = 0;
+  if (fits.includes(wanted[0])) w = 1;
+  else if (fits.some((t) => !VEHICLE_KINDS.includes(t) && wanted.includes(t))) w = 0.85;
+  else if (fits.some((t) => wanted.includes(t))) w = 0.6;
+  return fits.length === 1 ? w : w * 0.85;
+}
+
+/** Words and vehicle together: the relevance search ranks by. */
+export function searchRelevance(
+  deal: DealCardModel,
+  keywords: string[],
+  vehicleTags: string[],
+  fits: string[],
+): number {
+  const text = textRelevance(deal, keywords);
+  if (vehicleTags.length === 0) return text;
+  const vehicle = vehicleRelevance(fits, vehicleTags);
+  return keywords.length === 0 ? vehicle : text * 0.6 + vehicle * 0.4;
 }

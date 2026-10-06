@@ -7,11 +7,12 @@
  * rejection must carry a reason; the merchant sees it word for word.
  */
 
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { FlatList, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Image } from 'expo-image';
 import { router } from 'expo-router';
 import { db, RuleViolation } from '../../data';
-import type { DealCardModel, DealStatus } from '../../data/types';
+import type { DealCardModel, DealStatus, DealStatusHistoryEntry } from '../../data/types';
 import { STATUS_LABEL } from '../../domain/lifecycle';
 import { availabilityLabel, dateLabel, DEAL_TYPE_LABEL } from '../../lib/format';
 import { hapticSuccess } from '../../lib/device';
@@ -83,7 +84,7 @@ export default function ReviewQueueScreen() {
 
   return (
     <View style={styles.screen}>
-      <Header title="Review queue" dark onBack={() => router.back()} />
+      <Header title="Review queue" dark onBack={() => (router.canGoBack() ? router.back() : router.replace('/profile'))} />
       <FlatList
         data={queue}
         keyExtractor={(d) => d.id}
@@ -120,7 +121,7 @@ export default function ReviewQueueScreen() {
                 {item.business.verification_status !== 'verified' ? ' · unverified business' : ''}
               </Text>
             </View>
-            <DealCard deal={item} variant="list" badge={null} showDistance={false} onPress={() => setOpen(item)} />
+            <DealCard deal={item} variant="list" badge={null} showDistance={false} showCta={false} onPress={() => setOpen(item)} />
           </View>
         )}
         ListEmptyComponent={
@@ -138,7 +139,13 @@ export default function ReviewQueueScreen() {
           open ? (
             rejecting ? (
               <View style={styles.footer}>
-                <Button variant="secondary" onPress={() => setRejecting(false)}>
+                <Button
+                  variant="secondary"
+                  onPress={() => {
+                    setRejecting(false);
+                    setError(null);
+                  }}
+                >
                   Back
                 </Button>
                 <View style={styles.flex}>
@@ -151,7 +158,7 @@ export default function ReviewQueueScreen() {
               <View style={styles.footer}>
                 <View style={styles.flex}>
                   <Button variant="secondary" full onPress={() => setRejecting(true)}>
-                    Reject
+                    Send back
                   </Button>
                 </View>
                 <View style={styles.flex}>
@@ -198,8 +205,25 @@ export default function ReviewQueueScreen() {
 
 function ReviewDetail({ deal }: { deal: DealCardModel }) {
   const e = deal.eligibility;
+  // The deal's history says when it came in, and whether it was sent back before.
+  const [history, setHistory] = useState<DealStatusHistoryEntry[] | null>(null);
+  useEffect(() => {
+    let active = true;
+    db.getDealHistory(deal.id)
+      .then((h) => active && setHistory(h))
+      .catch(() => active && setHistory([]));
+    return () => {
+      active = false;
+    };
+  }, [deal.id]);
+  const submitted = history?.filter((h) => h.to_status === 'SUBMITTED').slice(-1)[0];
+  const sentBack = history?.filter((h) => h.to_status === 'REJECTED').slice(-1)[0];
+  const contact = [deal.business.phone, deal.business.email].filter(Boolean).join(' · ');
+
   const rows: [string, string][] = [
     ['Business', deal.business.name + ' · ' + deal.business.verification_status],
+    ...(contact ? ([['Contact', contact]] as [string, string][]) : []),
+    ...(submitted ? ([['Submitted', dateLabel(submitted.created_at)]] as [string, string][]) : []),
     ['Type', (DEAL_TYPE_LABEL[deal.deal_type_code] ?? deal.deal_type_code) + ' · ' + deal.category.name],
     [
       'Price',
@@ -227,6 +251,13 @@ function ReviewDetail({ deal }: { deal: DealCardModel }) {
   ];
   return (
     <View>
+      {sentBack ? (
+        <View style={styles.resubmitted}>
+          <Text style={styles.resubmittedTitle}>Resubmitted · sent back {dateLabel(sentBack.created_at)}</Text>
+          {sentBack.reason ? <Text style={styles.detailBody}>{sentBack.reason}</Text> : null}
+        </View>
+      ) : null}
+      <Image source={{ uri: deal.image }} style={styles.detailPhoto} contentFit="cover" accessibilityLabel={'Photo for ' + deal.title} />
       <Text style={styles.detailTitle}>{deal.title}</Text>
       <Text style={styles.detailShort}>{deal.short_description}</Text>
       <View style={styles.detailRows}>
@@ -245,6 +276,11 @@ function ReviewDetail({ deal }: { deal: DealCardModel }) {
           <Text style={styles.detailBody}>{deal.terms}</Text>
         </>
       ) : null}
+      <View style={styles.preview}>
+        <Button small variant="secondary" onPress={() => router.push({ pathname: '/deal/[id]', params: { id: deal.id } })}>
+          See it as customers will
+        </Button>
+      </View>
     </View>
   );
 }
@@ -258,10 +294,36 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: color.background,
   },
+  detailPhoto: {
+    width: '100%',
+    maxWidth: 520,
+    aspectRatio: 16 / 9,
+    borderRadius: radius.lg,
+    backgroundColor: color.surfaceSoftAlt,
+    marginBottom: space.md,
+  },
+  resubmitted: {
+    padding: space.md,
+    borderRadius: radius.lg,
+    backgroundColor: statusColor.pending.bg,
+    gap: 2,
+    marginBottom: space.md,
+  },
+  resubmittedTitle: {
+    ...type.captionMedium,
+    color: statusColor.pending.fg,
+  },
+  preview: {
+    marginTop: space.lg,
+    alignItems: 'flex-start',
+  },
   flex: {
     flex: 1,
   },
   list: {
+    width: '100%',
+    maxWidth: 720,
+    alignSelf: 'center',
     padding: space.lg,
     paddingBottom: space.xxxl,
     flexGrow: 1,

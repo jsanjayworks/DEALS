@@ -8,13 +8,22 @@
  * database will apply.
  */
 
-import { useCallback, useState, type ReactNode } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Image } from 'expo-image';
+import Animated, {
+  interpolate,
+  useAnimatedScrollHandler,
+  useAnimatedStyle,
+  useSharedValue,
+} from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
+import Head from 'expo-router/head';
 import { db } from '../../data';
-import type { CtaType, DealCardModel } from '../../data/types';
+import type { AttributeValue, CtaType, DealCardModel } from '../../data/types';
+import { dealParty } from '../../data/party';
+import { dealVehicleTags, vehicleFitLabel } from '../../data/vehicles';
 import { ctaLabel, ctaToActionType } from '../../data/mapping';
 import { checkAction } from '../../domain/rules';
 import {
@@ -24,6 +33,7 @@ import {
 } from '../../lib/format';
 import {
   callPhone,
+  formatPhone,
   hapticTap,
   openDirections,
   openWhatsApp,
@@ -33,7 +43,7 @@ import { useQuery } from '../../lib/useQuery';
 import { ClaimSheet } from '../../deal/ClaimSheet';
 import { DealTiles } from '../../deal/DealTiles';
 import { MAX_CONTENT_WIDTH, useLayout } from '../../ui/layout';
-import { useOrigin, useSession, useViewer } from '../../state/session';
+import { useOrigin, useViewer } from '../../state/session';
 import { alpha, color, distanceLabel, font, inr, radius, shadow, space, type } from '../../theme/tokens';
 import {
   Badge,
@@ -74,6 +84,16 @@ const AUDIENCE_LABEL: Record<string, string> = {
 function eligibilityLines(deal: DealCardModel): string[] {
   const e = deal.eligibility;
   const lines: string[] = [];
+  const party = dealParty(deal.attributes);
+  if (party) {
+    lines.push(
+      party[0] === party[1]
+        ? 'Priced for ' + party[0] + (party[0] === 1 ? ' person' : ' people')
+        : 'Priced for a group of ' + party[0] + ' to ' + party[1],
+    );
+  }
+  const fits = vehicleFitLabel(dealVehicleTags(deal.attributes));
+  if (fits) lines.push('For ' + fits);
   if (e.audience !== 'everyone') lines.push(AUDIENCE_LABEL[e.audience] ?? e.audience);
   if (e.min_age != null) lines.push(e.min_age + '+ only. Carry a photo ID.');
   if (e.min_spend != null) lines.push('Minimum spend ' + inr(e.min_spend));
@@ -84,13 +104,19 @@ function eligibilityLines(deal: DealCardModel): string[] {
   if (deal.max_qty_per_customer != null) {
     lines.push('Up to ' + deal.max_qty_per_customer + ' per customer');
   }
-  if (deal.min_purchase != null) lines.push('Minimum purchase of ' + deal.min_purchase);
+  // The same amount as the minimum spend is said once.
+  if (deal.min_purchase != null && deal.min_purchase !== e.min_spend) {
+    lines.push('Minimum purchase ' + inr(deal.min_purchase));
+  }
   if (e.custom_rule) lines.push(e.custom_rule);
   return lines;
 }
 
-function attributeLabel(key: string, value: string | number | boolean): string | null {
-  if (value === false) return null;
+/** Shown elsewhere on the page: group size and vehicles under "Who can use it". */
+const NOT_A_TAG = new Set(['party_min', 'party_max', 'vehicles']);
+
+function attributeLabel(key: string, value: AttributeValue): string | null {
+  if (value === false || NOT_A_TAG.has(key) || Array.isArray(value)) return null;
   const k = key.replace(/_/g, ' ');
   if (value === true) return k.charAt(0).toUpperCase() + k.slice(1);
   if (key === 'bhk') return value + ' BHK';
@@ -103,12 +129,30 @@ export default function DealDetailScreen() {
   const layout = useLayout();
   const wide = layout.isExpanded;
   const origin = useOrigin();
-  const account = useSession((s) => s.account);
   const viewer = useViewer();
+  // Re-read when the signed-in person changes, demo accounts included.
+  const account = viewer?.id ?? null;
   const [sheetOpen, setSheetOpen] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
   const [reported, setReported] = useState(false);
   const [savedOverride, setSavedOverride] = useState<boolean | null>(null);
+  /** A short confirmation over the page, e.g. "Link copied". */
+  const [toast, setToast] = useState<string | null>(null);
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 2200);
+    return () => clearTimeout(t);
+  }, [toast]);
+
+  // Once the photo scrolls away, a solid bar with the title fades in behind
+  // the round buttons, so they never float over the text below.
+  const scrollY = useSharedValue(0);
+  const onScroll = useAnimatedScrollHandler((e) => {
+    scrollY.value = e.contentOffset.y;
+  });
+  const backdropStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(scrollY.value, wide ? [0, 40] : [HERO_HEIGHT - 130, HERO_HEIGHT - 60], [0, 1], 'clamp'),
+  }));
 
   const fetchDeal = useCallback(async () => {
     void account;
@@ -226,8 +270,10 @@ export default function DealDetailScreen() {
     deal.capacity_total != null &&
     deal.capacity_remaining <= Math.max(5, deal.capacity_total * 0.2);
 
-  const quickActions = (['call', 'directions', 'chat'] as CtaType[]).filter(
-    (c) => c !== primary && (deal.secondary_ctas.includes(c) || c === 'directions'),
+  // Call and directions already sit on the phone and address rows above, so
+  // the only extra button is a chat, when the business offers one.
+  const quickActions = (['chat'] as CtaType[]).filter(
+    (c) => c !== primary && deal.secondary_ctas.includes(c),
   );
 
   const eligibility = eligibilityLines(deal);
@@ -284,7 +330,13 @@ export default function DealDetailScreen() {
 
   return (
     <View style={styles.screen}>
-      <ScrollView
+      <Head>
+        <title>{deal.title + ' · ' + deal.business.name + ' · YOLO Deals'}</title>
+        <meta name="description" content={deal.short_description} />
+      </Head>
+      <Animated.ScrollView
+        onScroll={onScroll}
+        scrollEventThrottle={16}
         contentContainerStyle={
           wide
             ? [styles.wideContent, { paddingTop: insets.top + 76, paddingHorizontal: sideInset }]
@@ -366,7 +418,7 @@ export default function DealDetailScreen() {
             {deal.business.phone ? (
               <InfoRow
                 icon="phone"
-                title={deal.business.phone}
+                title={formatPhone(deal.business.phone)}
                 detail="Call the business"
                 onPress={() => callPhone(deal.business.phone)}
                 actionLabel="Call"
@@ -440,7 +492,7 @@ export default function DealDetailScreen() {
             <Text style={styles.reportText}>Report this deal</Text>
           </Pressable>
         </View>
-      </ScrollView>
+      </Animated.ScrollView>
 
       {/* Floating controls: over the photo on a phone, a toolbar row on a wide screen */}
       <View
@@ -452,9 +504,32 @@ export default function DealDetailScreen() {
         ]}
         pointerEvents="box-none"
       >
+        <Animated.View style={[styles.topBackdrop, backdropStyle]} pointerEvents="none">
+          <Text
+            // Clear of the back button on the left and share + save on the right.
+            style={[
+              styles.topTitle,
+              {
+                marginLeft: (wide ? sideInset : HERO_INSET + 12) + 56,
+                marginRight: (wide ? sideInset : HERO_INSET + 12) + 112,
+              },
+            ]}
+            numberOfLines={1}
+          >
+            {deal.title}
+          </Text>
+        </Animated.View>
         <RoundButton icon="back" label="Go back" onPress={() => router.back()} />
         <View style={styles.topRight}>
-          <RoundButton icon="share" label="Share" onPress={() => void shareDeal(deal)} />
+          <RoundButton
+            icon="share"
+            label="Share"
+            onPress={() =>
+              void shareDeal(deal).then((r) => {
+                if (r === 'copied') setToast('Link copied. Paste it anywhere to share.');
+              })
+            }
+          />
           <RoundButton
             icon="heart"
             label={saved ? 'Remove from saved' : 'Save deal'}
@@ -463,6 +538,12 @@ export default function DealDetailScreen() {
           />
         </View>
       </View>
+
+      {toast ? (
+        <View style={[styles.toast, { top: insets.top + 72 }]} pointerEvents="none" accessibilityLiveRegion="polite">
+          <Text style={styles.toastText}>{toast}</Text>
+        </View>
+      ) : null}
 
       {/* Sticky action bar on a phone; inline in the details column when wide */}
       {wide ? null : actionBar}
@@ -924,6 +1005,31 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     paddingHorizontal: space.lg,
+    paddingBottom: 10,
+  },
+  toast: {
+    position: 'absolute',
+    alignSelf: 'center',
+    paddingHorizontal: space.lg,
+    paddingVertical: space.sm,
+    borderRadius: radius.pill,
+    backgroundColor: color.text,
+  },
+  toastText: {
+    ...type.captionMedium,
+    color: color.white,
+  },
+  topBackdrop: {
+    ...StyleSheet.absoluteFill,
+    justifyContent: 'flex-end',
+    paddingBottom: 21,
+    backgroundColor: color.surface,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: color.border,
+  },
+  topTitle: {
+    ...type.bodySemibold,
+    color: color.text,
   },
   topRight: {
     flexDirection: 'row',

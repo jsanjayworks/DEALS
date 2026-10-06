@@ -4,7 +4,8 @@
  * and visibly reflows once Inter arrives.
  */
 
-import { useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
+import { Platform } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
@@ -23,6 +24,9 @@ import { Fraunces_600SemiBold } from '@expo-google-fonts/fraunces/600SemiBold';
 import { color } from '../theme/tokens';
 import { installFocusRing } from '../lib/focus-ring';
 import { ChromeProvider } from '../ui/chrome';
+import { LaunchSplash } from '../ui/LaunchSplash';
+import { LoadErrorBanner } from '../ui/LoadErrorBanner';
+import { PageTitle } from '../ui/PageTitle';
 
 // A deep link to a deal, a category or Profile still has Home underneath, so
 // Back and "go home" land somewhere instead of leaving the app.
@@ -32,6 +36,9 @@ export const unstable_settings = {
 
 // Web: no outline box after clicks and taps; a brand ring for keyboard users.
 installFocusRing();
+
+/** The website opens on the brand screen; phones have the native splash. */
+const WEB = Platform.OS === 'web';
 
 SplashScreen.preventAutoHideAsync().catch(() => {
   // Already hidden, or called twice during fast refresh. Not worth failing for.
@@ -47,6 +54,8 @@ export default function RootLayout() {
     BricolageGrotesque_700Bold,
     Fraunces_600SemiBold,
   });
+  const [splashDone, setSplashDone] = useState(!WEB);
+  const endSplash = useCallback(() => setSplashDone(true), []);
 
   useEffect(() => {
     // Hide on error too: a missing font should degrade to the system face,
@@ -56,7 +65,7 @@ export default function RootLayout() {
     }
   }, [fontsLoaded, fontError]);
 
-  if (!fontsLoaded && !fontError) return null;
+  if (!fontsLoaded && !fontError) return WEB ? <LaunchSplash ready={false} /> : null;
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
@@ -78,6 +87,9 @@ export default function RootLayout() {
             <Stack.Screen name="merchant" />
             <Stack.Screen name="admin" />
           </Stack>
+          <LoadErrorBanner />
+          <PageTitle />
+          {splashDone ? null : <LaunchSplash ready onDone={endSplash} />}
         </ChromeProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>

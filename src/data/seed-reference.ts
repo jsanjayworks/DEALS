@@ -77,6 +77,7 @@ export const CATEGORIES: Category[] = [
   { id: 'cat-services-cleaning', slug: 'cleaning', name: 'Home Cleaning', vertical: 'services', icon: 'sparkles-outline', parent_id: 'cat-services' },
   { id: 'cat-services-repair', slug: 'repair', name: 'Home Repair', vertical: 'services', icon: 'hammer-outline', parent_id: 'cat-services' },
   { id: 'cat-services-fitness', slug: 'fitness', name: 'Fitness', vertical: 'services', icon: 'barbell-outline', parent_id: 'cat-services' },
+  { id: 'cat-services-vehicle', slug: 'vehicle-care', name: 'Vehicle Care', vertical: 'services', icon: 'construct-outline', parent_id: 'cat-services' },
   { id: 'cat-business-coworking', slug: 'coworking', name: 'Coworking', vertical: 'business', icon: 'business-outline', parent_id: 'cat-business' },
   { id: 'cat-business-b2b', slug: 'b2b', name: 'B2B Offers', vertical: 'business', icon: 'briefcase-outline', parent_id: 'cat-business' },
 ];
@@ -141,6 +142,10 @@ const BIZ: BizSeed[] = [
   ['biz-printhub', 'PrintHub Business Services', 'cat-business-b2b', 'loc-bel', 'Bellandur Main Road', false, 4.1, 203, -0.001, 0.001],
   ['biz-skillcamp', 'SkillCamp Bengaluru', 'cat-events-classes', 'loc-kor', '4th Block, Koramangala', true, 4.5, 661, 0.001, 0.003],
   ['biz-greencity', 'Green City Volunteers', 'cat-events-volunteer', 'loc-jay', 'Jayanagar East', true, 4.9, 87, -0.002, -0.002],
+  ['biz-thundergarage', 'Thunder Garage', 'cat-services-vehicle', 'loc-kor', '8th Block, Koramangala', true, 4.6, 742, -0.002, 0.003],
+  ['biz-sparkwash', 'Spark Car and Bike Wash', 'cat-services-vehicle', 'loc-hsr', '19th Main, Sector 4', true, 4.4, 1186, 0.002, -0.003],
+  ['biz-tyrehub', 'TyreHub Auto Care', 'cat-services-vehicle', 'loc-bel', 'Sarjapur Road, Bellandur', false, 4.2, 365, 0.003, -0.002],
+  ['biz-kebabco', 'The Kebab Co.', 'cat-food-dinner', 'loc-kor', '1st Block, Koramangala', true, 4.5, 1730, 0.001, -0.003],
 ];
 
 export const BUSINESSES: Business[] = BIZ.map(

@@ -73,6 +73,7 @@ const TONE_BY_LABEL: Record<string, StatusTone> = {
   Completed: 'neutral',
   Archived: 'neutral',
   Rejected: 'danger',
+  'Needs changes': 'danger',
   Expired: 'danger',
   Cancelled: 'danger',
 };

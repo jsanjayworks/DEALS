@@ -11,7 +11,16 @@
  * equivalent state.
  */
 
-import { Platform } from 'react-native';
+import { Platform, type ViewStyle } from 'react-native';
+
+/**
+ * hitSlop does nothing on the web, so a small text button (Undo, Cancel,
+ * See all) gets the same reach there from padding, cancelled by an equal
+ * negative margin so nothing around it moves.
+ */
+export function reach(n = 8): ViewStyle | undefined {
+  return Platform.OS === 'web' ? { padding: n, margin: -n } : undefined;
+}
 
 export function pressedProps(on: boolean): object {
   return Platform.OS === 'web' ? { 'aria-pressed': on } : { accessibilityState: { selected: on } };

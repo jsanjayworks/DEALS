@@ -15,11 +15,13 @@ import QRCode from 'react-native-qrcode-svg';
 import Animated from 'react-native-reanimated';
 import { backend, db, RuleViolation, type ActionWithDeal } from '../../data';
 import type { DealCardModel } from '../../data/types';
-import { ACTION_LABEL, ACTION_STATUS_LABEL, dateLabel, slotLabel } from '../../lib/format';
+import { ACTION_LABEL, ACTION_STATUS_LABEL, dateLabel, quantityLabel, slotLabel } from '../../lib/format';
+import { mintsCode } from '../../domain/rules';
+import { PAY_METHOD_LABEL, paymentOf } from '../../lib/payment';
 import { hapticTap } from '../../lib/device';
 import { useQuery } from '../../lib/useQuery';
-import { useOrigin, useSession, useViewer } from '../../state/session';
-import { color, font, radius, space, type } from '../../theme/tokens';
+import { useOrigin, useViewer } from '../../state/session';
+import { color, font, inr, radius, space, status as statusColor, type } from '../../theme/tokens';
 import {
   Button,
   Chip,
@@ -32,6 +34,7 @@ import {
 } from '../../components';
 import { useHideOnScroll } from '../../ui/chrome';
 import { useTabBarSpace } from '../../ui/FloatingTabBar';
+import { reach } from '../../lib/a11y';
 
 type Tab = 'active' | 'saved' | 'past';
 
@@ -66,8 +69,9 @@ export default function MyDealsScreen() {
   const origin = useOrigin();
   const { onScroll } = useHideOnScroll();
   const tabSpace = useTabBarSpace();
-  const account = useSession((s) => s.account);
   const viewer = useViewer();
+  // Re-read when the signed-in person changes, demo accounts included.
+  const account = viewer?.id ?? null;
 
   const fetchAll = useCallback(async () => {
     void account;
@@ -213,7 +217,14 @@ export default function MyDealsScreen() {
               {qrFor.redemption_code}
             </Text>
             {qrFor.slot_start ? <Text style={styles.qrMeta}>{slotLabel(qrFor.slot_start)}</Text> : null}
-            {qrFor.quantity > 1 ? <Text style={styles.qrMeta}>{qrFor.quantity} people</Text> : null}
+            {paymentOf(qrFor) ? (
+              <Text style={styles.qrMeta}>
+                Paid {inr(paymentOf(qrFor)!.amount)} · {paymentOf(qrFor)!.order_id}
+              </Text>
+            ) : null}
+            {qrFor.quantity > 1 ? (
+              <Text style={styles.qrMeta}>{quantityLabel(qrFor.action_type, qrFor.quantity)}</Text>
+            ) : null}
           </View>
         ) : null}
       </Sheet>
@@ -239,7 +250,10 @@ export default function MyDealsScreen() {
       >
         <Text style={styles.cancelBody}>
           {cancelFor
-            ? 'Your code for ' + cancelFor.deal.title + ' will stop working, and the spot goes back to other people. ' +
+            ? (mintsCode(cancelFor.action_type)
+                ? 'Your code for ' + cancelFor.deal.title + ' will stop working, and the spot goes back to other people. '
+                : 'Your request for ' + cancelFor.deal.title + ' will be withdrawn. ') +
+              (paymentOf(cancelFor) ? 'The ' + inr(paymentOf(cancelFor)!.amount) + ' you paid is refunded (mock). ' : '') +
               (cancelFor.deal.cancellation_policy ?? '')
             : ''}
         </Text>
@@ -270,9 +284,10 @@ function ActionCard({
 }) {
   const live = isLive(action);
   const d = action.deal;
+  const paid = paymentOf(action);
   const detail = [
     ACTION_LABEL[action.action_type],
-    action.quantity > 1 ? action.quantity + ' people' : null,
+    quantityLabel(action.action_type, action.quantity),
     dateLabel(action.created_at),
   ]
     .filter(Boolean)
@@ -308,6 +323,15 @@ function ActionCard({
         </View>
       ) : null}
 
+      {paid ? (
+        <View style={styles.paid}>
+          <Icon name="check" size={14} color={statusColor.active.fg} strokeWidth={2.2} />
+          <Text style={styles.paidText} numberOfLines={1}>
+            Paid {inr(paid.amount)} by {PAY_METHOD_LABEL[paid.method]} · {paid.order_id}
+          </Text>
+        </View>
+      ) : null}
+
       {live && action.redemption_code ? (
         <Pressable
           onPress={onShowQr}
@@ -332,7 +356,7 @@ function ActionCard({
 
       {live ? (
         <View style={styles.cardActions}>
-          <Pressable onPress={onCancel} accessibilityRole="button" hitSlop={8}>
+          <Pressable onPress={onCancel} accessibilityRole="button" hitSlop={8} style={reach(8)}>
             <Text style={styles.cancelLink}>Cancel</Text>
           </Pressable>
           <Text style={styles.validity}>Valid until {dateLabel(d.ends_at)}</Text>
@@ -454,6 +478,17 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+  },
+  paid: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.xs,
+    marginTop: space.sm,
+  },
+  paidText: {
+    ...type.captionMedium,
+    color: statusColor.active.fg,
+    flex: 1,
   },
   cancelLink: {
     ...type.captionMedium,

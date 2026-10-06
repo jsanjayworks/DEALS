@@ -9,7 +9,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { db } from '../../../data';
 import { useQuery } from '../../../lib/useQuery';
 import { MerchantDealRow } from '../../../merchant/DealRow';
-import { BUCKETS, type BucketKey, useBusinessId } from '../../../merchant/useBusiness';
+import { BUCKETS, type BucketKey, inBucket, useBusinessId } from '../../../merchant/useBusiness';
 import { color, space } from '../../../theme/tokens';
 import { Button, Chip, EmptyState, Header } from '../../../components';
 
@@ -43,10 +43,9 @@ export default function MerchantDealsScreen() {
   const { data, loading } = useQuery(fetchDeals);
   const deals = data ?? [];
 
-  const inBucket = (k: BucketKey) =>
-    deals.filter((d) => (BUCKETS[k].statuses as readonly string[]).includes(d.status));
+  const bucketDeals = (k: BucketKey) => deals.filter((d) => inBucket(d, k));
   // Newest first within a bucket: the one just edited is the one being looked for.
-  const shown = (filter === 'all' ? deals : inBucket(filter))
+  const shown = (filter === 'all' ? deals.filter((d) => !(d.status === 'ARCHIVED' && !d.published_at)) : bucketDeals(filter))
     .slice()
     .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
@@ -59,7 +58,7 @@ export default function MerchantDealsScreen() {
             All
           </Chip>
           {(Object.keys(BUCKETS) as BucketKey[]).map((k) => (
-            <Chip key={k} selected={filter === k} count={inBucket(k).length} onPress={() => setFilter(k)}>
+            <Chip key={k} selected={filter === k} count={bucketDeals(k).length} onPress={() => setFilter(k)}>
               {BUCKETS[k].label}
             </Chip>
           ))}

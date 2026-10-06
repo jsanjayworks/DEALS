@@ -22,6 +22,8 @@ import {
   type DataSource,
   type MerchantStats,
   type OtpTarget,
+  type ReportGroup,
+  type SupportMessage,
   type SupportQueueItem,
   type SupportTicket,
   type VerificationRequest,
@@ -38,12 +40,19 @@ import type {
   Notification,
 } from './types';
 
+/**
+ * True while the website is being pre-rendered in Node at build time: no
+ * window, no storage, no session. The page loads in a browser and signs in
+ * from there.
+ */
+const PRERENDER = Platform.OS === 'web' && typeof window === 'undefined';
+
 export function createSupabase(url: string, key: string): SupabaseClient {
   const client = createClient(url, key, {
     auth: {
-      storage: AsyncStorage,
-      autoRefreshToken: true,
-      persistSession: true,
+      storage: PRERENDER ? undefined : AsyncStorage,
+      autoRefreshToken: !PRERENDER,
+      persistSession: !PRERENDER,
       // There is no URL to read a session from in a native app.
       detectSessionInUrl: false,
     },
@@ -129,6 +138,7 @@ function avatarUrl(client: SupabaseClient, path: string): string {
 }
 
 const AVATARS = 'avatars';
+const DEAL_PHOTOS = 'deal-photos';
 const AVATAR_TYPES: Record<string, string> = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' };
 
 export function createSupabaseAuth(client: SupabaseClient): AuthApi {
@@ -228,6 +238,26 @@ export function createSupabaseDataSource(client: SupabaseClient): DataSource {
           p_offset: q.offset ?? 0,
         }),
       );
+    },
+
+    async feedForYou(q) {
+      if (!(await userId(client))) return [];
+      return cards(
+        await rpc('feed_for_you', {
+          p_lat: q.origin.lat,
+          p_lng: q.origin.lng,
+          p_radius_m: q.radius_m,
+          p_limit: q.limit ?? 12,
+        }),
+      );
+    },
+
+    async getMyTaste() {
+      if (!(await userId(client))) return [];
+      const rows = await rpc<{ kind: 'category' | 'tag'; key: string; label: string; weight: number }[]>(
+        'my_taste',
+      );
+      return (rows ?? []).map((r) => ({ ...r, weight: Number(r.weight) }));
     },
 
     async searchDeals(q) {
@@ -412,6 +442,29 @@ export function createSupabaseDataSource(client: SupabaseClient): DataSource {
       return (data ?? []).map(rowToAction);
     },
 
+    async listBusinessOrders(businessId) {
+      const deals = cards(await rpc('business_deals', { p_business_id: businessId }));
+      if (deals.length === 0) return [];
+      const byId = new Map(deals.map((d) => [d.id, d]));
+      const { data, error } = await client
+        .from('customer_actions')
+        .select('*')
+        .in(
+          'deal_id',
+          deals.map((d) => d.id),
+        )
+        .order('created_at', { ascending: false })
+        .limit(200);
+      if (error) fail(error);
+      // Customers' names stay private to them; the order shows the code instead.
+      return (data ?? []).map(rowToAction).map((a) => ({
+        ...a,
+        deal_title: byId.get(a.deal_id)?.title ?? 'Deal',
+        deal_price: byId.get(a.deal_id)?.deal_price ?? null,
+        customer_name: null,
+      }));
+    },
+
     // ---- account and support ----
 
     async updateMyProfile(input) {
@@ -443,6 +496,17 @@ export function createSupabaseDataSource(client: SupabaseClient): DataSource {
       return avatarUrl(client, path);
     },
 
+    async uploadDealPhoto(businessId, image) {
+      if (!(await userId(client))) throw new RuleViolation('Sign in first');
+      const type = image.mimeType && AVATAR_TYPES[image.mimeType] ? image.mimeType : 'image/jpeg';
+      const path = businessId + '/deal-' + Date.now() + '.' + AVATAR_TYPES[type];
+      const body = await (await fetch(image.uri)).arrayBuffer();
+      if (body.byteLength > 5 * 1024 * 1024) throw new RuleViolation('Choose a photo under 5 MB');
+      const up = await client.storage.from(DEAL_PHOTOS).upload(path, body, { contentType: type });
+      if (up.error) throw new RuleViolation('That photo did not upload. Try another one.');
+      return client.storage.from(DEAL_PHOTOS).getPublicUrl(path).data.publicUrl;
+    },
+
     async removeAvatar() {
       const uid = await userId(client);
       if (!uid) throw new RuleViolation('Sign in first');
@@ -461,10 +525,15 @@ export function createSupabaseDataSource(client: SupabaseClient): DataSource {
       if (!(await userId(client))) return [];
       const { data, error } = await client
         .from('support_tickets')
-        .select('id, topic, message, status, reply, replied_at, action_id, deal_id, created_at')
+        .select('id, topic, message, status, reply, replied_at, action_id, deal_id, created_at, support_messages(author, body, created_at)')
         .order('created_at', { ascending: false });
       if (error) fail(error);
-      return (data ?? []) as SupportTicket[];
+      return ((data ?? []) as (Omit<SupportTicket, 'messages'> & { support_messages: SupportMessage[] | null })[]).map(
+        ({ support_messages, ...t }) => ({
+          ...t,
+          messages: [...(support_messages ?? [])].sort((a, b) => a.created_at.localeCompare(b.created_at)),
+        }),
+      );
     },
 
     async requestAccountDeletion(reason) {
@@ -478,6 +547,19 @@ export function createSupabaseDataSource(client: SupabaseClient): DataSource {
         p: {
           name: input.name,
           primary_category_id: input.primary_category_id,
+          locality_id: input.locality_id,
+          address_line: input.address_line,
+          phone: input.phone || null,
+          email: input.email || null,
+        },
+      });
+    },
+
+    async updateBusiness(businessId, input) {
+      await rpc('update_business', {
+        p_business_id: businessId,
+        p: {
+          name: input.name,
           locality_id: input.locality_id,
           address_line: input.address_line,
           phone: input.phone || null,
@@ -553,12 +635,43 @@ export function createSupabaseDataSource(client: SupabaseClient): DataSource {
       }));
     },
 
-    async listSupportQueue() {
-      return ((await rpc<SupportQueueItem[]>('support_queue')) ?? []).map((r) => ({
+    async listReportsQueue() {
+      const rows = await rpc<Record<string, unknown>[]>('reports_queue');
+      return (rows ?? []).map((r) => ({
+        target_type: r.target_type as ReportGroup['target_type'],
+        target_id: String(r.target_id),
+        title: String(r.title ?? ''),
+        business_id: (r.business_id as string | null) ?? null,
+        business_name: (r.business_name as string | null) ?? null,
+        deal_status: (r.deal_status as DealStatus | null) ?? null,
+        open_count: Number(r.open_count ?? 0),
+        reasons: (r.reasons as string[] | null) ?? [],
+        details: (r.details as string[] | null) ?? [],
+        first_at: String(r.first_at),
+        last_at: String(r.last_at),
+      }));
+    },
+
+    async resolveReports(targetType, targetId, action, note) {
+      return rpc<number>('resolve_reports', {
+        p_target_type: targetType,
+        p_target_id: targetId,
+        p_action: action,
+        p_note: note ?? null,
+      });
+    },
+
+    async listSupportQueue(view) {
+      return ((await rpc<SupportQueueItem[]>('support_queue', { p_view: view ?? 'active' })) ?? []).map((r) => ({
         ...r,
         customer_name: r.customer_name ?? '',
         customer_contact: r.customer_contact ?? '',
+        messages: r.messages ?? [],
       }));
+    },
+
+    async followUpSupportTicket(ticketId, message) {
+      return rpc<'open'>('follow_up_support_ticket', { p_ticket_id: ticketId, p_message: message });
     },
 
     async replySupportTicket(ticketId, reply, close) {

@@ -5,13 +5,14 @@
  * the icon its category names in data.
  */
 
-import { memo } from 'react';
+import { memo, useRef } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 import type { Category } from '../data/types';
 
 import { Icon, RollingNumber, categoryIcon, useHoverPress } from '../components';
 import { cellWidth } from '../ui/layout';
+import type { LaunchRect } from '../ui/launch';
 import { font, theme } from '../theme/tokens';
 
 const GAP = 10;
@@ -30,7 +31,8 @@ function CategoryGridView({
   /** The width the grid fills, inside the gutters. */
   width: number;
   columns: number;
-  onPress: (c: Category) => void;
+  /** `from` is where the tile sits on screen, so the page can grow out of it. */
+  onPress: (c: Category, from: LaunchRect | null) => void;
 }) {
   const w = cellWidth(width, columns, GAP);
   return (
@@ -41,7 +43,7 @@ function CategoryGridView({
           category={c}
           count={counts[c.vertical] ?? 0}
           width={w}
-          onPress={() => onPress(c)}
+          onPress={(from) => onPress(c, from)}
         />
       ))}
     </View>
@@ -57,19 +59,25 @@ function Tile({
   category: Category;
   count: number;
   width: number;
-  onPress: () => void;
+  onPress: (from: LaunchRect | null) => void;
 }) {
   const { handlers, liftStyle } = useHoverPress({ lift: 3, pressScale: 0.94 });
+  const box = useRef<View>(null);
+  const press = () => {
+    const node = box.current;
+    if (!node) return onPress(null);
+    node.measureInWindow((x, y, w, h) => onPress(w > 0 ? { x, y, width: w, height: h } : null));
+  };
   return (
     <Pressable
-      onPress={onPress}
+      onPress={press}
       {...handlers}
       accessibilityRole="button"
       accessibilityLabel={category.name + ', ' + count + ' deals nearby'}
       style={{ width }}
     >
       <Animated.View style={[styles.lift, liftStyle]}>
-        <View style={styles.tile}>
+        <View ref={box} style={styles.tile}>
           <Icon name={categoryIcon(category.icon)} size={26} color={theme.tile.icon} strokeWidth={1.7} />
           <Text style={styles.label} numberOfLines={1}>
             {category.name}

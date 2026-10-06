@@ -10,9 +10,12 @@ import { db } from '../data';
 import type { Notification } from '../data/types';
 import { shortAgo } from '../lib/format';
 import { useQuery } from '../lib/useQuery';
-import { useSession } from '../state/session';
+import { useViewer } from '../state/session';
 import { color, space, type } from '../theme/tokens';
 import { Divider, EmptyState, Header, Icon, type IconName } from '../components';
+
+/** Notes about a merchant's own deals. */
+const MERCHANT_KINDS = new Set<Notification['kind']>(['deal_approved', 'deal_rejected', 'deal_paused', 'new_claim']);
 
 const KIND_ICON: Record<Notification['kind'], IconName> = {
   deal_approved: 'check',
@@ -23,10 +26,12 @@ const KIND_ICON: Record<Notification['kind'], IconName> = {
   business_verified: 'shield',
   business_rejected: 'x',
   support_reply: 'chat',
+  deal_paused: 'clock',
 };
 
 export default function NotificationsScreen() {
-  const account = useSession((s) => s.account);
+  // Re-read when the signed-in person changes, demo accounts included.
+  const account = useViewer()?.id ?? null;
   const fetchAll = useCallback(() => {
     void account;
     return db.listNotifications();
@@ -39,7 +44,18 @@ export default function NotificationsScreen() {
       reload();
     }
     const dealId = typeof n.data.deal_id === 'string' ? n.data.deal_id : null;
-    if (dealId) router.push({ pathname: '/deal/[id]', params: { id: dealId } });
+    // Each note opens where its reader acts on it: a merchant's deal in the
+    // merchant view, a customer's in the deal page, a reply in Help.
+    if (MERCHANT_KINDS.has(n.kind) && dealId) {
+      router.push({ pathname: '/merchant/deal/[id]', params: { id: dealId } });
+    } else if (n.kind === 'business_verified' || n.kind === 'business_rejected') {
+      router.push('/merchant');
+    } else if (n.kind === 'support_reply') {
+      const ticket = typeof n.data.ticket_id === 'string' ? n.data.ticket_id : undefined;
+      router.push({ pathname: '/account/help', params: ticket ? { ticket } : {} });
+    } else if (dealId) {
+      router.push({ pathname: '/deal/[id]', params: { id: dealId } });
+    }
   };
 
   return (
@@ -49,13 +65,14 @@ export default function NotificationsScreen() {
         data={data ?? []}
         keyExtractor={(n) => n.id}
         ItemSeparatorComponent={Divider}
-        contentContainerStyle={{ flexGrow: 1 }}
+        // A readable column on a wide screen, not rows 1,280 px long.
+        contentContainerStyle={{ flexGrow: 1, width: '100%', maxWidth: 720, alignSelf: 'center' }}
         ListEmptyComponent={
           loading ? null : (
             <EmptyState
               icon="bell"
               title="All caught up"
-              body="Claims, bookings and deal updates will show up here."
+              body="Updates about your claims, deals and requests will show up here."
             />
           )
         }
@@ -72,11 +89,11 @@ export default function NotificationsScreen() {
                 pressed && styles.pressed,
               ]}
             >
-              <View style={[styles.icon, (item.kind === 'deal_rejected' || item.kind === 'business_rejected') && styles.iconAlert]}>
+              <View style={[styles.icon, (item.kind === 'deal_rejected' || item.kind === 'business_rejected' || item.kind === 'deal_paused') && styles.iconAlert]}>
                 <Icon
                   name={KIND_ICON[item.kind]}
                   size={18}
-                  color={item.kind === 'deal_rejected' || item.kind === 'business_rejected' ? color.alert : color.brand}
+                  color={item.kind === 'deal_rejected' || item.kind === 'business_rejected' || item.kind === 'deal_paused' ? color.alert : color.brand}
                 />
               </View>
               <View style={styles.text}>
@@ -116,7 +133,10 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: color.surfaceSoftAlt,
+    // White, so the circle still shows on an unread row's tint.
+    backgroundColor: color.surface,
+    borderWidth: 1,
+    borderColor: color.border,
     alignItems: 'center',
     justifyContent: 'center',
   },

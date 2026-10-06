@@ -18,6 +18,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { color, font, radius, size, type } from '../theme/tokens';
 import { Icon } from './Icon';
+import { reach } from '../lib/a11y';
 
 export interface HeaderProps {
   title: string;
@@ -76,7 +77,7 @@ export function Section({ title, action, onAction, children }: SectionProps) {
       <View style={styles.sectionHead}>
         <Text style={styles.sectionTitle}>{title}</Text>
         {action ? (
-          <Pressable onPress={onAction} accessibilityRole="button" hitSlop={8}>
+          <Pressable onPress={onAction} accessibilityRole="button" hitSlop={8} style={reach(8)}>
             <Text style={styles.sectionAction}>{action}</Text>
           </Pressable>
         ) : null}
@@ -101,6 +102,9 @@ export function Field({ label, error, style, ...props }: FieldProps) {
     <View style={styles.field}>
       <Label>{label}</Label>
       <TextInput
+        // The visible label names the input for screen readers too, without
+        // the "· 27/90" character counter some labels carry.
+        accessibilityLabel={label.replace(/\s·\s\d+\/\d+$/, '')}
         {...props}
         placeholderTextColor={color.textMuted}
         style={[styles.input, !!error && styles.inputError, style]}

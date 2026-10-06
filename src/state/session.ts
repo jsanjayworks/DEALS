@@ -8,14 +8,18 @@
  */
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Platform } from 'react-native';
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 import { useSyncExternalStore } from 'react';
 import {
+  backend,
   currentViewer,
   demoAccounts,
+  demoUserById,
   onViewerChange,
   signInAs,
+  signOutDemo,
   viewerReady,
   type AppViewer,
 } from '../data';
@@ -41,6 +45,13 @@ export const RADIUS_OPTIONS = [
 
 const MAX_RECENT = 8;
 
+/** Storage that keeps nothing, for the build-time render of the website. */
+const NO_STORAGE = {
+  getItem: async () => null,
+  setItem: async () => {},
+  removeItem: async () => {},
+};
+
 /**
  * Which side of the app this person was last using. One sign-in serves both:
  * a merchant is someone who belongs to a business, and they can still browse
@@ -49,12 +60,20 @@ const MAX_RECENT = 8;
 export type AppMode = 'customer' | 'merchant';
 
 interface SessionState {
+  /** The demo account last signed in (local backend). */
   account: AccountKind;
+  /** Whether that demo account is signed in now; the demo starts signed out. */
+  demoSignedIn: boolean;
+  /** Which demo account exactly, including ones made by signing in with a new email. */
+  demoUserId: string | null;
   mode: AppMode;
   setMode(mode: AppMode): void;
   localityId: string;
   radiusM: number;
   recentSearches: string[];
+  /** The customer's own vehicle (see data/vehicles.ts), for "everything for it". */
+  vehicleId: string | null;
+  setVehicle(id: string | null): void;
   setAccount(kind: AccountKind): void;
   setLocality(id: string): void;
   setRadius(m: number): void;
@@ -66,14 +85,18 @@ export const useSession = create<SessionState>()(
   persist(
     (set) => ({
       account: 'customer',
+      demoSignedIn: false,
+      demoUserId: null,
       mode: 'customer',
       setMode: (mode) => set({ mode }),
       localityId: DEFAULT_LOCALITY_ID,
       radiusM: 3000,
       recentSearches: [],
+      vehicleId: null,
+      setVehicle: (id) => set({ vehicleId: id }),
       setAccount: (kind) => {
         signInAs(demoAccounts[kind]);
-        set({ account: kind });
+        set({ account: kind, demoSignedIn: true, demoUserId: demoAccounts[kind].id });
       },
       setLocality: (id) => set({ localityId: id }),
       setRadius: (m) => set({ radiusM: m }),
@@ -90,21 +113,48 @@ export const useSession = create<SessionState>()(
     }),
     {
       name: 'yolo-session',
-      storage: createJSONStorage(() => AsyncStorage),
+      // Pre-rendering the website in Node has no storage; the browser rehydrates.
+      storage: createJSONStorage(() =>
+        typeof window === 'undefined' && Platform.OS === 'web' ? NO_STORAGE : AsyncStorage,
+      ),
       partialize: (s) => ({
         account: s.account,
+        demoSignedIn: s.demoSignedIn,
+        demoUserId: s.demoUserId,
         mode: s.mode,
         localityId: s.localityId,
         radiusM: s.radiusM,
         recentSearches: s.recentSearches,
+        vehicleId: s.vehicleId,
       }),
-      // The data layer keeps its own viewer; put it back in step after a relaunch.
+      // The data layer keeps its own viewer; put it back in step after a
+      // relaunch. This also marks the demo's session as known (viewerReady).
       onRehydrateStorage: () => (state) => {
-        if (state) signInAs(demoAccounts[state.account]);
+        const user = state?.demoSignedIn
+          ? ((state.demoUserId ? demoUserById(state.demoUserId) : null) ?? demoAccounts[state.account])
+          : null;
+        if (user) signInAs(user);
+        else signOutDemo();
       },
     },
   ),
 );
+
+// The demo's sign-in form and Sign out go through the data layer, as the
+// real ones do; keep the remembered account in step with whoever that is.
+if (backend === 'local') {
+  onViewerChange((v) => {
+    const s = useSession.getState();
+    if (!v) {
+      if (s.demoSignedIn) useSession.setState({ demoSignedIn: false, mode: 'customer' });
+      return;
+    }
+    const kind = (Object.keys(demoAccounts) as AccountKind[]).find((k) => demoAccounts[k].id === v.id);
+    if (v.id !== s.demoUserId || !s.demoSignedIn) {
+      useSession.setState({ account: kind ?? s.account, demoSignedIn: true, demoUserId: v.id });
+    }
+  });
+}
 
 export function useLocality(): Locality {
   const id = useSession((s) => s.localityId);

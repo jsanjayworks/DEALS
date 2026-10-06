@@ -133,6 +133,8 @@ export function Chip({ children, onPress, selected, count }: ChipProps) {
       onPress={onPress}
       accessibilityRole="button"
       {...pressedProps(!!selected)}
+      // Chips are 36 px tall to sit in rows; the touch area reaches 44.
+      hitSlop={4}
       style={({ pressed }) => [
         styles.chip,
         selected ? styles.chipOn : styles.chipOff,

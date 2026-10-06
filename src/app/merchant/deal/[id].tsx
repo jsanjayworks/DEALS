@@ -25,6 +25,7 @@ import {
 } from '../../../lib/format';
 import { hapticSuccess } from '../../../lib/device';
 import { useQuery } from '../../../lib/useQuery';
+import { useViewer } from '../../../state/session';
 import { color, font, inr, radius, space, status as statusColor, type } from '../../../theme/tokens';
 import {
   Button,
@@ -49,6 +50,9 @@ const STEP_NOTE: Partial<Record<DealStatus, string>> = {
   EXPIRED: 'Ended',
 };
 
+/** Who made a change, as the merchant reads it. */
+const ACTOR_LABEL: Record<string, string> = { merchant: 'You', admin: 'YOLO team', system: 'Automatic' };
+
 function reachedIndex(s: DealStatus): number {
   if (s === 'PAUSED') return PATH.indexOf('ACTIVE');
   if (s === 'REJECTED') return PATH.indexOf('VERIFICATION');
@@ -58,6 +62,7 @@ function reachedIndex(s: DealStatus): number {
 
 export default function MerchantDealScreen() {
   const { id, submitted } = useLocalSearchParams<{ id: string; submitted?: string }>();
+  const viewer = useViewer();
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [confirmArchive, setConfirmArchive] = useState(false);
@@ -103,6 +108,21 @@ export default function MerchantDealScreen() {
     );
   }
 
+  // Another business's deal, reached by a link: nothing here is theirs to manage.
+  if (!viewer?.is_admin && !viewer?.business_ids.includes(deal.business_id)) {
+    return (
+      <View style={styles.screen}>
+        <Header title="Deal" dark onBack={() => router.back()} />
+        <EmptyState
+          icon="shield"
+          title="Not one of your deals"
+          body="You can only manage deals from your own business."
+          action={<Button onPress={() => router.replace('/merchant/deals')}>Your deals</Button>}
+        />
+      </View>
+    );
+  }
+
   const moves = nextStatuses(deal.status, 'merchant');
   const actions = data?.actions ?? [];
   const taken = actions.filter((a) => a.status !== 'cancelled');
@@ -114,7 +134,7 @@ export default function MerchantDealScreen() {
   const duplicate = () =>
     run(async () => {
       const copy = await db.duplicateDeal(deal.id);
-      router.push({ pathname: '/merchant/new', params: { id: copy } });
+      router.push({ pathname: '/merchant/new', params: { id: copy, copy: '1' } });
     });
 
   return (
@@ -142,6 +162,23 @@ export default function MerchantDealScreen() {
             <Icon name="check" size={18} color={statusColor.active.fg} strokeWidth={2.2} />
             <Text style={styles.bannerText}>
               Submitted. You will get a notification when the YOLO team has reviewed it.
+            </Text>
+          </View>
+        ) : null}
+        {submitted === '1' && (deal.status === 'ACTIVE' || deal.status === 'PUBLISHED') ? (
+          <View style={styles.banner}>
+            <Icon name="check" size={18} color={statusColor.active.fg} strokeWidth={2.2} />
+            <Text style={styles.bannerText}>
+              {deal.status === 'ACTIVE'
+                ? 'Live now. Customers nearby can find it and take it.'
+                : 'Published. It goes live on its start date.'}{' '}
+              <Text
+                style={styles.bannerLink}
+                accessibilityRole="link"
+                onPress={() => router.push({ pathname: '/deal/[id]', params: { id: deal.id } })}
+              >
+                See it as customers do →
+              </Text>
             </Text>
           </View>
         ) : null}
@@ -222,14 +259,17 @@ export default function MerchantDealScreen() {
           {actionError ? <Text style={styles.error}>{actionError}</Text> : null}
         </View>
 
+        {/* Numbers only mean something once customers could see the deal. */}
+        {deal.published_at ? (
         <View style={styles.stats}>
           <Stat label="Views" value={deal.views} />
           <Stat label="In search" value={deal.searches} />
           <Stat label="Taken" value={taken.length} />
           <Stat label="Redeemed" value={redeemed.length} />
         </View>
+        ) : null}
 
-        {deal.capacity_total != null && deal.capacity_remaining != null ? (
+        {deal.published_at && deal.capacity_total != null && deal.capacity_remaining != null ? (
           <View style={styles.capacity}>
             <Text style={styles.capText}>
               {deal.capacity_remaining} of {deal.capacity_total} left
@@ -262,7 +302,7 @@ export default function MerchantDealScreen() {
                 </View>
                 <View style={styles.stepText}>
                   <Text style={[styles.stepLabel, !done && !isCurrent && styles.stepMuted]}>
-                    {STATUS_LABEL[s]}
+                    {isCurrent && deal.status === 'REJECTED' ? 'Needs changes' : STATUS_LABEL[s]}
                   </Text>
                   {isCurrent ? (
                     <Text style={styles.stepNote}>
@@ -287,7 +327,7 @@ export default function MerchantDealScreen() {
                 <View key={h.id} style={styles.historyRow}>
                   <Text style={styles.historyText}>
                     {(h.from_status ? STATUS_LABEL[h.from_status] + ' → ' : '') + STATUS_LABEL[h.to_status]}
-                    <Text style={styles.historyMeta}>{' · ' + h.actor + ' · ' + shortAgo(h.created_at)}</Text>
+                    <Text style={styles.historyMeta}>{' · ' + (ACTOR_LABEL[h.actor] ?? h.actor) + ' · ' + shortAgo(h.created_at)}</Text>
                   </Text>
                   {h.reason ? <Text style={styles.historyReason}>{h.reason}</Text> : null}
                 </View>
@@ -415,6 +455,9 @@ const styles = StyleSheet.create({
     ...type.captionMedium,
     color: statusColor.active.fg,
     flex: 1,
+  },
+  bannerLink: {
+    textDecorationLine: 'underline',
   },
   card: {
     flexDirection: 'row',

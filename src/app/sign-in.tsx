@@ -6,17 +6,21 @@
  * hangs off. Merchants have their own door, "YOLO for Business" at /business,
  * which uses the same account; the link at the bottom goes there.
  *
- * On the local demo backend there is nothing to sign in to, so the screen
- * points at the demo account switch instead.
+ * On the local demo the same form signs in to the three demo accounts, which
+ * are listed under it with their addresses and the code.
  */
 
 import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { DemoLogins } from '../auth/DemoLogins';
 import { DoorLink, OtpForm } from '../auth/OtpForm';
-import { auth } from '../data';
+import { auth, backend } from '../data';
+import { useSession } from '../state/session';
 import { color, space } from '../theme/tokens';
-import { Button, EmptyState, Header } from '../components';
+import { Header } from '../components';
+
+const DEMO = backend === 'local';
 
 /** Where a finished sign-in may continue to. Anything else closes the sheet. */
 const NEXT_ROUTES = ['/list-business', '/merchant'] as const;
@@ -27,21 +31,8 @@ const asNext = (v: unknown): NextRoute | null =>
 export default function SignInScreen() {
   const insets = useSafeAreaInsets();
   const { next } = useLocalSearchParams<{ next?: string }>();
+  const setMode = useSession((s) => s.setMode);
   const close = () => (router.canGoBack() ? router.back() : router.dismissTo('/'));
-
-  if (!auth) {
-    return (
-      <View style={styles.screen}>
-        <Header title="Sign in" onBack={close} />
-        <EmptyState
-          icon="user"
-          title="Demo mode"
-          body="This build runs on offline demo data. Switch between the customer, merchant and admin accounts from Profile."
-          action={<Button onPress={() => router.replace('/profile')}>Open Profile</Button>}
-        />
-      </View>
-    );
-  }
 
   return (
     <View style={styles.screen}>
@@ -54,7 +45,11 @@ export default function SignInScreen() {
           <OtpForm
             api={auth}
             title="Welcome to YOLO Deals"
-            lead="We will send you a one-time code. No password needed."
+            lead={
+              DEMO
+                ? 'Demo: enter any email to sign in. No code needed; a new email makes a new account.'
+                : 'We will send you a one-time code. No password needed.'
+            }
             onSignedIn={() => {
               const to = asNext(next);
               if (to) router.replace(to);
@@ -68,6 +63,22 @@ export default function SignInScreen() {
               />
             }
           />
+          {DEMO ? (
+            <DemoLogins
+              onSignedIn={(kind) => {
+                // Each demo account lands where that person would start.
+                if (kind === 'merchant') {
+                  setMode('merchant');
+                  router.replace('/merchant');
+                } else if (kind === 'admin') router.replace('/profile');
+                else {
+                  const to = asNext(next);
+                  if (to) router.replace(to);
+                  else close();
+                }
+              }}
+            />
+          ) : null}
         </ScrollView>
       </KeyboardAvoidingView>
     </View>

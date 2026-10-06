@@ -16,15 +16,18 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { StatusBar } from 'expo-status-bar';
 import { Redirect, router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { DemoLogins } from '../auth/DemoLogins';
 import { DoorLink, OtpForm } from '../auth/OtpForm';
 import { auth, backend, refreshViewer } from '../data';
 import { useSession, useViewer, useViewerReady } from '../state/session';
 import { color, radius, shadow, space, theme, type } from '../theme/tokens';
-import { Button, Icon, type IconName } from '../components';
+import { Icon, type IconName } from '../components';
+
+const DEMO = backend === 'local';
 
 const PERKS: { icon: IconName; title: string; body: string }[] = [
   { icon: 'pin', title: 'Seen by people nearby', body: 'Your deals show to customers within a few kilometres.' },
-  { icon: 'qr', title: 'Redeem at the counter', body: 'Customers show a code; you type or scan it. No payments in the app.' },
+  { icon: 'qr', title: 'Redeem at the counter', body: 'Customers show a code and you type it in. No payments in the app.' },
   { icon: 'chart', title: 'See what works', body: 'Views, claims and bookings for every deal.' },
 ];
 
@@ -32,16 +35,14 @@ export default function BusinessLoginScreen() {
   const insets = useSafeAreaInsets();
   const viewer = useViewer();
   const ready = useViewerReady();
-  const setAccount = useSession((s) => s.setAccount);
   const setMode = useSession((s) => s.setMode);
 
   const close = () => (router.canGoBack() ? router.back() : router.dismissTo('/'));
 
   if (!ready) return <View style={styles.screen} />;
   if (viewer && viewer.business_ids.length > 0) return <Redirect href="/merchant" />;
-  // Signed in on Supabase but no business yet: setting one up is the next step.
-  // (The local demo always has a viewer, so it gets the demo panel instead.)
-  if (viewer && backend === 'supabase') return <Redirect href="/list-business" />;
+  // Signed in but no business yet: setting one up is the next step.
+  if (viewer) return <Redirect href="/list-business" />;
 
   return (
     <View style={styles.screen}>
@@ -64,26 +65,28 @@ export default function BusinessLoginScreen() {
 
           <View style={styles.cardWrap}>
             <View style={styles.card}>
-            {auth ? (
-              <OtpForm
-                api={auth}
-                title="Sign in to your business"
-                lead="New here? Use your number and we will set up your business next."
-                onSignedIn={async () => {
-                  setMode('merchant');
-                  await refreshViewer();
+            <OtpForm
+              api={auth}
+              title="Sign in to your business"
+              lead={
+                DEMO
+                  ? 'Demo: enter any email, no code needed. A new email goes on to set up its business.'
+                  : 'New here? Use your email and we will set up your business next.'
+              }
+              onSignedIn={async () => {
+                setMode('merchant');
+                await refreshViewer();
+              }}
+            />
+            {DEMO ? (
+              <DemoLogins
+                only={['merchant', 'customer']}
+                onSignedIn={(kind) => {
+                  // The redirects above take it from here.
+                  if (kind === 'merchant') setMode('merchant');
                 }}
               />
-            ) : (
-              <DemoPanel
-                onMerchant={() => {
-                  setAccount('merchant');
-                  setMode('merchant');
-                  router.replace('/merchant');
-                }}
-                onNew={() => router.push('/list-business')}
-              />
-            )}
+            ) : null}
             </View>
           </View>
 
@@ -103,25 +106,6 @@ export default function BusinessLoginScreen() {
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
-    </View>
-  );
-}
-
-/** The local demo has no sign-in: pick the seeded merchant, or set up a new business. */
-function DemoPanel({ onMerchant, onNew }: { onMerchant: () => void; onNew: () => void }) {
-  return (
-    <View style={styles.demo}>
-      <Text style={styles.demoTitle}>Demo mode</Text>
-      <Text style={styles.demoBody}>
-        This build runs on offline demo data. Open the demo merchant, Rangoli Kitchen, or set up a new business as
-        the demo customer.
-      </Text>
-      <Button variant="cta" full onPress={onMerchant}>
-        Continue as demo merchant
-      </Button>
-      <Button variant="secondary" full onPress={onNew}>
-        List a new business
-      </Button>
     </View>
   );
 }
@@ -209,17 +193,5 @@ const styles = StyleSheet.create({
   perkBody: {
     ...type.caption,
     color: color.textSecondary,
-  },
-  demo: {
-    gap: space.md,
-  },
-  demoTitle: {
-    ...type.h1,
-    color: color.text,
-  },
-  demoBody: {
-    ...type.body,
-    color: color.textSecondary,
-    marginBottom: space.sm,
   },
 });

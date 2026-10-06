@@ -5,7 +5,7 @@ What is left to ship YOLO Deals, split into front end, back end and shipping.
 covered by `npm run db:verify` or the end-to-end run on the Supabase CLI stack.
 UI/UX quality is scored separately in [`UX-SCORECARD.md`](UX-SCORECARD.md).
 
-## Where we are (2026-10-03)
+## Where we are (2026-10-04)
 
 "Items" counts the boxes below. "Estimate" weights them by effort: the
 database, the wiring and the screens were the heavy part and are done, while
@@ -13,10 +13,10 @@ most open items are setup, native features and polish rather than new screens.
 
 | Area | Items | Estimate | What is holding it back |
 |---|---|---|---|
-| **Front end** | 71 / 83 | **~80%** | Location, native features (camera, maps, push), error and offline states, no automated tests |
-| **Back end** | 25 / 37 | **~80%** | All logic and wiring done and tested; production setup is not: migrations not deployed, no SMS provider, no deal-photo storage, no push delivery |
+| **Front end** | 78 / 90 | **~82%** | Location, native features (camera, maps, push), error and offline states, no automated tests |
+| **Back end** | 27 / 39 | **~82%** | All logic and wiring done and tested; production setup is not: migrations not deployed, no SMS provider, no deal-photo storage, no push delivery |
 | **Ship** | 0 / 12 | **~5%** | No `eas.json`, store assets, privacy policy, crash reporting or CI yet |
-| **Overall MVP** | 96 / 132 | **~70%** | The demo loop is code-complete; production setup and shipping are barely started |
+| **Overall MVP** | 105 / 141 | **~72%** | The demo loop is code-complete; production setup and shipping are barely started |
 
 The demo loop works end to end today, on both backends: customer finds and
 claims a deal, merchant redeems it, admin approves a new one.
@@ -91,7 +91,16 @@ claims a deal, merchant redeems it, admin approves a new one.
 - [x] Spotlight and Ending soon tiles swipe (dots too); rails scroll at every width with arrows on desktop; Trending shows a top 20
 - [x] Screen readers get selected / checked / disabled state on web (`aria-*`; RN Web ignores `accessibilityState`)
 
-## F4. Merchant app · 15 / 18
+## F3b. Launch features · 6 / 6
+
+- [x] Smart search: every word counts on its own (a stray word no longer empties the list), word-prefix matching ("biry" finds biryani, "veg" no longer finds non-veg, "kebabs" finds kebab), dish words set Food, filler words dropped. "I want chicken foods under 200" finds the two chicken deals under ₹200
+- [x] Live matches under the search box while typing; when nothing matches, Results loosens the search a step at a time (distance, then price, then time, then words) and says what it changed, with Undo
+- [x] Group deals: deals carry a group size (`party_min`/`party_max`); "dinner for 4-5 people", "group of 6", "couple", "family" are understood; "Who's going" chips in Filters; "For 4–6" on cards and "Priced for a group of 4 to 6" on the deal page
+- [x] My vehicle: pick a bike, scooter or car once (`/vehicle`), see every deal for it across categories, specialists first; Home card, Profile row, vehicle chip in Filters; typing "royal enfield service", "activa" or "car wash" works too. New Vehicle Care category
+- [x] Taste learning: views, saves and claims (fading with age) rank a "Picked for you" rail on Home, with the reason; Profile shows "Your interests"
+- [x] Category pages open with the tapped tile growing into the header; skipped under Reduce Motion
+
+## F4. Merchant app · 16 / 19
 
 - [x] Gated on business membership; tabs with a raised Create button
 - [x] Dashboard: 7 / 30-day stats, status buckets, needs-attention list
@@ -108,6 +117,7 @@ claims a deal, merchant redeems it, admin approves a new one.
 - [x] YOLO Verified request with real registration details (`src/app/merchant/verify.tsx`): registered name, business type, GSTIN (format, state code and check digit checked as you type), or PAN plus Udyam / Shop & Establishment / trade licence when not under GST, FSSAI for food, registered address, applicant and role, declaration
 - [x] A declined request shows the admin's reason on the dashboard and comes back pre-filled
 - [x] Onboarding verified end to end, locally and on the Supabase CLI stack with a brand-new account
+- [x] Wizard: group size and "for which vehicles" (kinds and brands); other attributes are kept on edit
 - [ ] Photo upload in the wizard (needs the Storage bucket, see B3)
 - [ ] QR scanning on Redeem (`expo-camera`, needs a development build)
 - [ ] Business profile editing (hours, address, phone)
@@ -130,7 +140,7 @@ claims a deal, merchant redeems it, admin approves a new one.
 
 # Back end
 
-## B1. Database · 15 / 15
+## B1. Database · 17 / 17
 
 - [x] Schema: 30 tables, enums, indexes, partitioned `deal_events`, lifecycle transition table (`0001_init.sql`)
 - [x] All five PRD engines as `SECURITY DEFINER` RPCs (`0002_functions.sql`)
@@ -147,6 +157,8 @@ claims a deal, merchant redeems it, admin approves a new one.
 - [x] Migrations and seed apply cleanly on the Supabase CLI stack (Postgres 17)
 - [x] Nine security holes found and fixed: customer making themselves admin, writable `deals.status`, sell-out transition, unpublished deals via the view, `get_deal` leaking drafts, `merchant_stats` for any business, joining any business, inserting an already-verified business, an owner verifying or rating their own business
 - [x] Category facets in `categories.attribute_schema` (cuisine, BHK, furnishing, vehicle)
+- [x] Reference data as a migration (`0008`): localities, deal types and categories reach production without `seed.sql`
+- [x] `0009`: search v2 (any-word, word prefix, group size, vehicles, specialists first), `my_taste()`, `feed_for_you()`, attribute shape check; 20 new assertions (216 in all)
 
 ## B2. Mapping and wiring · 9 / 9
 

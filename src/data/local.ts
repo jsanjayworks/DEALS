@@ -7,8 +7,9 @@
  * no accounts and no network, and what makes the Supabase adapter a drop-in
  * swap rather than a rewrite.
  *
- * Deliberately not persisted: persistence belongs to the caller, so tests get a
- * clean store by constructing a new one.
+ * Not persisted by default, so tests get a clean store by constructing a new
+ * one. The demo website opts in (loadStore and `persist`): the store is kept
+ * in the browser, so a reload in the middle of a demo loses nothing.
  */
 
 import {
@@ -20,10 +21,13 @@ import {
 } from './seed-reference';
 import { SEED_ADMIN_QUEUE_DEALS, SEED_DEALS, SEED_PIPELINE_DEALS } from './seed-deals';
 import { dealToCard, haversineKm } from './mapping';
+import { matchPhoto } from './photo-library';
+import { PAY_METHOD_LABEL, paymentOf } from '../lib/payment';
 import {
   RuleViolation,
   type ActionWithDeal,
   type AppViewer,
+  type BusinessOrder,
   type DataSource,
   type DealDraftInput,
   type FeedQuery,
@@ -31,6 +35,8 @@ import {
   type SearchQuery,
   type SearchResult,
   type TakeActionInput,
+  type TasteItem,
+  type ReportGroup,
   type BusinessVerification,
   type SupportQueueItem,
   type SupportTicket,
@@ -48,7 +54,10 @@ import {
   udyamProblem,
 } from '../lib/india-ids';
 import { canTransition, isPubliclyVisible, type Actor } from '../domain/lifecycle';
-import { scoreDeal, textRelevance } from '../domain/ranking';
+import { dealParty, partyFits } from './party';
+import { computeTaste, tasteAffinity, TASTE_SHARE, type TasteSignal } from '../domain/taste';
+import { dealVehicleTags } from './vehicles';
+import { scoreDeal, searchRelevance, textRelevance, vehicleRelevance } from '../domain/ranking';
 import {
   checkAction,
   generateRedemptionCode,
@@ -126,12 +135,79 @@ export interface LocalStore {
   history: DealStatusHistoryEntry[];
   saved: Set<string>;
   outbox: OutboxEvent[];
-  reports: { id: string; target_type: string; target_id: string; reason: string }[];
+  reports: {
+    id: string;
+    target_type: string;
+    target_id: string;
+    reason: string;
+    details: string | null;
+    status: 'open' | 'actioned' | 'dismissed';
+    created_at: string;
+  }[];
   /** Support requests, oldest first, with who filed them. */
   tickets: (SupportTicket & { profile_id: string })[];
+  /** Who opened which deal and when: the "view" signal taste learns from. */
+  views: { deal_id: string; profile_id: string; at: number }[];
+  /** When each save happened, for the same reason. */
+  savedAt: Map<string, number>;
   /** Every verification request, oldest first, with who filed it. */
   verifications: (BusinessVerification & { business_id: string; owner_profile_id: string })[];
+  /** Every account by id: the three demo ones and any made by signing in with a new email. */
+  users: Record<string, LocalViewer>;
   viewer: LocalViewer;
+}
+
+/** An open claim the demo customer holds, so the demo merchant can always try Redeem. */
+export const DEMO_REDEEM_CODE = 'YOLO-RNG7K2';
+
+const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+
+/**
+ * Claims already made on the demo merchant's deals, matching how many each
+ * deal says are taken, spread over the last month: older ones redeemed,
+ * the last day's still open. Without them the merchant dashboard, the deal
+ * pages and Insights read zero while the customer side says "66 taken".
+ */
+function seedActions(): CustomerAction[] {
+  const now = Date.now();
+  const out: CustomerAction[] = [];
+  for (const deal of SEED_DEALS) {
+    if (deal.business_id !== DEMO_BUSINESS_ID || deal.capacity_total == null) continue;
+    const taken = deal.capacity_total - (deal.capacity_remaining ?? deal.capacity_total);
+    for (let i = 0; i < taken; i++) {
+      const daysAgo = (i * 29) / Math.max(taken, 1) + 0.1;
+      const demo = deal.id === 'd-011' && i === 0;
+      let code = '';
+      for (let k = 0; k < 6; k++) code += CODE_CHARS[(i * 7 + k * 13 + deal.id.length * 3) % CODE_CHARS.length];
+      out.push({
+        id: 'act-seed-' + deal.id + '-' + i,
+        deal_id: deal.id,
+        customer_id: demo ? DEMO_CUSTOMER.id : 'usr-seed-' + (i % 37),
+        action_type: 'claim',
+        status: demo || daysAgo < 1 ? 'confirmed' : 'redeemed',
+        quantity: 1,
+        slot_start: null,
+        redemption_code: demo ? DEMO_REDEEM_CODE : 'YOLO-' + code,
+        // Paid at checkout like any order on a priced deal (lib/payment.ts).
+        payload:
+          (deal.deal_price ?? 0) > 0
+            ? {
+                payment: {
+                  status: 'paid',
+                  method: (['upi', 'upi', 'card', 'netbanking'] as const)[i % 4],
+                  amount: deal.deal_price,
+                  currency: 'INR',
+                  order_id: 'ORD-' + code,
+                  paid_at: new Date(now - (demo ? 0.08 : daysAgo) * 86_400_000).toISOString(),
+                  mock: true,
+                },
+              }
+            : {},
+        created_at: new Date(now - (demo ? 0.08 : daysAgo) * 86_400_000).toISOString(),
+      });
+    }
+  }
+  return out;
 }
 
 export function createStore(viewer: LocalViewer = DEMO_CUSTOMER): LocalStore {
@@ -139,7 +215,7 @@ export function createStore(viewer: LocalViewer = DEMO_CUSTOMER): LocalStore {
     deals: [...SEED_DEALS, ...SEED_PIPELINE_DEALS, ...SEED_ADMIN_QUEUE_DEALS].map((d) => ({
       ...d,
     })),
-    actions: [],
+    actions: seedActions(),
     notifications: [],
     history: [],
     saved: new Set<string>(),
@@ -147,8 +223,112 @@ export function createStore(viewer: LocalViewer = DEMO_CUSTOMER): LocalStore {
     reports: [],
     verifications: [],
     tickets: [],
+    views: [],
+    savedAt: new Map<string, number>(),
+    users: Object.fromEntries([DEMO_CUSTOMER, DEMO_MERCHANT, DEMO_ADMIN].map((u) => [u.id, u])),
     viewer,
   };
+}
+
+// ----------------------------------------------------------- persistence ----
+
+const STORAGE_KEY = 'yolo-demo-data-v1';
+
+function webStorage(): Storage | null {
+  try {
+    return typeof window !== 'undefined' && window.localStorage ? window.localStorage : null;
+  } catch {
+    return null;
+  }
+}
+
+interface Snapshot {
+  v: 1;
+  deals: Deal[];
+  actions: CustomerAction[];
+  notifications: Notification[];
+  history: DealStatusHistoryEntry[];
+  saved: string[];
+  reports: LocalStore['reports'];
+  verifications: LocalStore['verifications'];
+  tickets: LocalStore['tickets'];
+  views: LocalStore['views'];
+  savedAt: [string, number][];
+  users: Record<string, LocalViewer>;
+  businesses: Business[];
+}
+
+function snapshot(store: LocalStore, dropPhotos = false): Snapshot {
+  store.users[store.viewer.id] = store.viewer;
+  // A photo picked from the device is a data: URL; if the browser's storage
+  // is full, those go and the deal falls back to a matched library photo.
+  const deals = dropPhotos
+    ? store.deals.map((d) => (d.image.startsWith('data:') ? { ...d, image: matchPhoto({ id: d.id, title: d.title, tags: d.tags }) } : d))
+    : store.deals;
+  return {
+    v: 1,
+    deals,
+    actions: store.actions,
+    notifications: store.notifications,
+    history: store.history,
+    saved: [...store.saved],
+    reports: store.reports,
+    verifications: store.verifications,
+    tickets: store.tickets,
+    views: store.views.slice(-500),
+    savedAt: [...store.savedAt],
+    users: store.users,
+    businesses: BUSINESSES,
+  };
+}
+
+/** A store from what this browser kept, or the seed data the first time. */
+export function loadStore(): LocalStore {
+  const store = createStore();
+  const ls = webStorage();
+  if (!ls) return store;
+  try {
+    const raw = ls.getItem(STORAGE_KEY);
+    if (!raw) return store;
+    const s = JSON.parse(raw) as Snapshot;
+    if (s.v !== 1) return store;
+    store.deals = s.deals;
+    store.actions = s.actions;
+    store.notifications = s.notifications;
+    store.history = s.history;
+    store.saved = new Set(s.saved);
+    store.reports = s.reports;
+    store.verifications = s.verifications;
+    store.tickets = s.tickets;
+    store.views = s.views;
+    store.savedAt = new Map(s.savedAt);
+    store.users = { ...store.users, ...s.users };
+    BUSINESSES.splice(0, BUSINESSES.length, ...s.businesses);
+  } catch {
+    // A snapshot that does not read starts the demo afresh.
+  }
+  return store;
+}
+
+export function saveStore(store: LocalStore): void {
+  const ls = webStorage();
+  if (!ls) return;
+  try {
+    ls.setItem(STORAGE_KEY, JSON.stringify(snapshot(store)));
+  } catch {
+    try {
+      ls.setItem(STORAGE_KEY, JSON.stringify(snapshot(store, true)));
+    } catch {
+      // Still too big: this session keeps working, it just will not survive a reload.
+    }
+  }
+}
+
+/** Forget everything this browser kept: the next load starts from the seed data, signed out. */
+export function clearSavedDemo(): void {
+  const ls = webStorage();
+  ls?.removeItem(STORAGE_KEY);
+  ls?.removeItem('yolo-session');
 }
 
 export interface LocalDataSource extends DataSource {
@@ -156,13 +336,24 @@ export interface LocalDataSource extends DataSource {
   /** Switches the signed-in account: customer, merchant or admin. */
   setViewer(v: LocalViewer): void;
   getViewer(): LocalViewer;
+  /** The account for an email, made on first use: the demo signs in without a code. */
+  userForEmail(email: string): LocalViewer;
+  /** An account by id, for putting the remembered one back after a reload. */
+  userById(id: string): LocalViewer | null;
   /** Direct access for tests and for the outbox worker. */
   readonly store: LocalStore;
 }
 
 export function createLocalDataSource(
   store: LocalStore = createStore(),
+  { persist = false }: { persist?: boolean } = {},
 ): LocalDataSource {
+  /** Every account, with the signed-in one as it is now (edits replace the object). */
+  const allUsers = (): LocalViewer[] => {
+    store.users[store.viewer.id] = store.viewer;
+    return Object.values(store.users);
+  };
+
   const emit = (
     type: string,
     aggregateType: string,
@@ -204,6 +395,12 @@ export function createLocalDataSource(
     if (!d) throw new RuleViolation('Deal not found');
     return d;
   };
+
+  /** Who owns a business among the demo accounts, as business_members would say. */
+  const ownersOf = (businessId: string): string[] =>
+    allUsers()
+      .filter((v) => v.business_ids.includes(businessId))
+      .map((v) => v.id);
 
   const isMember = (businessId: string) =>
     store.viewer.business_ids.includes(businessId) || store.viewer.is_admin;
@@ -258,6 +455,29 @@ export function createLocalDataSource(
     return to;
   };
 
+  /** What the current viewer is into, from what they opened, saved and claimed. */
+  const myTaste = (): TasteItem[] => {
+    const me = store.viewer.id;
+    const signal = (kind: TasteSignal['kind'], dealId: string, at: number): TasteSignal | null => {
+      const d = store.deals.find((x) => x.id === dealId);
+      if (!d) return null;
+      const cat = CATEGORIES.find((c) => c.id === d.category_id);
+      if (!cat) return null;
+      return { kind, at, categorySlug: cat.slug, categoryName: cat.name, tags: d.tags };
+    };
+    const now = Date.now();
+    const signals = [
+      ...store.views
+        .filter((v) => v.profile_id === me && now - v.at < 90 * 86_400_000)
+        .map((v) => signal('view', v.deal_id, v.at)),
+      ...[...store.saved].map((id) => signal('save', id, store.savedAt.get(id) ?? now)),
+      ...store.actions
+        .filter((a) => a.customer_id === me)
+        .map((a) => signal('action', a.deal_id, new Date(a.created_at).getTime())),
+    ].filter((s): s is TasteSignal => s !== null);
+    return computeTaste(signals, now);
+  };
+
   /** The live, visible, in-radius candidate set both reads start from. */
   const candidates = (origin: LatLng | null, radiusKm: number | null): DealCardModel[] => {
     const now = Date.now();
@@ -307,6 +527,12 @@ export function createLocalDataSource(
         if (String(c.attributes[k] ?? '') !== String(v)) return false;
       }
 
+      if (!partyFits(dealParty(c.attributes), f.party_min, f.party_max)) return false;
+      if (f.vehicle_tags.length > 0) {
+        const fits = dealVehicleTags(c.attributes);
+        if (!fits.some((t) => f.vehicle_tags.includes(t))) return false;
+      }
+
       if (f.keywords.length > 0 && textRelevance(c, f.keywords) === 0) return false;
       void now;
       return true;
@@ -319,9 +545,32 @@ export function createLocalDataSource(
 
     setViewer(v) {
       store.viewer = v;
+      store.users[v.id] = v;
     },
     getViewer() {
       return store.viewer;
+    },
+
+    userForEmail(email) {
+      const e = email.trim().toLowerCase();
+      const found = allUsers().find((u) => (u.email ?? '').toLowerCase() === e);
+      if (found) return found;
+      const user: LocalViewer = {
+        id: uid('usr'),
+        full_name: '',
+        phone: '',
+        email: e,
+        date_of_birth: null,
+        is_yolo_verified: false,
+        is_admin: false,
+        business_ids: [],
+      };
+      store.users[user.id] = user;
+      return user;
+    },
+
+    userById(id) {
+      return allUsers().find((u) => u.id === id) ?? null;
     },
 
     async getCategories(): Promise<Category[]> {
@@ -347,6 +596,12 @@ export function createLocalDataSource(
     },
 
     // The demo keeps the picked file's own URI; it lasts until the page reloads.
+    async uploadDealPhoto(businessId, image): Promise<string> {
+      if (!isMember(businessId)) throw new RuleViolation('Only the business can add its photos');
+      // Nothing to upload to offline: the picked file's own URL serves this session.
+      return image.uri;
+    },
+
     async setAvatar(image): Promise<string> {
       Object.assign(store.viewer, { avatar_url: image.uri });
       store.viewer = { ...store.viewer };
@@ -384,6 +639,7 @@ export function createLocalDataSource(
         action_id: input.action_id ?? null,
         deal_id: dealId,
         created_at: new Date().toISOString(),
+        messages: [{ author: 'customer', body: message, created_at: new Date().toISOString() }],
       });
       emit('support.ticket_created', 'support_ticket', id, { topic: input.topic });
       return id;
@@ -438,6 +694,9 @@ export function createLocalDataSource(
         locality_id: locality.id,
         address_line: address,
         location: locality.centroid,
+        description: input.description?.trim() || null,
+        keywords: input.keywords ?? [],
+        owner_role: input.owner_role?.trim() || null,
       });
       // Kept on the demo account too, so switching accounts and back keeps the
       // business; the fresh object is what makes subscribers re-render.
@@ -445,6 +704,36 @@ export function createLocalDataSource(
       store.viewer = { ...store.viewer, business_ids: [...store.viewer.business_ids] };
       emit('merchant.business_created', 'business', id, { name });
       return id;
+    },
+
+    // Mirrors update_business() in 0012_business_details.sql.
+    async updateBusiness(businessId, input): Promise<void> {
+      if (!isMember(businessId)) throw new RuleViolation("Only the business's own team can change its details");
+      const name = input.name.trim();
+      const address = input.address_line.trim();
+      const phone = input.phone?.trim() || '';
+      const email = input.email?.trim() || '';
+      if (name.length < 2 || name.length > 80) throw new RuleViolation('Business name must be 2 to 80 characters');
+      const locality = LOCALITIES.find((l) => l.id === input.locality_id);
+      if (!locality) throw new RuleViolation('Choose the area your business is in');
+      if (address.length < 5) throw new RuleViolation('Enter the street address');
+      if (phone && !/^\+?[0-9 ]{8,16}$/.test(phone)) throw new RuleViolation('Enter a valid phone number');
+      if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+        throw new RuleViolation('Enter a valid email address');
+      }
+      const biz = BUSINESSES.find((b) => b.id === businessId);
+      if (!biz) throw new RuleViolation('Business not found');
+      const moved = biz.locality_id !== locality.id;
+      Object.assign(biz, { name, phone, email, address_line: address });
+      if (moved) {
+        Object.assign(biz, { locality_id: locality.id, location: locality.centroid });
+        for (const d of store.deals) {
+          if (d.business_id === businessId && !['EXPIRED', 'ARCHIVED', 'COMPLETED'].includes(d.status)) {
+            d.location = locality.centroid;
+          }
+        }
+      }
+      emit('merchant.business_updated', 'business', businessId, { name, locality: locality.name });
     },
 
     // Mirrors submit_business_verification() in 0006_merchant_onboarding.sql.
@@ -575,6 +864,32 @@ export function createLocalDataSource(
       return scored.slice(offset, offset + (q.limit ?? 20)).map((s) => s.card);
     },
 
+    async getMyTaste(): Promise<TasteItem[]> {
+      return myTaste();
+    },
+
+    async feedForYou(q): Promise<DealCardModel[]> {
+      const taste = myTaste();
+      if (taste.length === 0) return [];
+      const radiusKm = q.radius_m / 1000;
+      const acted = new Set(
+        store.actions.filter((a) => a.customer_id === store.viewer.id).map((a) => a.deal_id),
+      );
+      return candidates(q.origin, radiusKm)
+        .filter((c) => !acted.has(c.id))
+        .map((c) => ({ card: c, a: tasteAffinity(c, taste) }))
+        .filter((x) => x.a > 0)
+        .map((x) => ({
+          card: x.card,
+          rank:
+            x.a * TASTE_SHARE +
+            scoreDeal({ deal: x.card, relevance: 0.5, radiusKm }) * (1 - TASTE_SHARE),
+        }))
+        .sort((a, b) => b.rank - a.rank || a.card.distance_km - b.card.distance_km)
+        .slice(0, q.limit ?? 12)
+        .map((x) => x.card);
+    },
+
     async searchDeals(q: SearchQuery): Promise<SearchResult> {
       const f = q.filters;
       const radiusKm = f.radius_km ?? 5;
@@ -594,13 +909,15 @@ export function createLocalDataSource(
 
       const scored = filtered.map((c) => ({
         card: c,
-        relevance: textRelevance(c, f.keywords),
+        relevance: searchRelevance(c, f.keywords, f.vehicle_tags, dealVehicleTags(c.attributes)),
       }));
 
       const ranked = scored
         .map((s) => ({
           card: s.card,
           score: scoreDeal({ deal: s.card, relevance: s.relevance, radiusKm }),
+          // Specialists for the vehicle first, then everything else that fits it.
+          fit: vehicleRelevance(dealVehicleTags(s.card.attributes), f.vehicle_tags),
         }))
         .sort((a, b) => {
           switch (f.sort) {
@@ -611,7 +928,7 @@ export function createLocalDataSource(
             case 'best_value':
               return (b.card.discount_pct ?? 0) - (a.card.discount_pct ?? 0);
             default:
-              return b.score - a.score;
+              return b.fit - a.fit || b.score - a.score;
           }
         });
 
@@ -698,6 +1015,21 @@ export function createLocalDataSource(
         { deal_id: deal.id, action_id: action.id },
       );
 
+      // The business hears about every order, paid or not.
+      const paid = paymentOf(action);
+      const who = store.viewer.full_name || store.viewer.email || 'A customer';
+      for (const owner of ownersOf(deal.business_id)) {
+        notify(
+          owner,
+          'new_claim',
+          (input.action_type === 'enquiry' ? 'New enquiry: ' : 'New order: ') + deal.title,
+          paid
+            ? who + ' paid ₹' + paid.amount.toLocaleString('en-IN') + ' by ' + PAY_METHOD_LABEL[paid.method] + ' · ' + paid.order_id
+            : who + (quantity > 1 ? ' · ' + quantity + ' ×' : '') + (action.redemption_code ? ' · pays at the counter' : ''),
+          { deal_id: deal.id, action_id: action.id },
+        );
+      }
+
       // Sold out closes the deal, same as the SQL does in one transaction.
       if (deal.capacity_remaining === 0) {
         move(deal.id, 'EXPIRED', 'sold out', 'system');
@@ -742,6 +1074,7 @@ export function createLocalDataSource(
         return false;
       }
       store.saved.add(dealId);
+      store.savedAt.set(dealId, Date.now());
       return true;
     },
 
@@ -752,9 +1085,17 @@ export function createLocalDataSource(
         .map((d) => dealToCard(d, origin ?? null));
     },
 
-    async reportTarget(targetType, targetId, reason): Promise<string> {
+    async reportTarget(targetType, targetId, reason, details): Promise<string> {
       const id = uid('rep');
-      store.reports.push({ id, target_type: targetType, target_id: targetId, reason });
+      store.reports.push({
+        id,
+        target_type: targetType,
+        target_id: targetId,
+        reason,
+        details: details ?? null,
+        status: 'open',
+        created_at: new Date().toISOString(),
+      });
       emit('report.created', targetType, targetId, { report_id: id, reason });
       return id;
     },
@@ -859,8 +1200,25 @@ export function createLocalDataSource(
       return id;
     },
 
+    // The demo publishes straight away so a new merchant's deal can be found at
+    // once; the live app (transition_deal) waits for an admin to approve it.
     async submitDeal(dealId): Promise<DealStatus> {
-      return move(dealId, 'SUBMITTED');
+      const deal = findDeal(dealId);
+      move(dealId, 'SUBMITTED');
+      move(dealId, 'VERIFICATION', undefined, 'admin');
+      move(dealId, 'APPROVED', 'Demo: published without review', 'admin');
+      let status = move(dealId, 'PUBLISHED', undefined, 'admin');
+      if (new Date(deal.starts_at).getTime() <= Date.now()) status = move(dealId, 'ACTIVE', undefined, 'system');
+      for (const owner of ownersOf(deal.business_id)) {
+        notify(
+          owner,
+          'deal_approved',
+          'Live: ' + deal.title,
+          status === 'ACTIVE' ? 'Customers can see it and take it now.' : 'It goes live on its start date.',
+          { deal_id: dealId },
+        );
+      }
+      return status;
     },
 
     async transitionDeal(dealId, to, reason): Promise<DealStatus> {
@@ -901,9 +1259,11 @@ export function createLocalDataSource(
       const count = (t: CustomerAction['action_type'][]) =>
         acts.filter((a) => t.includes(a.action_type)).length;
 
+      // The seeded view counts are a month's worth; a shorter period shows its share.
+      const share = Math.min(days, 30) / 30;
       return {
-        views: mine.reduce((s, d) => s + d.views, 0),
-        searches: mine.reduce((s, d) => s + d.searches, 0),
+        views: Math.round(mine.reduce((s, d) => s + d.views, 0) * share),
+        searches: Math.round(mine.reduce((s, d) => s + d.searches, 0) * share),
         claims: count(['claim']),
         bookings: count(['booking', 'reserve']),
         enquiries: count(['enquiry']),
@@ -943,6 +1303,21 @@ export function createLocalDataSource(
       return store.actions.filter((a) => a.deal_id === dealId);
     },
 
+    async listBusinessOrders(businessId): Promise<BusinessOrder[]> {
+      if (!isMember(businessId)) throw new RuleViolation('Only the business can see its orders');
+      const users = allUsers();
+      const deals = new Map(store.deals.filter((d) => d.business_id === businessId).map((d) => [d.id, d]));
+      return store.actions
+        .filter((a) => deals.has(a.deal_id))
+        .sort((a, b) => b.created_at.localeCompare(a.created_at))
+        .slice(0, 200)
+        .map((a) => {
+          const d = deals.get(a.deal_id)!;
+          const u = users.find((x) => x.id === a.customer_id);
+          return { ...a, deal_title: d.title, deal_price: d.deal_price, customer_name: u ? u.full_name || u.email || null : null };
+        });
+    },
+
     async listReviewQueue(): Promise<DealCardModel[]> {
       if (!store.viewer.is_admin) throw new RuleViolation('Admin only');
       return store.deals
@@ -967,16 +1342,77 @@ export function createLocalDataSource(
         }
       }
 
-      notify(
-        DEMO_MERCHANT.id,
-        approve ? 'deal_approved' : 'deal_rejected',
-        approve ? 'Deal approved' : 'Deal needs changes',
-        approve
-          ? deal.title + ' is live and visible to customers.'
-          : reason ?? 'Please review and resubmit.',
-        { deal_id: dealId },
-      );
+      // Only the deal's own business hears about it, as review_deal() does.
+      for (const owner of ownersOf(deal.business_id)) {
+        notify(
+          owner,
+          approve ? 'deal_approved' : 'deal_rejected',
+          approve ? 'Deal approved: ' + deal.title : 'Needs changes: ' + deal.title,
+          approve
+            ? status === 'ACTIVE'
+              ? 'It is live and visible to customers.'
+              : 'It goes live on ' + new Date(deal.starts_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) + '.'
+            : (reason ?? 'Please review and resubmit.'),
+          { deal_id: dealId },
+        );
+      }
       return status;
+    },
+
+    async listReportsQueue(): Promise<ReportGroup[]> {
+      if (!store.viewer.is_admin) throw new RuleViolation('Admin only');
+      const groups = new Map<string, ReportGroup>();
+      for (const r of store.reports.filter((x) => x.status === 'open')) {
+        const k = r.target_type + ':' + r.target_id;
+        const deal = r.target_type === 'deal' ? store.deals.find((d) => d.id === r.target_id) : undefined;
+        const biz = deal
+          ? businessById(deal.business_id)
+          : BUSINESSES.find((b) => b.id === r.target_id);
+        const g = groups.get(k) ?? {
+          target_type: r.target_type as ReportGroup['target_type'],
+          target_id: r.target_id,
+          title: deal?.title ?? biz?.name ?? 'Removed item',
+          business_id: biz?.id ?? null,
+          business_name: biz?.name ?? null,
+          deal_status: deal?.status ?? null,
+          open_count: 0,
+          reasons: [],
+          details: [],
+          first_at: r.created_at,
+          last_at: r.created_at,
+        };
+        g.open_count += 1;
+        if (!g.reasons.includes(r.reason)) g.reasons.push(r.reason);
+        if (r.details?.trim()) g.details.unshift(r.details.trim());
+        if (r.created_at < g.first_at) g.first_at = r.created_at;
+        if (r.created_at > g.last_at) g.last_at = r.created_at;
+        groups.set(k, g);
+      }
+      return [...groups.values()].sort(
+        (a, b) => b.open_count - a.open_count || b.last_at.localeCompare(a.last_at),
+      );
+    },
+
+    async resolveReports(targetType, targetId, action, note): Promise<number> {
+      if (!store.viewer.is_admin) throw new RuleViolation('Admin only');
+      if (action === 'pause') {
+        if (targetType !== 'deal') throw new RuleViolation('Only a deal can be paused');
+        if (!note?.trim()) throw new RuleViolation('Say why the deal is paused; the merchant sees it');
+        const deal = findDeal(targetId);
+        if (deal.status === 'ACTIVE') move(targetId, 'PAUSED', note.trim(), 'admin');
+        for (const owner of ownersOf(deal.business_id)) {
+          notify(owner, 'deal_paused', 'Paused: ' + deal.title, note.trim(), { deal_id: targetId });
+        }
+      }
+      let n = 0;
+      for (const r of store.reports) {
+        if (r.target_type === targetType && r.target_id === targetId && r.status === 'open') {
+          r.status = action === 'pause' ? 'actioned' : 'dismissed';
+          n += 1;
+        }
+      }
+      emit('reports.resolved', targetType, targetId, { action, count: n, note: note ?? null });
+      return n;
     },
 
     async listVerificationQueue(): Promise<VerificationRequest[]> {
@@ -1019,11 +1455,11 @@ export function createLocalDataSource(
         });
     },
 
-    async listSupportQueue(): Promise<SupportQueueItem[]> {
+    async listSupportQueue(view = 'active'): Promise<SupportQueueItem[]> {
       if (!store.viewer.is_admin) throw new RuleViolation('Admin only');
       const people = [DEMO_CUSTOMER, DEMO_MERCHANT, DEMO_ADMIN];
       return store.tickets
-        .filter((t) => t.status !== 'closed')
+        .filter((t) => (view === 'closed' ? t.status === 'closed' : t.status !== 'closed'))
         .sort((a, b) => Number(b.status === 'open') - Number(a.status === 'open') || a.created_at.localeCompare(b.created_at))
         .map((t) => {
           const who = people.find((p) => p.id === t.profile_id);
@@ -1039,24 +1475,41 @@ export function createLocalDataSource(
             customer_contact: who?.phone ?? who?.email ?? '',
             redemption_code: action?.redemption_code ?? null,
             action_status: action?.status ?? null,
+            deal_id: t.deal_id,
             deal_title: deal?.title ?? null,
             reply: t.reply,
+            messages: t.messages,
           };
         });
     },
 
     async replySupportTicket(ticketId, reply, close): Promise<'answered' | 'closed'> {
       if (!store.viewer.is_admin) throw new RuleViolation('Admin only');
-      if (reply.trim().length < 2) throw new RuleViolation('Write a reply first');
+      const body = reply.trim();
+      if (body.length < 2 && !close) throw new RuleViolation('Write a reply first');
       const t = store.tickets.find((x) => x.id === ticketId);
       if (!t) throw new RuleViolation('That request no longer exists');
       t.status = close ? 'closed' : 'answered';
-      t.reply = reply.trim();
-      t.replied_at = new Date().toISOString();
-      notify(t.profile_id, 'support_reply', 'YOLO support replied', reply.trim().slice(0, 160), {
-        ticket_id: ticketId,
-      });
+      if (body.length >= 2) {
+        const at = new Date().toISOString();
+        t.reply = body;
+        t.replied_at = at;
+        t.messages = [...t.messages, { author: 'team', body, created_at: at }];
+        notify(t.profile_id, 'support_reply', 'YOLO support replied', body.slice(0, 160), { ticket_id: ticketId });
+      }
       return t.status;
+    },
+
+    async followUpSupportTicket(ticketId, message): Promise<'open'> {
+      const t = store.tickets.find((x) => x.id === ticketId);
+      if (!t || t.profile_id !== store.viewer.id) throw new RuleViolation('That request is not yours');
+      const body = message.trim();
+      if (body.length < 2) throw new RuleViolation('Write your message first');
+      if (body.length > 2000) throw new RuleViolation('Keep it under 2,000 characters');
+      t.messages = [...t.messages, { author: 'customer', body, created_at: new Date().toISOString() }];
+      t.status = 'open';
+      emit('support.follow_up', 'support_ticket', ticketId, {});
+      return 'open';
     },
 
     // Mirrors review_business() in 0006_merchant_onboarding.sql.
@@ -1078,7 +1531,7 @@ export function createLocalDataSource(
       notify(
         req.owner_profile_id,
         approve ? 'business_verified' : 'business_rejected',
-        approve ? 'You are YOLO Verified' : 'Verification needs changes',
+        approve ? 'You are YOLO Verified' : 'Verification needs changes: ' + b.name,
         approve ? b.name + ' now shows the YOLO Verified badge.' : reason!.trim(),
         { business_id: businessId },
       );
@@ -1099,11 +1552,40 @@ export function createLocalDataSource(
       for (const e of events) {
         const deal = store.deals.find((d) => d.id === e.deal_id);
         if (!deal) continue;
-        if (e.event_type === 'view') deal.views += 1;
+        if (e.event_type === 'view') {
+          deal.views += 1;
+          store.views.push({ deal_id: deal.id, profile_id: store.viewer.id, at: Date.now() });
+        }
         if (e.event_type === 'search_appearance') deal.searches += 1;
       }
     },
   };
+
+  if (persist) {
+    // Save shortly after any call, once, however many calls come together.
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const later = () => {
+      if (timer) return;
+      timer = setTimeout(() => {
+        timer = null;
+        saveStore(store);
+      }, 300);
+    };
+    const methods = src as unknown as Record<string, unknown>;
+    for (const key of Object.keys(methods)) {
+      const fn = methods[key];
+      if (typeof fn !== 'function' || key === 'getViewer') continue;
+      methods[key] = (...args: unknown[]) => {
+        const out = (fn as (...a: unknown[]) => unknown)(...args);
+        if (out instanceof Promise) out.then(later, later);
+        else later();
+        return out;
+      };
+    }
+    if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+      window.addEventListener('pagehide', () => saveStore(store));
+    }
+  }
 
   return src;
 }

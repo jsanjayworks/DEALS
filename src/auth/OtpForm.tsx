@@ -1,7 +1,9 @@
 /**
  * The one-time-code form behind both doors: customer sign-in and the
- * "YOLO for Business" merchant login. Phone first (most people in India sign
- * in by number), email as the alternative.
+ * "YOLO for Business" merchant login. Email codes always; phone codes only
+ * when EXPO_PUBLIC_PHONE_SIGNIN=on, because they need an SMS provider (paid,
+ * and DLT registration in India). With phone on, it comes first: most people
+ * in India sign in by number.
  *
  * Both doors lead to the same account. What the account can open afterwards
  * (merchant mode, admin) comes from the data, so the form only signs in and
@@ -10,12 +12,16 @@
 
 import { useState, type ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { router } from 'expo-router';
 import { RuleViolation, type AuthApi, type OtpTarget } from '../data';
 import { hapticSuccess } from '../lib/device';
 import { color, font, radius, size, space, type } from '../theme/tokens';
 import { Button, Chip } from '../components';
+import { reach } from '../lib/a11y';
 
 type Method = 'phone' | 'email';
+
+const PHONE_ENABLED = process.env.EXPO_PUBLIC_PHONE_SIGNIN === 'on';
 
 /** Accepts "98450 12345", "+91 98450 12345" or "919845012345"; returns E.164. */
 function toE164(raw: string): string | null {
@@ -32,6 +38,7 @@ export function OtpForm({
   title,
   lead,
   footer,
+  codeHint,
   onSignedIn,
 }: {
   api: AuthApi;
@@ -40,9 +47,11 @@ export function OtpForm({
   lead: string;
   /** Under the Send code button on the first step, e.g. the link to the other door. */
   footer?: ReactNode;
+  /** Under "Sent to …" on the code step, e.g. the demo's fixed code. */
+  codeHint?: string;
   onSignedIn: () => void | Promise<void>;
 }) {
-  const [method, setMethod] = useState<Method>('phone');
+  const [method, setMethod] = useState<Method>(PHONE_ENABLED ? 'phone' : 'email');
   const [value, setValue] = useState('');
   const [target, setTarget] = useState<OtpTarget | null>(null);
   const [code, setCode] = useState('');
@@ -61,6 +70,9 @@ export function OtpForm({
     }
   };
 
+  // The demo has no codes: Continue signs in with the address as it is.
+  const instant = typeof api.signInWithoutCode === 'function';
+
   const send = () =>
     run(async () => {
       let t: OtpTarget;
@@ -72,6 +84,12 @@ export function OtpForm({
         const email = value.trim().toLowerCase();
         if (!EMAIL_RE.test(email)) throw new RuleViolation('Enter a valid email address');
         t = { email };
+      }
+      if (instant && api.signInWithoutCode) {
+        await api.signInWithoutCode(t);
+        hapticSuccess();
+        await onSignedIn();
+        return;
       }
       await api.sendCode(t);
       setTarget(t);
@@ -101,14 +119,16 @@ export function OtpForm({
         </Text>
         <Text style={styles.lead}>{lead}</Text>
 
-        <View style={styles.methods}>
-          <Chip selected={method === 'phone'} onPress={() => pick('phone')}>
-            Phone
-          </Chip>
-          <Chip selected={method === 'email'} onPress={() => pick('email')}>
-            Email
-          </Chip>
-        </View>
+        {PHONE_ENABLED ? (
+          <View style={styles.methods}>
+            <Chip selected={method === 'phone'} onPress={() => pick('phone')}>
+              Phone
+            </Chip>
+            <Chip selected={method === 'email'} onPress={() => pick('email')}>
+              Email
+            </Chip>
+          </View>
+        ) : null}
 
         <View style={styles.inputRow}>
           {method === 'phone' ? <Text style={styles.prefix}>+91</Text> : null}
@@ -133,9 +153,20 @@ export function OtpForm({
 
         <View style={styles.cta}>
           <Button variant="cta" full loading={busy} onPress={() => void send()}>
-            Send code
+            {instant ? 'Continue' : 'Send code'}
           </Button>
         </View>
+        <Text style={styles.agree}>
+          By continuing you agree to the{' '}
+          <Text style={styles.agreeLink} accessibilityRole="link" onPress={() => router.push('/legal/terms')}>
+            Terms of use
+          </Text>{' '}
+          and the{' '}
+          <Text style={styles.agreeLink} accessibilityRole="link" onPress={() => router.push('/legal/privacy')}>
+            Privacy policy
+          </Text>
+          .
+        </Text>
         {footer}
       </View>
     );
@@ -148,6 +179,7 @@ export function OtpForm({
         Enter the code
       </Text>
       <Text style={styles.lead}>Sent to {sentTo}</Text>
+      {codeHint ? <Text style={styles.hint}>{codeHint}</Text> : null}
 
       <TextInput
         value={code}
@@ -173,7 +205,7 @@ export function OtpForm({
         </Button>
       </View>
       <View style={styles.links}>
-        <Pressable onPress={() => void send()} accessibilityRole="button" hitSlop={8}>
+        <Pressable onPress={() => void send()} accessibilityRole="button" hitSlop={8} style={reach(8)}>
           <Text style={styles.link}>Send a new code</Text>
         </Pressable>
         <Pressable
@@ -203,6 +235,11 @@ export function DoorLink({ prompt, action, onPress }: { prompt: string; action: 
 }
 
 const styles = StyleSheet.create({
+  hint: {
+    ...type.captionMedium,
+    color: color.accentText,
+    marginTop: space.xs,
+  },
   title: {
     ...type.h1,
     color: color.text,
@@ -211,6 +248,16 @@ const styles = StyleSheet.create({
     ...type.body,
     color: color.textSecondary,
     marginTop: space.xs,
+  },
+  agree: {
+    ...type.caption,
+    color: color.textSecondary,
+    textAlign: 'center',
+    marginTop: space.md,
+  },
+  agreeLink: {
+    color: color.brandStrong,
+    textDecorationLine: 'underline',
   },
   methods: {
     flexDirection: 'row',

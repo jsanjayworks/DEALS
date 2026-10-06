@@ -5,7 +5,8 @@
  * tap that box is noise (it showed as an orange rectangle round a tab), but a
  * keyboard user needs it to see where they are. So the page tracks how the
  * person last interacted: pointer input hides the outline, keyboard input
- * shows a ring in the brand colour, clear of the element's edge.
+ * shows a gold ring, clear of the element's edge: gold shows on the white
+ * pages and on the navy headers alike.
  *
  * :focus-visible alone is not enough here: React Native Web focuses elements
  * from script during navigation, and Chrome then sometimes treats a click as
@@ -28,7 +29,7 @@ export function installFocusRing(): void {
   style.textContent = `
     html[data-input="pointer"] *:focus { outline: none !important; }
     html[data-input="keyboard"] *:focus-visible {
-      outline: 2px solid ${color.brand} !important;
+      outline: 3px solid ${color.cta} !important;
       outline-offset: 2px;
       border-radius: 12px;
     }

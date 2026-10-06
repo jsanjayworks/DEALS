@@ -67,7 +67,7 @@ export function subheadGroups(
     const seen = new Map<string, { value: string | number; count: number }>();
     for (const d of deals) {
       const v = d.attributes[key];
-      if (v == null || v === '' || typeof v === 'boolean') continue;
+      if (v == null || v === '' || typeof v === 'boolean' || Array.isArray(v)) continue;
       const k = String(v);
       seen.set(k, { value: v, count: (seen.get(k)?.count ?? 0) + 1 });
     }

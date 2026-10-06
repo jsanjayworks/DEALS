@@ -34,3 +34,12 @@ export const BUCKETS = {
 } as const;
 
 export type BucketKey = keyof typeof BUCKETS;
+
+/**
+ * Whether a deal belongs in a bucket. A deleted draft is archived without
+ * ever having gone live; it is gone as far as the merchant is concerned.
+ */
+export function inBucket(deal: { status: string; published_at: string | null }, k: BucketKey): boolean {
+  if (deal.status === 'ARCHIVED' && !deal.published_at) return false;
+  return (BUCKETS[k].statuses as readonly string[]).includes(deal.status);
+}

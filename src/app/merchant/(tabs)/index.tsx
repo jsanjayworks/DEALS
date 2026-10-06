@@ -3,20 +3,23 @@
  *
  * "Needs attention" comes first among the lists because a rejected deal is
  * earning nothing until it is fixed, and a draft nobody submits never goes live.
+ * Recent orders sit right under the actions: who took what, and what they paid.
  */
 
 import { useCallback, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
-import { db } from '../../../data';
+import { backend, db, type BusinessOrder } from '../../../data';
 import type { DealCardModel } from '../../../data/types';
+import { ACTION_STATUS_LABEL, quantityLabel, shortAgo } from '../../../lib/format';
+import { PAY_METHOD_LABEL, paymentOf } from '../../../lib/payment';
 import { useQuery } from '../../../lib/useQuery';
 import { MerchantDealRow } from '../../../merchant/DealRow';
-import { BUCKETS, type BucketKey, useBusiness, useBusinessId } from '../../../merchant/useBusiness';
+import { BUCKETS, type BucketKey, inBucket, useBusiness, useBusinessId } from '../../../merchant/useBusiness';
 import { VerificationCard } from '../../../merchant/VerificationCard';
 import { useSession } from '../../../state/session';
-import { color, font, radius, space, type } from '../../../theme/tokens';
+import { color, font, inr, radius, space, status as statusColor, type } from '../../../theme/tokens';
 import { Button, EmptyState, Icon, VerifiedBadge } from '../../../components';
 import { pressedProps } from '../../../lib/a11y';
 
@@ -31,14 +34,22 @@ export default function MerchantDashboard() {
 
   const fetchAll = useCallback(async () => {
     if (!businessId) return null;
-    const [stats, deals, notifications] = await Promise.all([
+    const [stats, deals, notifications, orders] = await Promise.all([
       db.getMerchantStats(businessId, days),
       db.listBusinessDeals(businessId),
       db.listNotifications(),
+      db.listBusinessOrders(businessId).catch(() => [] as BusinessOrder[]),
     ]);
+    // Paid online in the chosen period, cancelled orders left out.
+    const since = Date.now() - days * 86_400_000;
+    const sales = orders
+      .filter((o) => new Date(o.created_at).getTime() >= since && o.status !== 'cancelled')
+      .reduce((sum, o) => sum + (paymentOf(o)?.amount ?? 0), 0);
     return {
       stats,
       deals,
+      orders,
+      sales,
       unread: notifications.filter((n) => n.read_at === null).length,
     };
   }, [businessId, days]);
@@ -49,9 +60,11 @@ export default function MerchantDashboard() {
   const attention = deals.filter((d) => d.status === 'REJECTED' || d.status === 'DRAFT');
   const stats = data?.stats;
   const taken = stats ? stats.claims + stats.bookings + stats.enquiries : 0;
+  const orders = data?.orders ?? [];
+  const sales = data?.sales ?? 0;
 
   const count = (k: BucketKey) =>
-    deals.filter((d) => (BUCKETS[k].statuses as readonly string[]).includes(d.status)).length;
+    deals.filter((d) => inBucket(d, k)).length;
 
   const openDeal = (d: DealCardModel) =>
     router.push({ pathname: '/merchant/deal/[id]', params: { id: d.id } });
@@ -62,7 +75,7 @@ export default function MerchantDashboard() {
         <View style={styles.headRow}>
           <View style={styles.headText}>
             <Text style={styles.overline}>Merchant</Text>
-            <Text style={styles.bizName} numberOfLines={1}>
+            <Text style={styles.bizName} numberOfLines={2}>
               {business?.name ?? ' '}
             </Text>
             {business?.verification_status === 'verified' ? (
@@ -71,6 +84,14 @@ export default function MerchantDashboard() {
               </View>
             ) : null}
           </View>
+          <Pressable
+            onPress={() => router.push('/merchant/business')}
+            accessibilityRole="button"
+            accessibilityLabel="Business details"
+            style={styles.headButton}
+          >
+            <Icon name="gear" size={20} color={color.white} />
+          </Pressable>
           <Pressable
             onPress={() => router.push('/notifications')}
             accessibilityRole="button"
@@ -87,10 +108,11 @@ export default function MerchantDashboard() {
               router.dismissTo('/');
             }}
             accessibilityRole="button"
-            accessibilityLabel="Switch to customer mode"
-            style={styles.headButton}
+            accessibilityLabel="Switch to customer view"
+            style={styles.modePill}
           >
-            <Icon name="user" size={20} color={color.white} />
+            <Icon name="user" size={16} color={color.white} />
+            <Text style={styles.modePillText}>Customer view</Text>
           </Pressable>
         </View>
 
@@ -99,6 +121,8 @@ export default function MerchantDashboard() {
             <Pressable
               key={p}
               onPress={() => setDays(p)}
+              // 32 px tall to sit in the header; the touch area reaches 44.
+              hitSlop={6}
               accessibilityRole="button"
               {...pressedProps(days === p)}
               style={[styles.period, days === p && styles.periodOn]}
@@ -119,7 +143,8 @@ export default function MerchantDashboard() {
         <Text style={styles.statNote}>
           {stats
             ? taken + (taken === 1 ? ' customer' : ' customers') + ' took a deal' +
-              (stats.enquiries ? ', including ' + stats.enquiries + (stats.enquiries === 1 ? ' enquiry' : ' enquiries') : '')
+              (stats.enquiries ? ', including ' + stats.enquiries + (stats.enquiries === 1 ? ' enquiry' : ' enquiries') : '') +
+              (sales > 0 ? ' · ' + inr(sales) + ' paid online' : '')
             : ' '}
         </Text>
       </View>
@@ -156,6 +181,22 @@ export default function MerchantDashboard() {
         </View>
       </View>
 
+      {orders.length > 0 ? (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Recent orders</Text>
+          <View style={styles.orders}>
+            {orders.slice(0, 8).map((o, i) => (
+              <OrderRow
+                key={o.id}
+                order={o}
+                last={i === Math.min(orders.length, 8) - 1}
+                onPress={() => router.push({ pathname: '/merchant/deal/[id]', params: { id: o.deal_id } })}
+              />
+            ))}
+          </View>
+        </View>
+      ) : null}
+
       {attention.length > 0 ? (
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Needs attention</Text>
@@ -184,7 +225,11 @@ export default function MerchantDashboard() {
           <EmptyState
             icon="store"
             title="Nothing live yet"
-            body="Create a deal and submit it. Once it is approved it appears to customers nearby."
+            body={
+              backend === 'local'
+                ? 'Create a deal and publish it. In the demo it goes live straight away.'
+                : 'Create a deal and submit it. Once it is approved it appears to customers nearby.'
+            }
           />
         ) : (
           <View style={styles.list}>
@@ -195,6 +240,47 @@ export default function MerchantDashboard() {
         )}
       </View>
     </ScrollView>
+  );
+}
+
+/** One order: who, what, what they paid and how, and where it stands. */
+function OrderRow({ order, last, onPress }: { order: BusinessOrder; last: boolean; onPress: () => void }) {
+  const paid = paymentOf(order);
+  const amount = paid
+    ? inr(paid.amount) + ' · ' + PAY_METHOD_LABEL[paid.method]
+    : (order.deal_price ?? 0) > 0
+      ? 'Pay at store'
+      : order.action_type === 'enquiry'
+        ? 'Enquiry'
+        : 'Free';
+  const meta = [
+    ACTION_STATUS_LABEL[order.status],
+    quantityLabel(order.action_type, order.quantity),
+    paid ? paid.order_id : order.redemption_code,
+    shortAgo(order.created_at),
+  ]
+    .filter(Boolean)
+    .join(' · ');
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={(order.customer_name ?? 'A customer') + ', ' + order.deal_title + ', ' + amount}
+      style={({ pressed }) => [styles.order, !last && styles.orderRule, pressed && { opacity: 0.7 }]}
+    >
+      <View style={styles.flex}>
+        <Text style={styles.orderWho} numberOfLines={1}>
+          {order.customer_name ?? 'Customer'}
+        </Text>
+        <Text style={styles.orderDeal} numberOfLines={1}>
+          {order.deal_title}
+        </Text>
+        <Text style={styles.orderMeta} numberOfLines={1}>
+          {meta}
+        </Text>
+      </View>
+      <Text style={[styles.orderAmount, paid && styles.orderPaid]}>{amount}</Text>
+    </Pressable>
   );
 }
 
@@ -211,6 +297,45 @@ const styles = StyleSheet.create({
   screen: {
     flex: 1,
     backgroundColor: color.background,
+  },
+  orders: {
+    borderRadius: radius.xl,
+    borderWidth: 1,
+    borderColor: color.border,
+    backgroundColor: color.surface,
+    overflow: 'hidden',
+  },
+  order: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.md,
+    paddingHorizontal: space.lg,
+    paddingVertical: space.md,
+    minHeight: 64,
+  },
+  orderRule: {
+    borderBottomWidth: 1,
+    borderBottomColor: color.border,
+  },
+  orderWho: {
+    ...type.bodySemibold,
+    color: color.text,
+  },
+  orderDeal: {
+    ...type.caption,
+    color: color.textSecondary,
+  },
+  orderMeta: {
+    ...type.small,
+    color: color.textMuted,
+    marginTop: 2,
+  },
+  orderAmount: {
+    ...type.captionMedium,
+    color: color.textSecondary,
+  },
+  orderPaid: {
+    color: statusColor.active.fg,
   },
   flex: {
     flex: 1,
@@ -233,6 +358,19 @@ const styles = StyleSheet.create({
   overline: {
     ...type.overline,
     color: color.surfaceSoft,
+  },
+  modePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    height: 44,
+    paddingHorizontal: 14,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255,255,255,0.14)',
+  },
+  modePillText: {
+    ...type.captionMedium,
+    color: color.white,
   },
   bizName: {
     ...type.h1,

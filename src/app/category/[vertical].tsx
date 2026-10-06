@@ -32,12 +32,14 @@ import {
   DealCard,
   DealCardSkeleton,
   EmptyState,
+  Header,
   Icon,
   categoryIcon,
   useHoverPress,
 } from '../../components';
 import { Container, cellWidth, useLayout } from '../../ui/layout';
 import { pressedProps } from '../../lib/a11y';
+import { LaunchCard, useLaunchReveal } from '../../ui/LaunchReveal';
 
 const VERTICALS: Vertical[] = ['food', 'retail', 'events', 'mobility', 'property', 'services', 'business', 'community'];
 
@@ -128,14 +130,17 @@ export default function CategoryScreen() {
   };
 
   const back = () => (router.canGoBack() ? router.back() : router.dismissTo('/'));
+  const reveal = useLaunchReveal();
 
   if (!vertical) {
     return (
       <View style={styles.screen}>
+        <Header title="Categories" onBack={back} />
         <EmptyState
           icon="x"
           tone="alert"
           title="Category not found"
+          body="This link points to a category we do not have. Browse them all from Home."
           action={<Button onPress={() => router.dismissTo('/')}>Go home</Button>}
         />
       </View>
@@ -147,7 +152,10 @@ export default function CategoryScreen() {
       {focused ? <StatusBar style={theme.hero.light ? 'dark' : 'light'} /> : null}
       <ScrollView contentContainerStyle={{ paddingBottom: insets.bottom + space.xxxl }}>
         {/* ---------- Hero with subheadings ---------- */}
-        <View style={[styles.hero, { paddingTop: insets.top + space.sm }]}>
+        <Animated.View
+          style={[styles.hero, { paddingTop: insets.top + space.sm }, reveal.heroStyle]}
+          onLayout={(e) => reveal.onHeroLayout(e.nativeEvent.layout.height)}
+        >
           <LinearGradient colors={theme.hero.colors} style={StyleSheet.absoluteFill} pointerEvents="none" />
           <Container>
             <View style={styles.heroTop}>
@@ -194,99 +202,103 @@ export default function CategoryScreen() {
             </View>
           ))}
           <View style={{ height: space.xl }} />
-        </View>
+        </Animated.View>
 
-        {/* ---------- Refinements ---------- */}
-        <Container flush style={styles.toolbar}>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={[styles.toolbarRow, { paddingHorizontal: layout.gutter }]}
-          >
-            <Pressable
-              onPress={() => setSheetOpen(true)}
-              accessibilityRole="button"
-              accessibilityLabel={activeRefinements ? 'Filters, ' + activeRefinements + ' applied' : 'Filters'}
-              style={[styles.filterButton, activeRefinements > 0 && styles.filterButtonOn]}
+        {/* Everything under the header rises in as the page opens. */}
+        <Animated.View style={reveal.contentStyle}>
+          {/* ---------- Refinements ---------- */}
+          <Container flush style={styles.toolbar}>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={[styles.toolbarRow, { paddingHorizontal: layout.gutter }]}
             >
-              <Icon name="filter" size={16} color={activeRefinements ? color.white : color.text} />
-              <Text style={[styles.filterLabel, activeRefinements > 0 && { color: color.white }]}>
-                Filters{activeRefinements ? ' · ' + activeRefinements : ''}
-              </Text>
-            </Pressable>
-            {SORT_OPTIONS.map((o) => (
-              <Chip key={o.key} selected={refine.sort === o.key} onPress={() => setRefine((f) => ({ ...f, sort: o.key }))}>
-                {o.label}
-              </Chip>
-            ))}
-          </ScrollView>
-        </Container>
-        <Container>
-          {chips.length > 0 ? (
-            <View style={styles.applied}>
-              {chips.map((c, i) => (
-                <Pressable
-                  key={c.key + i}
-                  onPress={() => setRefine((f) => removeFilter(f, c.key as keyof SearchFilters))}
-                  accessibilityRole="button"
-                  accessibilityLabel={'Remove ' + c.label}
-                  style={styles.appliedChip}
-                >
-                  <Text style={styles.appliedText}>{c.label}</Text>
-                  <Icon name="x" size={12} color={color.text} strokeWidth={2} />
-                </Pressable>
+              <Pressable
+                onPress={() => setSheetOpen(true)}
+                accessibilityRole="button"
+                accessibilityLabel={activeRefinements ? 'Filters, ' + activeRefinements + ' applied' : 'Filters'}
+                style={[styles.filterButton, activeRefinements > 0 && styles.filterButtonOn]}
+              >
+                <Icon name="filter" size={16} color={activeRefinements ? color.white : color.text} />
+                <Text style={[styles.filterLabel, activeRefinements > 0 && { color: color.white }]}>
+                  Filters{activeRefinements ? ' · ' + activeRefinements : ''}
+                </Text>
+              </Pressable>
+              {SORT_OPTIONS.map((o) => (
+                <Chip key={o.key} selected={refine.sort === o.key} onPress={() => setRefine((f) => ({ ...f, sort: o.key }))}>
+                  {o.label}
+                </Chip>
               ))}
-            </View>
-          ) : null}
-          <Text style={styles.count}>
-            {deals ? deals.length + (deals.length === 1 ? ' deal' : ' deals') : ' '}
-            {chosenLabels.length ? ' · ' + chosenLabels.join(' · ') : ''}
-          </Text>
-        </Container>
-
-        {/* ---------- Results ---------- */}
-        <Container>
-          {deals && deals.length === 0 ? (
-            <EmptyState
-              icon="search"
-              title={chosenLabels.length ? 'No ' + chosenLabels.join(', ') + ' deals nearby' : 'Nothing here yet'}
-              body={
-                activeRefinements || chosenLabels.length
-                  ? 'Try another subheading or clear a filter.'
-                  : 'Nothing in this category within ' + radiusKm + ' km. Try a wider area.'
-              }
-              action={
-                activeRefinements || chosenLabels.length ? (
-                  <Button
-                    onPress={() => {
-                      setPicked({});
-                      setRefine((f) => ({ ...baseFilters(radiusM), radius_km: f.radius_km, sort: f.sort }));
-                    }}
+            </ScrollView>
+          </Container>
+          <Container>
+            {chips.length > 0 ? (
+              <View style={styles.applied}>
+                {chips.map((c, i) => (
+                  <Pressable
+                    key={c.key + i}
+                    onPress={() => setRefine((f) => removeFilter(f, c.key as keyof SearchFilters))}
+                    accessibilityRole="button"
+                    accessibilityLabel={'Remove ' + c.label}
+                    style={styles.appliedChip}
                   >
-                    Clear all
-                  </Button>
-                ) : radiusKm < 10 ? (
-                  <Button onPress={() => setRefine((f) => ({ ...f, radius_km: 10 }))}>Search within 10 km</Button>
-                ) : undefined
-              }
-            />
-          ) : (
-            <View style={[styles.grid, { gap }]}>
-              {!deals
-                ? Array.from({ length: columns * 2 }, (_, k) => (
-                    <View key={k} style={{ width: cell }}>
-                      <DealCardSkeleton variant="compact" />
-                    </View>
-                  ))
-                : deals.map((d) => (
-                    <View key={d.id} style={{ width: cell }}>
-                      <DealCard deal={d} variant="compact" style={{ width: cell }} onPress={() => openDeal(d)} />
-                    </View>
-                  ))}
-            </View>
-          )}
-        </Container>
+                    <Text style={styles.appliedText}>{c.label}</Text>
+                    <Icon name="x" size={12} color={color.text} strokeWidth={2} />
+                  </Pressable>
+                ))}
+              </View>
+            ) : null}
+            <Text style={styles.count}>
+              {deals ? deals.length + (deals.length === 1 ? ' deal' : ' deals') : ' '}
+              {chosenLabels.length ? ' · ' + chosenLabels.join(' · ') : ''}
+            </Text>
+          </Container>
+
+          {/* ---------- Results ---------- */}
+          <Container>
+            {deals && deals.length === 0 ? (
+              <EmptyState
+                icon="search"
+                title={chosenLabels.length ? 'No ' + chosenLabels.join(', ') + ' deals nearby' : 'Nothing here yet'}
+                body={
+                  activeRefinements || chosenLabels.length
+                    ? 'Try another subheading or clear a filter.'
+                    : 'Nothing in this category within ' + radiusKm + ' km. Try a wider area.'
+                }
+                action={
+                  activeRefinements || chosenLabels.length ? (
+                    <Button
+                      onPress={() => {
+                        setPicked({});
+                        setRefine((f) => ({ ...baseFilters(radiusM), radius_km: f.radius_km, sort: f.sort }));
+                      }}
+                    >
+                      Clear all
+                    </Button>
+                  ) : radiusKm < 10 ? (
+                    <Button onPress={() => setRefine((f) => ({ ...f, radius_km: 10 }))}>Search within 10 km</Button>
+                  ) : undefined
+                }
+              />
+            ) : (
+              <View style={[styles.grid, { gap }]}>
+                {!deals
+                  ? Array.from({ length: columns * 2 }, (_, k) => (
+                      <View key={k} style={{ width: cell }}>
+                        <DealCardSkeleton variant="compact" />
+                      </View>
+                    ))
+                  : deals.map((d) => (
+                      <View key={d.id} style={{ width: cell }}>
+                        <DealCard deal={d} variant="compact" style={{ width: cell }} onPress={() => openDeal(d)} />
+                      </View>
+                    ))}
+              </View>
+            )}
+          </Container>
+        </Animated.View>
       </ScrollView>
+      <LaunchCard reveal={reveal} icon={top?.icon ?? ''} />
 
       <FilterSheet
         visible={sheetOpen}

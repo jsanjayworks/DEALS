@@ -14,8 +14,11 @@
  * tap (the distance thumb, the rolling counts) keeps moving while it lands.
  */
 
-import { startTransition, useCallback, useRef, useState } from 'react';
+import { startTransition, useCallback, useEffect, useRef, useState } from 'react';
 import { useFocusEffect } from 'expo-router';
+import { clearLoadError, onRetry, reportLoadError } from './loadErrors';
+
+let nextQueryId = 0;
 
 export interface QueryState<T> {
   data: T | undefined;
@@ -29,27 +32,45 @@ export function useQuery<T>(fetcher: () => Promise<T>): QueryState<T> {
   const [data, setData] = useState<T | undefined>(undefined);
   const [error, setError] = useState<Error | null>(null);
   const latest = useRef(0);
+  const [queryId] = useState(() => ++nextQueryId);
+  const failed = useRef(false);
 
   const run = useCallback(() => {
     const id = ++latest.current;
     fetcher()
       .then((d) => {
         if (id !== latest.current) return;
+        failed.current = false;
+        clearLoadError(queryId);
         startTransition(() => {
           setData(d);
           setError(null);
         });
       })
       .catch((e: unknown) => {
-        if (id === latest.current) setError(e instanceof Error ? e : new Error(String(e)));
+        if (id !== latest.current) return;
+        failed.current = true;
+        reportLoadError(queryId);
+        setError(e instanceof Error ? e : new Error(String(e)));
       });
     return () => {
       // Blur, unmount or a new fetcher: whatever is in flight is now stale.
       if (id === latest.current) latest.current++;
     };
-  }, [fetcher]);
+  }, [fetcher, queryId]);
 
   useFocusEffect(run);
+
+  // The app-wide Retry (and coming back online) re-runs only what failed.
+  useEffect(() => {
+    const off = onRetry(() => {
+      if (failed.current) run();
+    });
+    return () => {
+      off();
+      clearLoadError(queryId);
+    };
+  }, [run, queryId]);
 
   const reload = useCallback(() => {
     run();

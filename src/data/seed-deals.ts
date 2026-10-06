@@ -1,5 +1,6 @@
 import { businessById } from './seed-reference';
 import type {
+  AttributeValue,
   CtaType,
   Deal,
   DealTypeCode,
@@ -39,6 +40,10 @@ interface DealSeed {
   to?: string;
   tags?: string[];
   attrs?: Record<string, string | number | boolean>;
+  /** How many people the deal is for, smallest and largest group. */
+  party?: [number, number];
+  /** Vehicle tags the deal is for (see data/vehicles.ts). */
+  fits?: string[];
   minAge?: number;
   views?: number;
   searches?: number;
@@ -426,6 +431,116 @@ const SEED: DealSeed[] = [
     mrp: 3600, price: 2499, cta: 'reserve', also: ['call', 'directions'], cap: 12, left: 5, endsIn: 21, pubAgo: 6,
     days: [5, 6], from: '08:00', to: '20:00', tags: ['bike', 'royal enfield', 'weekend', 'rental'],
     views: 1420, searches: 690, booking: true, minAge: 18 },
+
+  // ---------- Vehicle care: every service around a vehicle ----------
+  { id: 'd-060', biz: 'biz-thundergarage', cat: 'cat-services-vehicle', type: 'service_package', kind: 'service',
+    title: 'Royal Enfield General Service', blurb: 'Oil change, chain clean and a 30-point check',
+    desc: 'Periodic service by mechanics trained on Royal Enfield: engine oil and filter, chain clean and lube, brake and clutch adjustment, electricals check and a wash. Free pick-up and drop within 5 km. Any repair beyond the service is quoted before work starts.',
+    mrp: 2400, price: 1499, cta: 'book', also: ['call', 'directions'], cap: 30, left: 11, endsIn: 18, pubAgo: 2,
+    days: [1, 2, 3, 4, 5, 6], from: '09:00', to: '19:00',
+    tags: ['royal enfield', 'bike service', 'oil change', 'repair', 'servicing'], fits: ['royal-enfield'],
+    views: 1980, searches: 1130, booking: true },
+
+  { id: 'd-061', biz: 'biz-thundergarage', cat: 'cat-services-vehicle', type: 'bundle', kind: 'product',
+    title: 'Touring Kit for Royal Enfield', blurb: 'Crash guard, saddle stays and tank bag, fitted',
+    desc: 'Everything for a long ride, fitted while you wait: a powder-coated crash guard, saddle stays for soft panniers and a magnetic tank bag. Fits the Classic, Bullet, Hunter, Meteor and Himalayan.',
+    mrp: 6200, price: 4299, cta: 'reserve', also: ['call'], cap: 15, left: 6, endsIn: 12, pubAgo: 4,
+    days: [1, 2, 3, 4, 5, 6], from: '09:00', to: '19:00',
+    tags: ['royal enfield', 'touring', 'accessories', 'crash guard'], fits: ['royal-enfield'],
+    views: 860, searches: 420 },
+
+  { id: 'd-062', biz: 'biz-sparkwash', cat: 'cat-services-vehicle', type: 'discount', kind: 'service',
+    title: 'Bike Foam Wash and Polish', blurb: 'Foam wash, chain lube and tyre shine in 30 minutes',
+    mrp: 350, price: 199, cta: 'claim', also: ['directions'], cap: 120, left: 74, endsIn: 15, pubAgo: 1,
+    from: '08:00', to: '20:00', tags: ['bike wash', 'foam wash', 'polish', 'two wheeler'], fits: ['bike', 'scooter'],
+    views: 1540, searches: 980 },
+
+  { id: 'd-063', biz: 'biz-sparkwash', cat: 'cat-services-vehicle', type: 'discount', kind: 'service',
+    title: 'Car Foam Wash and Interior Clean', blurb: 'Foam wash, vacuum and dashboard polish',
+    mrp: 1600, price: 899, cta: 'book', also: ['call', 'directions'], cap: 60, left: 27, endsIn: 10, pubAgo: 3,
+    from: '08:00', to: '20:00', tags: ['car wash', 'interior cleaning', 'foam wash', 'detailing'], fits: ['car'],
+    views: 1320, searches: 760, booking: true },
+
+  { id: 'd-064', biz: 'biz-tyrehub', cat: 'cat-services-vehicle', type: 'discount', kind: 'service',
+    title: 'Wheel Alignment and Balancing', blurb: 'Computerised alignment, all four wheels',
+    mrp: 900, price: 499, cta: 'book', also: ['call', 'directions'], cap: 50, left: 31, endsIn: 22, pubAgo: 6,
+    days: [1, 2, 3, 4, 5, 6], from: '09:00', to: '19:00',
+    tags: ['wheel alignment', 'balancing', 'tyres', 'car service'], fits: ['car'], views: 720, searches: 390 },
+
+  { id: 'd-065', biz: 'biz-tyrehub', cat: 'cat-services-vehicle', type: 'service_package', kind: 'service',
+    title: 'Scooter General Service', blurb: 'Activa, Jupiter, Access and more: oil, brakes, battery',
+    mrp: 999, price: 649, cta: 'book', also: ['call'], cap: 40, left: 22, endsIn: 16, pubAgo: 5,
+    days: [1, 2, 3, 4, 5, 6], from: '09:00', to: '18:00',
+    tags: ['scooter service', 'activa', 'jupiter', 'oil change', 'servicing'], fits: ['scooter'],
+    views: 1110, searches: 640 },
+
+  { id: 'd-066', biz: 'biz-tyrehub', cat: 'cat-services-vehicle', type: 'service_package', kind: 'service',
+    title: 'Car Periodic Service', blurb: 'Engine oil, filters and a 50-point inspection',
+    mrp: 4800, price: 2999, cta: 'book', also: ['call', 'directions'], cap: 25, left: 9, endsIn: 19, pubAgo: 2,
+    days: [1, 2, 3, 4, 5, 6], from: '09:00', to: '19:00',
+    tags: ['car service', 'oil change', 'servicing', 'inspection'], fits: ['car'],
+    views: 940, searches: 520, booking: true },
+
+  { id: 'd-067', biz: 'biz-decathlon', cat: 'cat-retail-fashion', type: 'discount', kind: 'product',
+    title: 'Riding Jacket and Gloves: 30% Off', blurb: 'CE-rated armour, for bikes and scooters',
+    mrp: 5999, price: 4199, cta: 'claim', also: ['directions'], cap: 40, left: 18, endsIn: 14, pubAgo: 3,
+    from: '10:00', to: '21:00', tags: ['riding gear', 'jacket', 'gloves', 'safety'], fits: ['bike', 'scooter'],
+    views: 870, searches: 450 },
+
+  // ---------- Cheap chicken ----------
+  { id: 'd-068', attrs: { cuisine: 'Mughlai' }, biz: 'biz-kebabco', cat: 'cat-food-dinner', type: 'discount', kind: 'meal',
+    title: 'Chicken Seekh Kebab Plate', blurb: 'Four seekh kebabs, rumali roti and mint chutney',
+    mrp: 280, price: 179, cta: 'claim', also: ['call', 'directions'], cap: 100, left: 58, endsIn: 12, pubAgo: 1,
+    from: '12:00', to: '23:00', tags: ['chicken', 'kebab', 'seekh', 'non-veg'], views: 1680, searches: 940 },
+
+  { id: 'd-069', attrs: { cuisine: 'Mughlai' }, biz: 'biz-kebabco', cat: 'cat-food-lunch', type: 'bundle', kind: 'meal',
+    title: 'Chicken Roll Combo', blurb: 'Chicken tikka roll with fries and a cold drink',
+    mrp: 240, price: 149, cta: 'claim', also: ['directions'], cap: 150, left: 96, endsIn: 9, pubAgo: 2,
+    from: '11:00', to: '23:00', tags: ['chicken', 'roll', 'wrap', 'combo', 'non-veg'], views: 2040, searches: 1210 },
+
+  // ---------- Group deals: priced for a set number of people ----------
+  { id: 'd-070', attrs: { cuisine: 'Biryani' }, biz: 'biz-meghana', cat: 'cat-food-dinner', type: 'bundle', kind: 'meal',
+    title: 'Biryani Feast for 5', blurb: 'Two biryanis, two starters, raita and dessert',
+    desc: 'Built for a table of four to six: one chicken and one mutton biryani (family size), chicken 65, paneer pepper fry, raita, salan and a gulab jamun each.',
+    mrp: 2400, price: 1599, cta: 'reserve', also: ['call', 'directions'], cap: 30, left: 14, endsIn: 11, pubAgo: 2,
+    from: '12:00', to: '23:00', tags: ['biryani', 'group', 'feast', 'chicken', 'sharing'], party: [4, 6],
+    views: 1460, searches: 820, booking: true },
+
+  { id: 'd-071', attrs: { cuisine: 'North Indian' }, biz: 'biz-tandoor', cat: 'cat-food-dinner', type: 'bundle', kind: 'meal',
+    title: 'Tandoori Platter for 4', blurb: 'Chicken tikka, paneer tikka, kebabs and a naan basket',
+    mrp: 1800, price: 1199, cta: 'reserve', also: ['call', 'directions'], cap: 40, left: 19, endsIn: 13, pubAgo: 3,
+    from: '19:00', to: '23:00', tags: ['tandoori', 'platter', 'chicken', 'paneer', 'group'], party: [3, 5],
+    views: 980, searches: 540 },
+
+  { id: 'd-072', biz: 'biz-comedyhouse', cat: 'cat-events-comedy', type: 'booking', kind: 'event',
+    title: 'Comedy Night: Group of 5', blurb: 'Five tickets, a reserved table and one pitcher',
+    mrp: 3000, price: 1999, cta: 'book', also: ['directions'], cap: 20, left: 8, endsIn: 6, pubAgo: 1,
+    days: [5, 6], from: '20:00', to: '22:00', tags: ['comedy', 'group', 'friends', 'tickets'], party: [5, 5],
+    minAge: 18, views: 760, searches: 410, booking: true },
+
+  { id: 'd-073', biz: 'biz-glowsalon', cat: 'cat-services-salon', type: 'bundle', kind: 'service',
+    title: "Couple's Spa Day", blurb: 'Side-by-side massage and steam for two',
+    mrp: 5200, price: 3499, cta: 'book', also: ['call'], cap: 16, left: 7, endsIn: 17, pubAgo: 4,
+    days: [1, 2, 3, 4, 5, 6], from: '10:00', to: '20:00', tags: ['spa', 'couple', 'massage', 'date'], party: [2, 2],
+    views: 1120, searches: 680, booking: true },
+
+  { id: 'd-074', attrs: { cuisine: 'Bar Food' }, biz: 'biz-toitbrew', cat: 'cat-food-bar', type: 'bundle', kind: 'meal',
+    title: 'Party Pack: 3 Pitchers and Platters', blurb: 'For six to eight friends, with a reserved table',
+    mrp: 4200, price: 2999, cta: 'reserve', also: ['call', 'directions'], cap: 15, left: 6, endsIn: 8, pubAgo: 2,
+    days: [4, 5, 6], from: '18:00', to: '23:00', tags: ['beer', 'party', 'group', 'pitchers', 'platter'], party: [6, 8],
+    minAge: 21, views: 1290, searches: 610, booking: true },
+
+  { id: 'd-075', biz: 'biz-fandango', cat: 'cat-events-music', type: 'bundle', kind: 'event',
+    title: 'Gig Tickets: Pack of 4', blurb: "Four entries to Saturday's rooftop gig",
+    mrp: 2400, price: 1599, cta: 'book', also: ['directions'], cap: 25, left: 12, endsIn: 7, pubAgo: 1,
+    days: [6], from: '18:00', to: '23:00', tags: ['gig', 'music', 'group', 'tickets'], party: [4, 4],
+    views: 690, searches: 330 },
+
+  { id: 'd-076', attrs: { cuisine: 'Continental' }, biz: 'biz-brunchclub', cat: 'cat-food-brunch', type: 'bundle', kind: 'meal',
+    title: 'Family Sunday Brunch for 4', blurb: 'Two adults, two kids, unlimited spread',
+    mrp: 2600, price: 1799, cta: 'reserve', also: ['call'], cap: 20, left: 9, endsIn: 9, pubAgo: 3,
+    days: [0], from: '11:00', to: '16:00', tags: ['brunch', 'family', 'kids', 'sunday'], party: [4, 4],
+    views: 840, searches: 420, booking: true },
 ];
 
 /**
@@ -438,7 +553,7 @@ const SEED: DealSeed[] = [
  */
 const PHOTO: Record<string, string> = {
   'd-001': '1567620905732-2d1ec7ab7445', // pancakes, brunch
-  'd-002': '1546833999-b9f581a1996d', // thali
+  'd-002': '1742281258189-3b933879867a', // thali on a banana leaf
   'd-003': '1495474472287-4d71bcdd2085', // two coffees
   'd-004': '1589302168068-964664d93dc0', // biryani
   'd-005': '1535958636474-b021ee887b13', // beer on tap
@@ -496,7 +611,24 @@ const PHOTO: Record<string, string> = {
   'd-057': '1570172619644-dfd03ed5d881', // facial
   'd-058': '1560448204-e02f11c3d0e2', // villa living room
   'd-059': '1558981806-ec527fa84c39', // motorcycle
-  'd-900': '1551024601-bec78aea704b', // doughnuts
+  'd-060': '1619642751034-765dfdf7c58e', // mechanic at work
+  'd-061': '1558618666-fcd25c85cd64', // workshop tools
+  'd-062': '1609630875171-b1321377ee65', // gleaming bike
+  'd-063': '1607860108855-64acf2078ed9', // car foam wash
+  'd-064': '1625047509248-ec889cbff17f', // under the bonnet
+  'd-065': '1599256872237-5dcc0fbe9668', // hands on an engine
+  'd-066': '1486262715619-67b85e0b08d3', // engine bay
+  'd-067': '1558980664-10e7170b5df9', // rider in full gear
+  'd-068': '1555939594-58d7cb561ad1', // kebabs on the grill
+  'd-069': '1626700051175-6818013e1d4f', // chicken wraps
+  'd-070': '1528605248644-14dd04022da1', // a big table eating together
+  'd-071': '1599487488170-d11ec9c172f0', // tandoori skewers
+  'd-072': '1540575467063-178a50c2df87', // audience
+  'd-073': '1600334089648-b0d9d3028eb2', // hot-stone massage
+  'd-074': '1543007630-9710e4a00a20', // bar
+  'd-075': '1517457373958-b7bdd4587205', // crowd under lights
+  'd-076': '1511795409834-ef04bbd61622', // long table set for brunch
+  'd-900': '1699708263762-00ca477760bd', // kaju katli, for a festive sweets box
   'd-901': '1589301760014-d929f3979dbc', // idli on banana leaf
   'd-902': '1565193566173-7a0ee3dbe261', // vases: deliberately not coffee
   'd-910': '1571019613454-1cb2f99b2d8b', // workout
@@ -514,6 +646,38 @@ const CATEGORY_PHOTO: Record<string, string> = {
   retail: '1441986300917-64674bd600d8',
   community: '1618477461853-cf6ed80faba5',
 };
+
+/** Group sizes for deals written before party sizes existed. */
+const PARTY: Record<string, [number, number]> = {
+  'd-001': [2, 2], // brunch for two
+  'd-004': [3, 4], // family pack, serves 4
+  'd-005': [2, 6], // pitchers
+  'd-007': [2, 2], // sushi for two
+  'd-012': [2, 2], // two coffees
+  'd-049': [2, 3], // pizza and a pitcher
+  'd-051': [4, 4], // family dinner for 4
+};
+
+/** What is in a dish, so "chicken" or "veg" finds it when the title does not say. */
+const EXTRA_TAGS: Record<string, string[]> = {
+  'd-002': ['veg'],
+  'd-006': ['veg'],
+  'd-009': ['chicken', 'paneer'],
+  'd-011': ['veg'],
+  'd-048': ['chicken'],
+  'd-053': ['chicken', 'veg'],
+};
+
+function attributesFor(s: DealSeed): Record<string, AttributeValue> {
+  const out: Record<string, AttributeValue> = { ...(s.attrs ?? {}) };
+  const party = s.party ?? PARTY[s.id];
+  if (party) {
+    out.party_min = party[0];
+    out.party_max = party[1];
+  }
+  if (s.fits) out.vehicles = s.fits;
+  return out;
+}
 
 function photoFor(id: string, categoryId: string): string {
   const vertical = categoryId.split('-')[1] ?? 'food';
@@ -554,8 +718,8 @@ function expand(s: DealSeed): Deal {
     terms:
       s.terms ??
       'Valid at the listed outlet only. Cannot be combined with other offers. Management reserves the right of admission.',
-    attributes: s.attrs ?? {},
-    tags: s.tags ?? [],
+    attributes: attributesFor(s),
+    tags: [...(s.tags ?? []), ...(EXTRA_TAGS[s.id] ?? [])],
     location: biz.location,
     image: photoFor(s.id, s.cat),
     primary_cta: s.cta,

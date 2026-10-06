@@ -1,9 +1,13 @@
 /**
  * Search results.
  *
- * Entered three ways: a typed query (?q=), a category tile (?vertical=) or a
- * "See all" on Home (?sort=, ?radius=). All three become one SearchFilters
- * value and one search_deals call, so they rank and filter identically.
+ * Entered four ways: a typed query (?q=), a category tile (?vertical=), a
+ * "See all" on Home (?sort=, ?radius=) or My vehicle (?vehicle=). All become
+ * one SearchFilters value and one search_deals call, so they rank and filter
+ * identically.
+ *
+ * When nothing matches, the search loosens itself a step at a time (see
+ * search/relax) and says what it changed, instead of showing an empty page.
  *
  * The applied filters render as removable chips. Removing one clears exactly
  * that field and re-queries, which is how someone recovers from a parse they
@@ -13,10 +17,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { db } from '../data';
 import { CATEGORIES } from '../data/seed-reference';
 import type { DealCardModel, SearchFilters, SortKey, Vertical } from '../data/types';
-import { describeFilters, EMPTY_FILTERS, parseQuery, removeFilter } from '../search/parser';
+import { describeFilters, EMPTY_FILTERS, emptyFilters, parseQuery, removeFilter } from '../search/parser';
+import { relaxations } from '../search/relax';
+import { choiceLabel, choiceTags } from '../data/vehicles';
 import { FilterSheet, SORT_OPTIONS } from '../search/FilterSheet';
 import { useLocality, useSession } from '../state/session';
 import { cellWidth, useLayout } from '../ui/layout';
@@ -26,9 +33,9 @@ import {
   DealCard,
   DealCardSkeleton,
   EmptyState,
-  Header,
   Icon,
 } from '../components';
+import { reach } from '../lib/a11y';
 
 const PAGE = 20;
 
@@ -38,12 +45,11 @@ const VERTICALS: Vertical[] = [
 const SORTS: SortKey[] = SORT_OPTIONS.map((o) => o.key);
 
 function initialFilters(
-  p: { q?: string; vertical?: string; sort?: string; radius?: string },
+  p: { q?: string; vertical?: string; sort?: string; radius?: string; vehicle?: string },
   fallbackRadiusM: number,
 ): SearchFilters {
-  const base: SearchFilters = p.q
-    ? parseQuery(p.q).filters
-    : { ...EMPTY_FILTERS, keywords: [], day_of_week: [], deal_types: [], attributes: {} };
+  const base: SearchFilters = p.q ? parseQuery(p.q).filters : emptyFilters();
+  if (p.vehicle) base.vehicle_tags = choiceTags(p.vehicle);
   if (p.vertical && (VERTICALS as string[]).includes(p.vertical)) {
     base.vertical = p.vertical as Vertical;
   }
@@ -56,8 +62,10 @@ function initialFilters(
   return base;
 }
 
-function titleFor(q: string | undefined, f: SearchFilters): string {
+function titleFor(q: string | undefined, f: SearchFilters, vehicle: string | undefined): string {
   if (q) return '“' + q + '”';
+  const mine = choiceLabel(vehicle ?? null);
+  if (mine && f.vehicle_tags.length > 0) return 'For ' + (mine.startsWith('your ') ? mine : 'your ' + mine);
   if (f.category_slug) return CATEGORIES.find((c) => c.slug === f.category_slug)?.name ?? 'Deals';
   if (f.vertical) return CATEGORIES.find((c) => c.slug === f.vertical)?.name ?? 'Deals';
   if (f.sort === 'ending_soon') return 'Ending soon';
@@ -72,6 +80,13 @@ interface Loaded {
   error: string | null;
 }
 
+/** The loosened search that found something, and what was loosened. */
+interface Relaxed {
+  from: SearchFilters;
+  to: SearchFilters;
+  note: string;
+}
+
 function activeCount(f: SearchFilters): number {
   return describeFilters(f).filter((c) => c.key !== 'radius_km').length;
 }
@@ -82,6 +97,7 @@ export default function ResultsScreen() {
     vertical?: string;
     sort?: string;
     radius?: string;
+    vehicle?: string;
   }>();
   const sessionRadius = useSession((s) => s.radiusM);
   const layout = useLayout();
@@ -96,6 +112,11 @@ export default function ResultsScreen() {
   const [loaded, setLoaded] = useState<Loaded | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [relaxed, setRelaxed] = useState<Relaxed | null>(null);
+  /** Filters the person chose to keep exact with Undo; never loosened again. */
+  const [declined, setDeclined] = useState<SearchFilters | null>(null);
+  // The note belongs to the loosened search; any other change hides it.
+  const relaxNote = relaxed && relaxed.to === filters ? relaxed.note : null;
 
   const q = params.q ?? '';
   const fetchPage = useCallback(
@@ -113,8 +134,22 @@ export default function ResultsScreen() {
   useEffect(() => {
     let active = true;
     fetchPage(0)
-      .then((r) => {
-        if (active) setLoaded({ source: fetchPage, deals: r.deals, total: r.total, error: null });
+      .then(async (r) => {
+        if (!active) return;
+        // Nothing matched what was asked, and this is not already a loosened
+        // search: try the looser versions, and show the first that finds deals.
+        if (r.total === 0 && relaxed?.to !== filters && declined !== filters) {
+          for (const step of relaxations(filters)) {
+            const found = await db.searchDeals({ q, filters: step.filters, origin, limit: 1 });
+            if (!active) return;
+            if (found.total > 0) {
+              setRelaxed({ from: filters, to: step.filters, note: step.note });
+              setFilters(step.filters);
+              return;
+            }
+          }
+        }
+        setLoaded({ source: fetchPage, deals: r.deals, total: r.total, error: null });
       })
       .catch(() => {
         if (active) {
@@ -129,6 +164,8 @@ export default function ResultsScreen() {
     return () => {
       active = false;
     };
+    // relaxed and declined are read, not reacted to: each changes with the filters.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fetchPage]);
 
   const loadMore = () => {
@@ -196,6 +233,24 @@ export default function ResultsScreen() {
           </Pressable>
         ))}
       </View>
+      {relaxNote && deals ? (
+        <View style={styles.relaxed}>
+          <Icon name="spark" size={16} color={color.brandStrong} />
+          <Text style={styles.relaxedText}>{relaxNote}</Text>
+          <Pressable
+            onPress={() => {
+              if (!relaxed) return;
+              setDeclined(relaxed.from);
+              setFilters(relaxed.from);
+            }}
+            accessibilityRole="button"
+            hitSlop={8}
+            style={reach(8)}
+          >
+            <Text style={styles.relaxedUndo}>Undo</Text>
+          </Pressable>
+        </View>
+      ) : null}
       {deals ? (
         <Text style={styles.count}>
           {total} {total === 1 ? 'deal' : 'deals'} within {radiusKm < 1 ? radiusKm * 1000 + ' m' : radiusKm + ' km'} of {centreName}
@@ -206,7 +261,11 @@ export default function ResultsScreen() {
 
   return (
     <View style={styles.screen}>
-      <Header title={titleFor(params.q, filters)} onBack={() => router.back()} />
+      <SearchHeader
+        label={titleFor(params.q, filters, params.vehicle)}
+        query={params.q}
+        onBack={() => (router.canGoBack() ? router.back() : router.dismissTo('/'))}
+      />
 
       {error ? (
         <EmptyState
@@ -244,11 +303,16 @@ export default function ResultsScreen() {
                 body={
                   n > 0
                     ? 'Try removing a filter or widening the distance.'
-                    : 'Nothing like that within ' + radiusKm + ' km. Try a wider area.'
+                    : filters.keywords.length > 0
+                      ? // The wider areas were already tried before this shows.
+                        'Nothing matches “' + filters.keywords.join(' ') + '” anywhere in Bengaluru yet. Try another word, like biryani, haircut or car wash.'
+                      : 'Nothing like that within ' + radiusKm + ' km. Try a wider area.'
                 }
                 action={
                   n > 0 ? (
                     <Button onPress={clearRefinements}>Clear filters</Button>
+                  ) : filters.keywords.length > 0 ? (
+                    <Button onPress={() => router.replace('/search')}>Search again</Button>
                   ) : radiusKm < 10 ? (
                     <Button onPress={() => setFilters({ ...filters, radius_km: 10 })}>
                       Search within 10 km
@@ -290,7 +354,80 @@ function Gap() {
   return <View style={{ height: space.md }} />;
 }
 
+/**
+ * The bar at the top reads as the search box the results came from: a tap
+ * anywhere on it reopens search with the words already typed, ready to change.
+ */
+function SearchHeader({ label, query, onBack }: { label: string; query: string | undefined; onBack: () => void }) {
+  const insets = useSafeAreaInsets();
+  return (
+    <View style={[styles.searchHeader, { paddingTop: insets.top }]}>
+      <View style={styles.searchHeaderRow}>
+        <Pressable
+          onPress={onBack}
+          accessibilityRole="button"
+          accessibilityLabel="Go back"
+          style={({ pressed }) => [styles.searchBack, pressed && styles.searchPressed]}
+        >
+          <Icon name="back" size={22} color={color.text} />
+        </Pressable>
+        <Pressable
+          onPress={() => router.push({ pathname: '/search', params: query ? { q: query } : {} })}
+          accessibilityRole="button"
+          accessibilityLabel={'Change search: ' + (query ?? label)}
+          style={({ pressed }) => [styles.searchBox, pressed && styles.searchPressed]}
+        >
+          <Icon name="search" size={18} color={color.textSecondary} />
+          <Text style={styles.searchBoxText} numberOfLines={1}>
+            {query ?? label}
+          </Text>
+        </Pressable>
+      </View>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
+  searchHeader: {
+    backgroundColor: color.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: color.border,
+    zIndex: 20,
+  },
+  searchHeaderRow: {
+    height: size.header,
+    paddingLeft: 8,
+    paddingRight: space.lg,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  searchBack: {
+    width: 44,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: radius.pill,
+  },
+  searchBox: {
+    flex: 1,
+    minWidth: 0,
+    height: 44,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.sm,
+    paddingHorizontal: space.lg,
+    borderRadius: radius.pill,
+    backgroundColor: color.surfaceSoftAlt,
+  },
+  searchBoxText: {
+    ...type.bodySemibold,
+    color: color.text,
+    flex: 1,
+  },
+  searchPressed: {
+    opacity: 0.7,
+  },
   screen: {
     flex: 1,
     backgroundColor: color.background,
@@ -342,6 +479,24 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   appliedLabel: {
+    ...type.captionMedium,
+    color: color.brandStrong,
+  },
+  relaxed: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.sm,
+    marginTop: space.md,
+    padding: space.md,
+    borderRadius: radius.lg,
+    backgroundColor: color.surfaceSoftAlt,
+  },
+  relaxedText: {
+    ...type.caption,
+    color: color.text,
+    flex: 1,
+  },
+  relaxedUndo: {
     ...type.captionMedium,
     color: color.brandStrong,
   },

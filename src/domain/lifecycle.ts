@@ -80,7 +80,7 @@ export const STATUS_LABEL: Record<DealStatus, string> = {
   SUBMITTED: 'Submitted',
   VERIFICATION: 'In Verification',
   APPROVED: 'Approved',
-  REJECTED: 'Rejected',
+  REJECTED: 'Needs changes',
   PUBLISHED: 'Published',
   ACTIVE: 'Active',
   PAUSED: 'Paused',

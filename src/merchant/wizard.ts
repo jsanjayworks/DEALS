@@ -9,7 +9,12 @@
 
 import type { DealDraftInput } from '../data/api';
 import { CATEGORIES } from '../data/seed-reference';
+import { dealParty } from '../data/party';
+import { dealVehicleTags } from '../data/vehicles';
+import { matchPhoto } from '../data/photo-library';
+import { keywordsFrom } from './classify';
 import type {
+  AttributeValue,
   AudienceKind,
   CtaType,
   Deal,
@@ -19,6 +24,10 @@ import type {
 } from '../data/types';
 
 export interface WizardForm {
+  /** What the merchant typed for "What are you offering?"; the category is read from it. */
+  offering: string;
+  /** Extra words customers might search for, comma separated. */
+  keywords: string;
   vertical: Vertical | null;
   /** A leaf slug, or the vertical's own slug when no subcategory fits. */
   category_slug: string | null;
@@ -54,7 +63,34 @@ export interface WizardForm {
 
   primary_cta: CtaType;
   secondary_ctas: CtaType[];
+
+  /** The deal's photo URL; null uses a library photo matched to the title. */
+  photo: string | null;
+  /** A group deal's size, smallest and largest party; null for anyone. */
+  party: [number, number] | null;
+  /** Vehicle tags the deal is for (data/vehicles.ts); empty for none. */
+  vehicles: string[];
+  /**
+   * The deal's other attributes (cuisine, BHK…), kept as they were. The
+   * server replaces attributes wholesale, so they are sent back with the
+   * group size and vehicles merged in.
+   */
+  attributes: Record<string, AttributeValue>;
 }
+
+/** Group sizes a merchant can pick. */
+export const PARTY_CHOICES: readonly { label: string; value: [number, number] | null }[] = [
+  { label: 'Anyone', value: null },
+  { label: 'For 1', value: [1, 1] },
+  { label: 'For 2', value: [2, 2] },
+  { label: 'For 3–4', value: [3, 4] },
+  { label: 'For 4–6', value: [4, 6] },
+  { label: 'For 6–8', value: [6, 8] },
+  { label: 'For 8–12', value: [8, 12] },
+];
+
+/** Verticals where "which vehicles is it for" makes sense. */
+export const VEHICLE_VERTICALS: readonly Vertical[] = ['services', 'mobility', 'retail'];
 
 export const STEPS = [
   { key: 'category', title: 'What are you offering?' },
@@ -102,6 +138,8 @@ export function defaultsFor(v: Vertical) {
 export function emptyForm(now: Date = new Date()): WizardForm {
   const start = istDayStart(0, now);
   return {
+    offering: '',
+    keywords: '',
     vertical: null,
     category_slug: null,
     deal_type_code: 'discount',
@@ -130,6 +168,10 @@ export function emptyForm(now: Date = new Date()): WizardForm {
     terms: '',
     primary_cta: 'claim',
     secondary_ctas: ['directions'],
+    photo: null,
+    party: null,
+    vehicles: [],
+    attributes: {},
   };
 }
 
@@ -139,6 +181,8 @@ const str = (n: number | null | undefined) => (n == null ? '' : String(n));
 export function fromDeal(d: Deal): WizardForm {
   const category = CATEGORIES.find((c) => c.id === d.category_id);
   return {
+    offering: '',
+    keywords: (d.tags ?? []).join(', '),
     vertical: category?.vertical ?? null,
     category_slug: category?.slug ?? null,
     deal_type_code: d.deal_type_code,
@@ -167,7 +211,43 @@ export function fromDeal(d: Deal): WizardForm {
     terms: d.terms ?? '',
     primary_cta: d.primary_cta,
     secondary_ctas: d.secondary_ctas,
+    photo: d.image || null,
+    party: dealParty(d.attributes),
+    vehicles: dealVehicleTags(d.attributes),
+    attributes: d.attributes,
   };
+}
+
+/** "chicken biryani for 4" → "Chicken biryani for 4", the title's first draft. */
+export function titleFromOffering(text: string): string {
+  const t = text.trim().replace(/\s+/g, ' ');
+  return (t.charAt(0).toUpperCase() + t.slice(1)).slice(0, 90);
+}
+
+/** The library photo the wizard suggests for what has been typed so far. */
+export function photoForForm(f: WizardForm): string {
+  return matchPhoto({
+    title: f.title || f.category_slug || '',
+    description: f.short_description,
+    categorySlug: f.category_slug,
+    vertical: f.vertical,
+  });
+}
+
+/** The attributes to save: what the deal had, with group size and vehicles as set now. */
+function attributesOf(f: WizardForm): Record<string, AttributeValue> {
+  const out: Record<string, AttributeValue> = { ...f.attributes };
+  delete out.party_min;
+  delete out.party_max;
+  delete out.vehicles;
+  if (f.party) {
+    out.party_min = f.party[0];
+    out.party_max = f.party[1];
+  }
+  if (f.vehicles.length > 0 && f.vertical && VEHICLE_VERTICALS.includes(f.vertical)) {
+    out.vehicles = f.vehicles;
+  }
+  return out;
 }
 
 function num(s: string): number | null {
@@ -208,6 +288,11 @@ export function toDraftInput(f: WizardForm, businessId: string, id?: string): De
     booking_required: f.booking_required,
     cancellation_policy: f.cancellation_policy.trim() || null,
     terms: f.terms.trim() || null,
+    attributes: attributesOf(f),
+    // What customers find it by: the offering's words and any the merchant added.
+    tags: keywordsFrom(f.offering || f.title, f.keywords),
+    // Always a photo: the merchant's, or one from the library that fits the title.
+    media: [{ kind: 'image', storage_path: f.photo ?? photoForForm(f) }],
     availability: avail,
     eligibility: {
       audience: f.audience,
@@ -233,7 +318,9 @@ export function validateStep(step: StepKey, f: WizardForm): FieldErrors {
   const e: FieldErrors = {};
   switch (step) {
     case 'category':
-      if (!f.vertical) e.vertical = 'Pick a category';
+      if (!f.vertical) {
+        e.vertical = f.offering.trim().length < 3 ? 'Say what you are offering' : 'Pick the closest category';
+      }
       break;
 
     case 'details':
@@ -293,7 +380,7 @@ export function validateStep(step: StepKey, f: WizardForm): FieldErrors {
 
     case 'actions':
       if (f.booking_required && !['book', 'reserve', 'register', 'enquire'].includes(f.primary_cta)) {
-        e.primary_cta = 'This deal needs booking, so the main button should be Book, Reserve or Register';
+        e.primary_cta = 'This deal needs booking, so the main button should be Book, Reserve, Register or Enquire';
       }
       break;
 

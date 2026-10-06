@@ -9,6 +9,10 @@
  *
  * Slots are built in IST because availability windows are stored in IST and
  * the rules read them that way, whatever timezone the phone is set to.
+ *
+ * A priced deal is paid before it is taken: a payment step with a choice of
+ * method and a mock "Pay" (lib/payment.ts). The payment rides on the action's
+ * payload, so the order, My Deals and the merchant's orders all show it.
  */
 
 import { useMemo, useState } from 'react';
@@ -18,10 +22,27 @@ import { db, RuleViolation } from '../data';
 import { useViewer } from '../state/session';
 import type { CustomerAction, CustomerActionType, DealCardModel } from '../data/types';
 import { checkAction, mintsCode } from '../domain/rules';
-import { dateLabel, slotLabel, timeLabel } from '../lib/format';
+import { dateLabel, quantityLabel, slotLabel, timeLabel } from '../lib/format';
 import { hapticSuccess, hapticTap } from '../lib/device';
+import {
+  PAY_METHOD_LABEL,
+  needsPayment,
+  newOrderId,
+  paymentOf,
+  type MockPayment,
+  type PayMethod,
+} from '../lib/payment';
 import { color, font, inr, radius, space, status, type } from '../theme/tokens';
-import { Button, Chip, Icon, Label, Sheet } from '../components';
+import { Button, Chip, Icon, Label, Sheet, type IconName } from '../components';
+
+const PAY_METHODS: { key: PayMethod; icon: IconName; detail: string }[] = [
+  { key: 'upi', icon: 'phone', detail: 'Google Pay, PhonePe, Paytm or any UPI app' },
+  { key: 'card', icon: 'ticket', detail: 'Credit or debit card' },
+  { key: 'netbanking', icon: 'building', detail: 'All major banks' },
+];
+
+/** How long the mock "processing" shows, so paying reads as a step. */
+const PROCESSING_MS = 1400;
 
 const IST_OFFSET_MS = 330 * 60_000;
 const DAY_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -32,6 +53,8 @@ interface SlotDay {
   y: number;
   m: number;
   d: number;
+  /** Start times still open that day; days without any are left out. */
+  times: Date[];
 }
 
 function istParts(at: Date) {
@@ -48,17 +71,23 @@ function toMinutes(t: string): number {
   return (h || 0) * 60 + (m || 0);
 }
 
-/** The next week of days the deal runs on, stopping at its end date. */
-function slotDays(deal: DealCardModel, now: Date): SlotDay[] {
+/**
+ * Up to a week of days the deal runs on that still have a time to book,
+ * stopping at its end date. A day with nothing left (today, late in the
+ * evening) is skipped rather than offered empty.
+ */
+function slotDays(deal: DealCardModel, actionType: CustomerActionType, now: Date): SlotDay[] {
   const out: SlotDay[] = [];
   const allowed = deal.availability.days;
   const end = new Date(deal.ends_at).getTime();
-  for (let i = 0; i < 14 && out.length < 7; i++) {
+  for (let i = 0; i < 21 && out.length < 7; i++) {
     const p = istParts(new Date(now.getTime() + i * 86_400_000));
     if (allowed.length > 0 && !allowed.includes(p.dow)) continue;
     if (istInstant(p.y, p.m, p.d, 0, 0).getTime() > end) break;
+    const times = slotTimes(deal, p, actionType, now);
+    if (times.length === 0) continue;
     const label = i === 0 ? 'Today' : i === 1 ? 'Tomorrow' : DAY_SHORT[p.dow] + ' ' + p.d;
-    out.push({ key: p.y + '-' + p.m + '-' + p.d, label, ...p });
+    out.push({ key: p.y + '-' + p.m + '-' + p.d, label, ...p, times });
   }
   return out;
 }
@@ -69,7 +98,7 @@ function slotDays(deal: DealCardModel, now: Date): SlotDay[] {
  */
 function slotTimes(
   deal: DealCardModel,
-  day: SlotDay,
+  day: { y: number; m: number; d: number },
   actionType: CustomerActionType,
   now: Date,
 ): Date[] {
@@ -104,7 +133,7 @@ const CONFIRM_LABEL: Record<CustomerActionType, string> = {
   reserve: 'Confirm reservation',
   registration: 'Register',
   enquiry: 'Send enquiry',
-  purchase_intent: 'Continue',
+  purchase_intent: 'Request to buy',
 };
 
 export interface ClaimSheetProps {
@@ -145,6 +174,9 @@ function ClaimSheetOpen({
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<CustomerAction | null>(null);
   const [now] = useState(() => new Date());
+  const [stage, setStage] = useState<'form' | 'pay' | 'paying'>('form');
+  const [method, setMethod] = useState<PayMethod>('upi');
+  const pays = needsPayment(deal, actionType);
 
   const needsSlot =
     actionType === 'booking' ||
@@ -153,12 +185,13 @@ function ClaimSheetOpen({
     (deal.booking_required && actionType !== 'enquiry');
   const isEnquiry = actionType === 'enquiry';
 
-  const days = useMemo(() => (needsSlot ? slotDays(deal, now) : []), [deal, needsSlot, now]);
-  const day = days.find((d) => d.key === dayKey) ?? days[0] ?? null;
-  const times = useMemo(
-    () => (day ? slotTimes(deal, day, actionType, now) : []),
-    [deal, day, actionType, now],
+  const days = useMemo(
+    () => (needsSlot ? slotDays(deal, actionType, now) : []),
+    [deal, needsSlot, actionType, now],
   );
+  const day = days.find((d) => d.key === dayKey) ?? days[0] ?? null;
+  const times = day?.times ?? [];
+  const noTimes = needsSlot && days.length === 0;
 
   const maxQty = Math.max(
     1,
@@ -175,27 +208,50 @@ function ClaimSheetOpen({
     existing,
   });
 
-  const canSubmit = verdict.ok && (!needsSlot || slot !== null) && !submitting;
+  const canSubmit = verdict.ok && !noTimes && (!needsSlot || slot !== null) && !submitting;
 
-  const submit = async () => {
+  const submit = async (payment?: MockPayment) => {
     setSubmitting(true);
     setError(null);
     try {
+      const payload: Record<string, unknown> = isEnquiry && message.trim() ? { message: message.trim() } : {};
+      if (payment) payload.payment = payment;
       const action = await db.takeDealAction({
         deal_id: deal.id,
         action_type: actionType,
         quantity,
         slot_start: needsSlot ? slot : null,
-        payload: isEnquiry && message.trim() ? { message: message.trim() } : {},
+        payload,
       });
       hapticSuccess();
       setDone(action);
       onTaken(action);
     } catch (e) {
-      setError(e instanceof RuleViolation ? e.message : 'Something went wrong. Please try again.');
+      setError(
+        (e instanceof RuleViolation ? e.message : 'Something went wrong. Please try again.') +
+          (payment ? ' Nothing was charged.' : ''),
+      );
+      if (payment) setStage('pay');
     } finally {
       setSubmitting(false);
     }
+  };
+
+  /** The mock gateway: a moment of "processing", then the order goes through as paid. */
+  const payNow = (amount: number) => {
+    setStage('paying');
+    setError(null);
+    setTimeout(() => {
+      void submit({
+        status: 'paid',
+        method,
+        amount,
+        currency: 'INR',
+        order_id: newOrderId(),
+        paid_at: new Date().toISOString(),
+        mock: true,
+      });
+    }, PROCESSING_MS);
   };
 
   if (done) {
@@ -214,6 +270,27 @@ function ClaimSheetOpen({
   const total = deal.deal_price != null ? deal.deal_price * quantity : null;
   const blockedReason = !verdict.ok ? verdict.reason : error;
 
+  if (pays && total != null && stage !== 'form') {
+    return (
+      <PaymentStep
+        visible={visible}
+        onClose={onClose}
+        deal={deal}
+        quantity={quantity}
+        total={total}
+        method={method}
+        onMethod={setMethod}
+        paying={stage === 'paying' || submitting}
+        error={error}
+        onBack={() => {
+          setStage('form');
+          setError(null);
+        }}
+        onPay={() => payNow(total)}
+      />
+    );
+  }
+
   return (
     <Sheet
       visible={visible}
@@ -224,7 +301,10 @@ function ClaimSheetOpen({
           {total != null && !isEnquiry ? (
             <View>
               <Text style={styles.totalLabel}>Total</Text>
-              <Text style={styles.total}>{total === 0 ? 'Free' : inr(total)}</Text>
+              <Text style={styles.total}>
+                {total === 0 ? 'Free' : inr(total)}
+                {total > 0 && deal.price_unit ? <Text style={styles.totalUnit}>{deal.price_unit}</Text> : null}
+              </Text>
             </View>
           ) : null}
           <View style={styles.footerMain}>
@@ -233,9 +313,15 @@ function ClaimSheetOpen({
               full
               loading={submitting}
               disabled={!canSubmit}
-              onPress={() => void submit()}
+              onPress={() => (pays ? setStage('pay') : void submit())}
             >
-              {needsSlot && !slot ? 'Pick a time' : CONFIRM_LABEL[actionType]}
+              {noTimes
+                ? 'No times left'
+                : needsSlot && !slot
+                  ? 'Pick a time'
+                  : pays && total != null
+                    ? 'Continue to pay ' + inr(total)
+                    : CONFIRM_LABEL[actionType]}
             </Button>
           </View>
         </View>
@@ -286,7 +372,13 @@ function ClaimSheetOpen({
         <View style={styles.block}>
           <Label>Day</Label>
           {days.length === 0 ? (
-            <Text style={styles.muted}>No upcoming days left on this deal.</Text>
+            <Text style={styles.muted}>
+              No times left to book on this deal
+              {deal.eligibility.advance_booking_hours
+                ? '. Bookings close ' + deal.eligibility.advance_booking_hours + ' hours ahead'
+                : ''}
+              .
+            </Text>
           ) : (
             <View style={styles.chips}>
               {days.map((d) => (
@@ -309,33 +401,23 @@ function ClaimSheetOpen({
             <>
               <View style={styles.gapSm} />
               <Label>Time</Label>
-              {times.length === 0 ? (
-                <Text style={styles.muted}>
-                  No times left that day
-                  {deal.eligibility.advance_booking_hours
-                    ? ' — bookings close ' + deal.eligibility.advance_booking_hours + ' hours ahead'
-                    : ''}
-                  .
-                </Text>
-              ) : (
-                <View style={styles.chips}>
-                  {times.map((t) => {
-                    const iso = t.toISOString();
-                    return (
-                      <Chip
-                        key={iso}
-                        selected={slot === iso}
-                        onPress={() => {
-                          hapticTap();
-                          setSlot(iso);
-                        }}
-                      >
-                        {istTimeLabel(t)}
-                      </Chip>
-                    );
-                  })}
-                </View>
-              )}
+              <View style={styles.chips}>
+                {times.map((t) => {
+                  const iso = t.toISOString();
+                  return (
+                    <Chip
+                      key={iso}
+                      selected={slot === iso}
+                      onPress={() => {
+                        hapticTap();
+                        setSlot(iso);
+                      }}
+                    >
+                      {istTimeLabel(t)}
+                    </Chip>
+                  );
+                })}
+              </View>
             </>
           ) : null}
         </View>
@@ -362,9 +444,11 @@ function ClaimSheetOpen({
         <Text style={styles.noteText}>
           {isEnquiry
             ? deal.business.name + ' will reply to the number on your profile.'
-            : actionType === 'purchase_intent'
-              ? deal.business.name + ' will contact you to complete the purchase.'
-              : 'No payment in the app. Show your code and pay at ' + deal.business.name + '.'}
+            : pays
+              ? 'You pay now, then show your code at ' + deal.business.name + '.'
+              : actionType === 'purchase_intent'
+                ? deal.business.name + ' will contact you to complete the purchase.'
+                : 'Free. Show your code at ' + deal.business.name + '.'}
         </Text>
       </View>
 
@@ -421,14 +505,22 @@ function Success({
 }) {
   const code = action.redemption_code;
   const isEnquiry = action.action_type === 'enquiry';
+  const paid = paymentOf(action);
   return (
     <View style={styles.success}>
       <View style={styles.successTick}>
         <Icon name="check" size={32} color={color.onCta} strokeWidth={2.4} />
       </View>
       <Text style={styles.successTitle} accessibilityRole="header">
-        {isEnquiry ? 'Enquiry sent' : 'You’re all set'}
+        {isEnquiry ? 'Enquiry sent' : paid ? 'Payment successful' : 'You’re all set'}
       </Text>
+      {paid ? (
+        <View style={styles.paidPill}>
+          <Text style={styles.paidPillText}>
+            Paid {inr(paid.amount)} by {PAY_METHOD_LABEL[paid.method]} · {paid.order_id}
+          </Text>
+        </View>
+      ) : null}
       <Text style={styles.successBody}>
         {isEnquiry
           ? deal.business.name + ' will get back to you soon.'
@@ -448,7 +540,9 @@ function Success({
           ) : (
             <Text style={styles.codeMeta}>Valid until {dateLabel(deal.ends_at)}</Text>
           )}
-          {action.quantity > 1 ? <Text style={styles.codeMeta}>{action.quantity} people</Text> : null}
+          {action.quantity > 1 ? (
+            <Text style={styles.codeMeta}>{quantityLabel(action.action_type, action.quantity)}</Text>
+          ) : null}
         </View>
       ) : null}
 
@@ -464,7 +558,187 @@ function Success({
   );
 }
 
+/** Checkout: what is being paid for, how, and the mock Pay button. */
+function PaymentStep({
+  visible,
+  onClose,
+  deal,
+  quantity,
+  total,
+  method,
+  onMethod,
+  paying,
+  error,
+  onBack,
+  onPay,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  deal: DealCardModel;
+  quantity: number;
+  total: number;
+  method: PayMethod;
+  onMethod: (m: PayMethod) => void;
+  paying: boolean;
+  error: string | null;
+  onBack: () => void;
+  onPay: () => void;
+}) {
+  return (
+    <Sheet
+      visible={visible}
+      onClose={paying ? () => {} : onClose}
+      title="Payment"
+      footer={
+        <View style={styles.footer}>
+          <Button variant="secondary" onPress={onBack} disabled={paying}>
+            Back
+          </Button>
+          <View style={styles.footerMain}>
+            <Button variant="cta" full loading={paying} onPress={onPay}>
+              {'Mock pay ' + inr(total)}
+            </Button>
+          </View>
+        </View>
+      }
+    >
+      <View style={styles.summary}>
+        <View style={styles.summaryText}>
+          <Text style={styles.summaryTitle} numberOfLines={2}>
+            {deal.title}
+          </Text>
+          <Text style={styles.summaryBiz}>
+            {deal.business.name}
+            {quantity > 1 ? ' · ' + quantity + ' × ' + inr(deal.deal_price ?? 0) : ''}
+          </Text>
+        </View>
+        <Text style={styles.summaryPrice}>
+          {inr(total)}
+          {deal.price_unit ?? ''}
+        </Text>
+      </View>
+
+      <View style={styles.block}>
+        <Label>Pay with</Label>
+        <View style={styles.methods} accessibilityRole="radiogroup">
+          {PAY_METHODS.map((m) => {
+            const on = method === m.key;
+            return (
+              <Pressable
+                key={m.key}
+                onPress={() => {
+                  hapticTap();
+                  onMethod(m.key);
+                }}
+                disabled={paying}
+                accessibilityRole="radio"
+                aria-checked={on}
+                accessibilityLabel={PAY_METHOD_LABEL[m.key]}
+                style={[styles.method, on && styles.methodOn]}
+              >
+                <Icon name={m.icon} size={18} color={on ? color.brand : color.textSecondary} />
+                <View style={styles.methodText}>
+                  <Text style={styles.methodName}>{PAY_METHOD_LABEL[m.key]}</Text>
+                  <Text style={styles.methodDetail}>{m.detail}</Text>
+                </View>
+                <View style={[styles.radio, on && styles.radioOn]}>{on ? <View style={styles.radioDot} /> : null}</View>
+              </Pressable>
+            );
+          })}
+        </View>
+      </View>
+
+      <View style={styles.mock}>
+        <Icon name="shield" size={16} color={color.accentText} />
+        <Text style={styles.mockText}>
+          {paying ? 'Processing payment…' : 'Mock payment for the demo. No money moves and no card details are asked for.'}
+        </Text>
+      </View>
+
+      {error ? (
+        <View style={styles.blocked} accessibilityLiveRegion="assertive">
+          <Icon name="x" size={16} color={status.danger.fg} />
+          <Text style={styles.blockedText}>{error}</Text>
+        </View>
+      ) : null}
+    </Sheet>
+  );
+}
+
 const styles = StyleSheet.create({
+  methods: {
+    gap: space.sm,
+  },
+  method: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.md,
+    minHeight: 60,
+    paddingHorizontal: space.lg,
+    paddingVertical: space.sm,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: color.border,
+    backgroundColor: color.surface,
+  },
+  methodOn: {
+    borderColor: color.brand,
+    borderWidth: 2,
+  },
+  methodText: {
+    flex: 1,
+  },
+  methodName: {
+    ...type.bodySemibold,
+    color: color.text,
+  },
+  methodDetail: {
+    ...type.small,
+    color: color.textSecondary,
+  },
+  radio: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: color.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  radioOn: {
+    borderColor: color.brand,
+  },
+  radioDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: color.brand,
+  },
+  mock: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: space.sm,
+    marginTop: space.xl,
+    padding: space.md,
+    borderRadius: radius.lg,
+    backgroundColor: color.surfaceSoftAlt,
+  },
+  mockText: {
+    ...type.caption,
+    color: color.textSecondary,
+    flex: 1,
+  },
+  paidPill: {
+    marginTop: space.sm,
+    paddingHorizontal: space.md,
+    paddingVertical: space.xs,
+    borderRadius: radius.pill,
+    backgroundColor: status.active.bg,
+  },
+  paidPillText: {
+    ...type.captionMedium,
+    color: status.active.fg,
+  },
   summary: {
     flexDirection: 'row',
     alignItems: 'flex-start',
@@ -590,6 +864,10 @@ const styles = StyleSheet.create({
     ...type.h2,
     color: color.text,
     fontVariant: ['tabular-nums'],
+  },
+  totalUnit: {
+    ...type.caption,
+    color: color.textSecondary,
   },
   success: {
     alignItems: 'center',

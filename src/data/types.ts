@@ -108,6 +108,15 @@ export interface AttributeSpec {
   readonly 'x-label'?: string;
 }
 
+/**
+ * One value in deals.attributes. Most are scalars ("cuisine": "Japanese",
+ * "bhk": 2); a few cross-category ones are lists, like the vehicles a service
+ * is for. Two keys mean the same thing on every deal:
+ *   party_min / party_max  how many people the deal is for ("for 4 to 6")
+ *   vehicles               vehicle tags, see data/vehicles.ts
+ */
+export type AttributeValue = string | number | boolean | string[];
+
 /** JSON Schema subset for deals.attributes. Absent means {}. */
 export interface AttributeSchema {
   readonly properties?: Readonly<Record<string, AttributeSpec>>;
@@ -135,6 +144,12 @@ export interface Business {
   locality_id: string;
   address_line: string;
   location: LatLng;
+  /** What the business does and sells, in the owner's words. */
+  description?: string | null;
+  /** Words customers find it by, from the owner's description. */
+  keywords?: string[];
+  /** The person who set it up: owner, manager… */
+  owner_role?: string | null;
 }
 
 export interface DealAvailability {
@@ -179,7 +194,7 @@ export interface Deal {
   booking_required: boolean;
   cancellation_policy: string | null;
   terms: string | null;
-  attributes: Record<string, string | number | boolean>;
+  attributes: Record<string, AttributeValue>;
   tags: string[];
   location: LatLng;
   image: string;
@@ -231,7 +246,8 @@ export interface Notification {
     | 'ending_soon'
     | 'business_verified'
     | 'business_rejected'
-    | 'support_reply';
+    | 'support_reply'
+    | 'deal_paused';
   title: string;
   body: string;
   data: Record<string, unknown>;
@@ -262,6 +278,11 @@ export interface SearchFilters {
   day_of_week: number[];
   deal_types: DealTypeCode[];
   attributes: Record<string, string | number>;
+  /** The group going: a deal matches when its party_min..party_max overlaps. */
+  party_min: number | null;
+  party_max: number | null;
+  /** A deal matches when its attributes.vehicles shares any of these tags. */
+  vehicle_tags: string[];
   verified_only: boolean;
   min_rating: number | null;
   ending_soon: boolean;

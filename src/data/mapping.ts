@@ -13,6 +13,7 @@
 
 import { businessById, categoryById, localityById } from './seed-reference';
 import type {
+  AttributeValue,
   CtaType,
   CustomerAction,
   Deal,
@@ -20,8 +21,10 @@ import type {
   DealStatus,
   LatLng,
   OfferingKind,
+  Vertical,
 } from './types';
 import type { DealDraftInput } from './api';
+import { matchPhoto } from './photo-library';
 
 /** Exactly the columns of the SQL `deal_card` composite type, in order. */
 export interface DealCardRow {
@@ -49,7 +52,7 @@ export interface DealCardRow {
   booking_required: boolean;
   cancellation_policy: string | null;
   terms: string | null;
-  attributes: Record<string, string | number | boolean> | null;
+  attributes: Record<string, AttributeValue> | null;
   tags: string[] | null;
   lat: number | null;
   lng: number | null;
@@ -139,7 +142,18 @@ export function rowToDealCard(r: DealCardRow): DealCardModel {
     attributes: r.attributes ?? {},
     tags: r.tags ?? [],
     location: { lat: r.lat ?? 0, lng: r.lng ?? 0 },
-    image: r.image_url ?? '',
+    // Never an empty card: a deal without a photo gets one that shows what it is.
+    image:
+      r.image_url ||
+      matchPhoto({
+        id: r.id,
+        title: r.title,
+        tags: r.tags ?? [],
+        description: r.short_description,
+        categorySlug: r.category_slug,
+        categoryName: r.category_name,
+        vertical: r.vertical as Vertical,
+      }),
     primary_cta: r.primary_cta,
     secondary_ctas: r.secondary_ctas ?? [],
     availability: {
@@ -206,6 +220,17 @@ export function dealToCard(deal: Deal, origin: LatLng | null): DealCardModel {
 
   return {
     ...deal,
+    image:
+      deal.image ||
+      matchPhoto({
+        id: deal.id,
+        title: deal.title,
+        tags: deal.tags,
+        description: deal.short_description,
+        categorySlug: category.slug,
+        categoryName: category.name,
+        vertical: category.vertical,
+      }),
     business,
     category,
     locality_name: locality.name,

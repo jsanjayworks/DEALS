@@ -1,0 +1,201 @@
+/**
+ * Business details: what customers see on every deal — name, phone, email,
+ * street address and area. Changing the area moves the business's pin and
+ * its deals to that area. The YOLO Verified status and the registered name
+ * are not edited here; they change only through a verification request.
+ */
+
+import { useCallback, useState } from 'react';
+import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { router } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { db, RuleViolation } from '../../data';
+import type { Business, Locality } from '../../data/types';
+import { hapticSuccess } from '../../lib/device';
+import { useQuery } from '../../lib/useQuery';
+import { useBusiness } from '../../merchant/useBusiness';
+import { color, radius, space, status, type } from '../../theme/tokens';
+import { Button, Chip, EmptyState, Field, Header, Label, VerifiedBadge } from '../../components';
+
+export default function BusinessDetailsScreen() {
+  const { business, loading, reload } = useBusiness();
+  const fetchLocalities = useCallback(() => db.getLocalities(), []);
+  const { data: localities } = useQuery(fetchLocalities);
+
+  return (
+    <View style={styles.screen}>
+      <Header title="Business details" dark onBack={() => (router.canGoBack() ? router.back() : router.replace('/merchant'))} />
+      {business ? (
+        // Keyed by business, so the form starts from that business's details.
+        <DetailsForm key={business.id} business={business} localities={localities ?? []} onSaved={reload} />
+      ) : loading ? null : (
+        <EmptyState icon="store" title="No business yet" body="List your business first." />
+      )}
+    </View>
+  );
+}
+
+function DetailsForm({
+  business,
+  localities,
+  onSaved,
+}: {
+  business: Business;
+  localities: Locality[];
+  onSaved: () => void;
+}) {
+  const insets = useSafeAreaInsets();
+  const [name, setName] = useState(business.name);
+  const [phone, setPhone] = useState(business.phone ?? '');
+  const [email, setEmail] = useState(business.email ?? '');
+  const [address, setAddress] = useState(business.address_line ?? '');
+  const [localityId, setLocalityId] = useState<string | null>(business.locality_id || null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+
+  const edit = <T,>(set: (v: T) => void) => (v: T) => {
+    set(v);
+    setError(null);
+    setSaved(false);
+  };
+
+  const save = async () => {
+    if (name.trim().length < 2) return setError('Enter the business name');
+    if (!localityId) return setError('Choose the area your business is in');
+    if (address.trim().length < 5) return setError('Enter the street address');
+    setBusy(true);
+    setError(null);
+    try {
+      await db.updateBusiness(business.id, {
+        name: name.trim(),
+        locality_id: localityId,
+        address_line: address.trim(),
+        phone: phone.trim() || undefined,
+        email: email.trim() || undefined,
+      });
+      hapticSuccess();
+      setSaved(true);
+      onSaved();
+    } catch (e) {
+      setError(e instanceof RuleViolation ? e.message : 'That did not save. Please try again.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const moving = !!localityId && !!business.locality_id && localityId !== business.locality_id;
+
+  return (
+    <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <ScrollView
+        keyboardShouldPersistTaps="handled"
+        contentContainerStyle={[styles.body, { paddingBottom: insets.bottom + space.xxl }]}
+      >
+        <Text style={styles.lead}>Customers see these on every deal you post.</Text>
+        {business.verification_status === 'verified' ? (
+          <View style={styles.verified}>
+            <VerifiedBadge />
+            <Text style={styles.note}>Your verified registration stays as it is.</Text>
+          </View>
+        ) : null}
+
+        <Field label="Business name" value={name} onChangeText={edit(setName)} autoCapitalize="words" />
+        <Field
+          label="Phone for customers"
+          value={phone}
+          onChangeText={edit(setPhone)}
+          placeholder="+91 98450 12345"
+          keyboardType="phone-pad"
+        />
+        <Field
+          label="Email (optional)"
+          value={email}
+          onChangeText={edit(setEmail)}
+          placeholder="hello@yourbusiness.in"
+          keyboardType="email-address"
+          autoCapitalize="none"
+        />
+        <Field
+          label="Street address"
+          value={address}
+          onChangeText={edit(setAddress)}
+          placeholder="12, 5th Block, near Forum Mall"
+        />
+
+        <Label>Area</Label>
+        <View style={styles.chips}>
+          {localities.map((l) => (
+            <Chip key={l.id} selected={l.id === localityId} onPress={() => edit(setLocalityId)(l.id)}>
+              {l.name}
+            </Chip>
+          ))}
+        </View>
+        {moving ? (
+          <Text style={styles.note}>Your live deals move to the new area too, so distances stay right.</Text>
+        ) : null}
+
+        {error ? (
+          <Text style={styles.error} accessibilityLiveRegion="polite">
+            {error}
+          </Text>
+        ) : null}
+        {saved ? (
+          <Text style={styles.saved} accessibilityLiveRegion="polite">
+            Saved. Customers see the new details now.
+          </Text>
+        ) : null}
+        <Button variant="cta" full loading={busy} onPress={() => void save()}>
+          Save changes
+        </Button>
+      </ScrollView>
+    </KeyboardAvoidingView>
+  );
+}
+
+const styles = StyleSheet.create({
+  screen: {
+    flex: 1,
+    backgroundColor: color.background,
+  },
+  flex: {
+    flex: 1,
+  },
+  body: {
+    width: '100%',
+    maxWidth: 560,
+    alignSelf: 'center',
+    padding: space.xl,
+    gap: space.md,
+  },
+  lead: {
+    ...type.body,
+    color: color.textSecondary,
+  },
+  verified: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.sm,
+    padding: space.md,
+    borderRadius: radius.lg,
+    backgroundColor: color.surfaceSoftAlt,
+  },
+  chips: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: space.sm,
+  },
+  note: {
+    ...type.caption,
+    color: color.textSecondary,
+    flexShrink: 1,
+  },
+  error: {
+    ...type.captionMedium,
+    color: color.alert,
+  },
+  saved: {
+    ...type.captionMedium,
+    color: status.active.fg,
+  },
+});

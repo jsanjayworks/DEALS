@@ -142,15 +142,15 @@ function EndingPager({ deals, onOpen }: { deals: DealCardModel[]; onOpen: (d: De
   );
 }
 
-/** HH:MM:SS under a day, "2d 4h" beyond. */
+/** "2d 4h", "16h 47m", and a ticking "47:12" in the last hour. */
 function countdown(endsAt: string, now: number): string {
   const ms = Math.max(0, new Date(endsAt).getTime() - now);
   if (ms === 0) return 'Ended';
   const s = Math.floor(ms / 1000);
   const two = (n: number) => String(n).padStart(2, '0');
-  return s >= 86_400
-    ? Math.floor(s / 86_400) + 'd ' + Math.floor((s % 86_400) / 3600) + 'h'
-    : two(Math.floor(s / 3600)) + ':' + two(Math.floor((s % 3600) / 60)) + ':' + two(s % 60);
+  if (s >= 86_400) return Math.floor(s / 86_400) + 'd ' + Math.floor((s % 86_400) / 3600) + 'h';
+  if (s >= 3600) return Math.floor(s / 3600) + 'h ' + Math.floor((s % 3600) / 60) + 'm';
+  return two(Math.floor(s / 60)) + ':' + two(s % 60);
 }
 
 const styles = StyleSheet.create({

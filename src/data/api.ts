@@ -12,6 +12,7 @@
 
 import type { Constitution, LicenceType } from '../lib/india-ids';
 import type {
+  AttributeValue,
   Business,
   Category,
   CustomerAction,
@@ -62,6 +63,8 @@ export interface AuthApi {
   sendCode(target: OtpTarget): Promise<void>;
   verifyCode(target: OtpTarget, code: string): Promise<void>;
   signOut(): Promise<void>;
+  /** The demo only: any email signs in straight away, no code. */
+  signInWithoutCode?(target: OtpTarget): Promise<void>;
 }
 
 export interface FeedQuery {
@@ -70,6 +73,39 @@ export interface FeedQuery {
   section: FeedSection;
   limit?: number;
   offset?: number;
+}
+
+/** Open reports on one deal or business, for the admin reports queue. */
+export interface ReportGroup {
+  target_type: 'deal' | 'business' | 'review';
+  target_id: string;
+  title: string;
+  business_id: string | null;
+  business_name: string | null;
+  deal_status: DealStatus | null;
+  open_count: number;
+  /** The distinct reasons given, e.g. "Misleading". */
+  reasons: string[];
+  /** What reporters wrote, newest first. */
+  details: string[];
+  first_at: string;
+  last_at: string;
+}
+
+/** Home's "For you" rail: deals near them, ranked by what they like. */
+export interface ForYouQuery {
+  origin: LatLng;
+  radius_m: number;
+  limit?: number;
+}
+
+/** One thing a customer is into, learned from what they open, save and claim. */
+export interface TasteItem {
+  kind: 'category' | 'tag';
+  /** Category slug, or the tag itself. */
+  key: string;
+  label: string;
+  weight: number;
 }
 
 export interface SearchQuery {
@@ -133,7 +169,7 @@ export interface DealDraftInput {
   booking_required?: boolean;
   cancellation_policy?: string | null;
   terms?: string | null;
-  attributes?: Record<string, string | number | boolean>;
+  attributes?: Record<string, AttributeValue>;
   tags?: string[];
   lat?: number;
   lng?: number;
@@ -171,6 +207,13 @@ export type SupportTopic =
   | 'other';
 
 /** A customer's request to YOLO support; see create_support_ticket(). */
+/** One message in a support conversation. */
+export interface SupportMessage {
+  author: 'customer' | 'team';
+  body: string;
+  created_at: string;
+}
+
 export interface SupportTicket {
   id: string;
   topic: SupportTopic;
@@ -181,6 +224,8 @@ export interface SupportTicket {
   action_id: string | null;
   deal_id: string | null;
   created_at: string;
+  /** The whole conversation, oldest first, starting with the first message. */
+  messages: SupportMessage[];
 }
 
 /** A request as the admin inbox shows it. */
@@ -194,8 +239,10 @@ export interface SupportQueueItem {
   customer_contact: string;
   redemption_code: string | null;
   action_status: string | null;
+  deal_id: string | null;
   deal_title: string | null;
   reply: string | null;
+  messages: SupportMessage[];
 }
 
 /** What a new merchant fills in to list their business; see create_business(). */
@@ -206,6 +253,18 @@ export interface NewBusinessInput {
   address_line: string;
   phone?: string;
   email?: string;
+  /** What the business does and sells, in the owner's words. */
+  description?: string;
+  keywords?: string[];
+  owner_role?: string;
+}
+
+/** One customer order on a business's deals, for the merchant's Orders list. */
+export interface BusinessOrder extends CustomerAction {
+  deal_title: string;
+  deal_price: number | null;
+  /** The customer's name or email where the merchant may see it. */
+  customer_name: string | null;
 }
 
 /**
@@ -281,6 +340,9 @@ export interface DataSource {
 
   // ---- customer reads ----
   feedNearby(q: FeedQuery): Promise<DealCardModel[]>;
+  /** Empty for a signed-out visitor or someone with no history yet. */
+  feedForYou(q: ForYouQuery): Promise<DealCardModel[]>;
+  getMyTaste(): Promise<TasteItem[]>;
   searchDeals(q: SearchQuery): Promise<SearchResult>;
   getDeal(id: string, origin?: LatLng): Promise<DealCardModel | null>;
 
@@ -301,6 +363,8 @@ export interface DataSource {
   updateMyProfile(input: ProfileUpdate): Promise<void>;
   /** Uploads a new profile picture and returns its URL. */
   setAvatar(image: PickedImage): Promise<string>;
+  /** A merchant's own photo for a deal; returns the public URL to save in its media. */
+  uploadDealPhoto(businessId: string, image: PickedImage): Promise<string>;
   removeAvatar(): Promise<void>;
   createSupportTicket(input: {
     topic: SupportTopic;
@@ -319,6 +383,8 @@ export interface DataSource {
   submitBusinessVerification(businessId: string, input: VerificationInput): Promise<'pending'>;
   /** The latest request for a business the caller belongs to, or null if none. */
   getBusinessVerification(businessId: string): Promise<BusinessVerification | null>;
+  /** Name, phone, email, address and area; the same checks as createBusiness. */
+  updateBusiness(businessId: string, input: Omit<NewBusinessInput, 'primary_category_id'>): Promise<void>;
   listBusinessDeals(businessId: string): Promise<DealCardModel[]>;
   saveDealDraft(input: DealDraftInput): Promise<string>;
   submitDeal(dealId: string): Promise<DealStatus>;
@@ -328,12 +394,27 @@ export interface DataSource {
   getMerchantStats(businessId: string, days?: number): Promise<MerchantStats>;
   redeemAction(code: string): Promise<CustomerAction>;
   listDealActions(dealId: string): Promise<CustomerAction[]>;
+  /** Orders on all of a business's deals, newest first. */
+  listBusinessOrders(businessId: string): Promise<BusinessOrder[]>;
 
   // ---- admin ----
   listReviewQueue(): Promise<DealCardModel[]>;
   reviewDeal(dealId: string, approve: boolean, reason?: string): Promise<DealStatus>;
   listVerificationQueue(): Promise<VerificationRequest[]>;
-  listSupportQueue(): Promise<SupportQueueItem[]>;
+  /** Active requests (open, then answered), or closed ones. */
+  listSupportQueue(view?: 'active' | 'closed'): Promise<SupportQueueItem[]>;
+  /** The customer answers back on their own request; it opens again. */
+  followUpSupportTicket(ticketId: string, message: string): Promise<'open'>;
+  /** Admin: reported deals and businesses, most reported first. */
+  listReportsQueue(): Promise<ReportGroup[]>;
+  /** Admin: dismiss the reports, or pause the deal with a note its owner sees. Returns how many were settled. */
+  resolveReports(
+    targetType: ReportGroup['target_type'],
+    targetId: string,
+    action: 'dismiss' | 'pause',
+    note?: string,
+  ): Promise<number>;
+  /** A reply, a close, or both; closing needs no reply. */
   replySupportTicket(ticketId: string, reply: string, close?: boolean): Promise<'answered' | 'closed'>;
   reviewBusiness(businessId: string, approve: boolean, reason?: string): Promise<'verified' | 'rejected'>;
 

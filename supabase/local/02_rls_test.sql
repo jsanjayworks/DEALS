@@ -713,6 +713,38 @@ begin
     and (select reply from support_tickets where id = v_ticket) like 'We have spoken%'
     and exists (select 1 from notifications where profile_id = i.customer and kind = 'support_reply'),
     'a reply is stored and the customer is notified');
+
+  -- Conversations: a second reply adds to the thread instead of replacing the first.
+  perform set_config('app.current_user_id', i.admin::text, true);
+  set local role authenticated;
+  perform reply_support_ticket(v_ticket, 'Update: the refund is on its way.');
+  reset role;
+  perform assert(
+    (select count(*) from support_messages where ticket_id = v_ticket) = 3,
+    'the thread keeps the request and both replies');
+  perform assert(
+    refused('authenticated', i.merchant, format('select follow_up_support_ticket(%L, ''Not mine'')', v_ticket)),
+    'nobody else can write into a customer''s request');
+  perform assert(
+    visible_count('authenticated', i.merchant, format('select 1 from support_messages where ticket_id = %L', v_ticket)) = 0,
+    'nor read its messages');
+
+  perform set_config('app.current_user_id', i.customer::text, true);
+  set local role authenticated;
+  v_status := follow_up_support_ticket(v_ticket, 'Thanks, but it has not arrived yet.');
+  reset role;
+  perform assert(v_status = 'open' and (select status from support_tickets where id = v_ticket) = 'open',
+                 'the customer answers back and the request opens again');
+
+  perform set_config('app.current_user_id', i.admin::text, true);
+  set local role authenticated;
+  v_status := reply_support_ticket(v_ticket, '', true);
+  reset role;
+  perform assert(v_status = 'closed' and (select count(*) from support_messages where ticket_id = v_ticket) = 4,
+                 'an admin can close a request without writing a reply');
+  perform assert(
+    visible_count('authenticated', i.admin, format('select 1 from support_queue(''closed'') where id = %L', v_ticket)) = 1,
+    'and still find it under Closed');
 end $$;
 
 -- Account deletion, on a throwaway account so the demo ones survive.
@@ -780,6 +812,140 @@ begin
     refused('authenticated', i.customer,
             format('update profiles set avatar_path = ''https://example.com/x.jpg'' where id = %L', i.customer)),
     'nor an outside web address');
+end $$;
+
+-- Taste reads the caller's own history only, and needs a caller.
+do $$
+declare i record;
+begin
+  select * into i from ids;
+  perform assert(refused('anon', null, 'select * from my_taste()'), 'anon cannot read a taste');
+  perform assert(refused('anon', null, 'select * from feed_for_you(12.93, 77.62, 5000, 5)'),
+                 'anon cannot ask for a For-you rail');
+  perform assert(not refused('authenticated', i.customer, 'select * from my_taste()'),
+                 'a customer can read their own taste');
+end $$;
+
+-- Deal photos: only members of a business may write into its folder.
+do $$
+declare
+  i record;
+  v_other uuid;
+  v_ok boolean;
+begin
+  select * into i from ids;
+  select id into v_other from businesses where id <> i.merchant_business limit 1;
+
+  perform set_config('app.current_user_id', i.merchant::text, true);
+  set local role authenticated;
+  v_ok := is_member_of_folder(i.merchant_business::text || '/deal-1.jpg');
+  reset role;
+  perform assert(v_ok, 'a merchant may upload photos into their business''s folder');
+
+  set local role authenticated;
+  v_ok := is_member_of_folder(v_other::text || '/deal-1.jpg');
+  reset role;
+  perform assert(not v_ok, 'but not into another business''s folder');
+
+  set local role authenticated;
+  v_ok := is_member_of_folder('../etc/passwd');
+  reset role;
+  perform assert(not v_ok, 'and a path that is not a business folder is refused, not an error');
+
+  perform set_config('app.current_user_id', i.customer::text, true);
+  set local role authenticated;
+  v_ok := is_member_of_folder(i.merchant_business::text || '/deal-1.jpg');
+  reset role;
+  perform assert(not v_ok, 'a customer cannot upload deal photos');
+  perform assert(refused('anon', null, 'select is_member_of_folder(''x/y.jpg'')'), 'anon cannot even ask');
+end $$;
+
+-- Reports: customers file them; only admins see and settle them.
+do $$
+declare
+  i record;
+  v_deal uuid;
+  v_n int;
+  v_status text;
+begin
+  select * into i from ids;
+  select id into v_deal from deals
+   where business_id = i.merchant_business and status = 'ACTIVE' order by id limit 1;
+
+  perform set_config('app.current_user_id', i.customer::text, true);
+  set local role authenticated;
+  perform report_target('deal', v_deal, 'Misleading', 'Price at the counter was higher');
+  perform report_target('deal', v_deal, 'Not honoured', null);
+  reset role;
+
+  perform assert(refused('authenticated', i.customer, 'select * from reports_queue()'),
+                 'a customer cannot read the reports queue');
+  perform assert(refused('authenticated', i.merchant, 'select * from reports_queue()'),
+                 'nor can a merchant');
+  perform assert(refused('anon', null, 'select * from reports_queue()'), 'nor anyone signed out');
+
+  perform set_config('app.current_user_id', i.admin::text, true);
+  set local role authenticated;
+  select open_count into v_n from reports_queue() where target_id = v_deal;
+  reset role;
+  perform assert(v_n = 2, 'an admin sees both reports grouped on the deal');
+
+  perform assert(
+    refused('authenticated', i.admin, format('select resolve_reports(%L, %L, %L, null)', 'deal', v_deal, 'pause')),
+    'pausing a deal needs a note for the merchant');
+  perform assert(
+    refused('authenticated', i.customer, format('select resolve_reports(%L, %L, %L, %L)', 'deal', v_deal, 'dismiss', 'x')),
+    'a customer cannot settle reports');
+
+  perform set_config('app.current_user_id', i.admin::text, true);
+  set local role authenticated;
+  v_n := resolve_reports('deal', v_deal, 'pause', 'The price shown does not match the menu');
+  reset role;
+  perform assert(v_n = 2, 'pausing settles both open reports');
+  select status::text into v_status from deals where id = v_deal;
+  perform assert(v_status = 'PAUSED', 'and pauses the live deal');
+  perform assert(
+    exists (select 1 from notifications
+            where profile_id = i.merchant and kind = 'deal_paused' and data->>'deal_id' = v_deal::text),
+    'the owner is told why');
+  perform assert(not exists (select 1 from reports where target_id = v_deal and status = 'open'),
+                 'nothing is left open on it');
+end $$;
+
+-- Business details: only the business's team edits them; moving area moves the deals.
+do $$
+declare
+  i record;
+  v_hsr uuid := (select id from localities where name = 'HSR Layout');
+  v_deal uuid;
+  v_km double precision;
+begin
+  select * into i from ids;
+  select id into v_deal from deals where business_id = i.merchant_business and status = 'ACTIVE' order by id limit 1;
+
+  perform assert(
+    refused('authenticated', i.customer,
+      format('select update_business(%L, %L::jsonb)', i.merchant_business,
+        jsonb_build_object('name', 'Hijacked', 'locality_id', v_hsr, 'address_line', 'Somewhere 123'))),
+    'a customer cannot edit someone''s business');
+  perform assert(
+    refused('authenticated', i.merchant,
+      format('select update_business(%L, %L::jsonb)', i.merchant_business,
+        jsonb_build_object('name', 'Rangoli Kitchen', 'locality_id', v_hsr, 'address_line', 'Sector 2, 27th Main', 'phone', 'call me'))),
+    'a bad phone number is refused');
+
+  perform set_config('app.current_user_id', i.merchant::text, true);
+  set local role authenticated;
+  perform update_business(i.merchant_business,
+    jsonb_build_object('name', 'Rangoli Kitchen HSR', 'locality_id', v_hsr,
+                       'address_line', 'Sector 2, 27th Main', 'phone', '+91 98450 00000'));
+  reset role;
+
+  perform assert((select name from businesses where id = i.merchant_business) = 'Rangoli Kitchen HSR',
+                 'the owner can rename the business');
+  select st_distance(d.location, l.centroid) / 1000 into v_km
+    from deals d, localities l where d.id = v_deal and l.id = v_hsr;
+  perform assert(v_km < 0.01, 'moving to HSR Layout moves the live deals with it');
 end $$;
 
 select '--- RLS assertions passed ---' as result;
