@@ -9,7 +9,8 @@ import { Image } from 'expo-image';
 import { font, theme } from '../theme/tokens';
 
 export function Avatar({ uri, name, size = 40 }: { uri?: string | null; name: string; size?: number }) {
-  const initial = name.trim().charAt(0).toUpperCase() || '·';
+  // No name (signed out, or never set): a question mark, not a stray letter.
+  const initial = name.trim().charAt(0).toUpperCase() || '?';
   return (
     <View style={[styles.circle, { width: size, height: size, borderRadius: size / 2 }]}>
       {uri ? (

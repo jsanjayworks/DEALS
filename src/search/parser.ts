@@ -18,6 +18,7 @@
  *   "royal enfield service"        ->  every deal for a Royal Enfield
  */
 
+import { amenityLabel } from '../data/amenities';
 import { CATEGORIES, LOCALITIES } from '../data/seed-reference';
 import type { DealTypeCode, SearchFilters, SortKey, Vertical } from '../data/types';
 import { partyFilterLabel } from '../data/party';
@@ -38,6 +39,8 @@ export const EMPTY_FILTERS: SearchFilters = {
   party_min: null,
   party_max: null,
   vehicle_tags: [],
+  amenities: [],
+  max_cost_for_two: null,
   verified_only: false,
   min_rating: null,
   ending_soon: false,
@@ -53,8 +56,23 @@ export function emptyFilters(): SearchFilters {
     deal_types: [],
     attributes: {},
     vehicle_tags: [],
+    amenities: [],
   };
 }
+
+/** Words for what a place offers, to amenity keys (data/amenities.ts). */
+const AMENITY_WORDS: [RegExp, string][] = [
+  [/\b(rooftop|roof top|terrace)\b/, 'rooftop'],
+  [/\b(pure veg|pure vegetarian|veg only|only veg|vegetarian restaurant)\b/, 'pure_veg'],
+  [/\b(live music|live band|live gig)\b/, 'live_music'],
+  [/\b(with parking|parking)\b/, 'parking'],
+  [/\b(outdoor seating|outdoor|open air|al fresco)\b/, 'outdoor_seating'],
+  [/\b(wi ?fi|wifi)\b/, 'wifi'],
+  [/\b(pet friendly|dog friendly|pets allowed)\b/, 'pet_friendly'],
+  [/\b(serves alcohol|with alcohol|cocktails?)\b/, 'serves_alcohol'],
+  [/\b(wheelchair|accessible)\b/, 'wheelchair'],
+  [/\b(kid friendly|kids friendly|family friendly)\b/, 'family_friendly'],
+];
 
 /** Words that carry no filtering signal and should not become keywords. */
 const STOP_WORDS = new Set([
@@ -248,6 +266,26 @@ export function parseQuery(input: string): ParseResult {
       return ' ';
     });
   };
+
+  // ---- cost for two (before price: "for two under 800" is not a price cap) --
+  const costMatch = text.match(
+    /\b(?:cost (?:for|of) two|for two(?: people)?|meal for two)\s*(?:under|below|upto|up to|within|less than)\s*₹?\s*([\d.,]+\s*k?)/,
+  );
+  if (costMatch) {
+    const amt = parseAmount(costMatch[1]);
+    if (amt !== null) {
+      filters.max_cost_for_two = amt;
+      eat(new RegExp(costMatch[0].replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+    }
+  }
+
+  // ---- amenities ----------------------------------------------------------
+  for (const [re, key] of AMENITY_WORDS) {
+    if (re.test(text)) {
+      filters.amenities.push(key);
+      eat(re);
+    }
+  }
 
   // ---- price ------------------------------------------------------------
   // "under 500", "below ₹300", "upto 1k", "less than 2000"
@@ -517,6 +555,10 @@ export function describeFilters(f: SearchFilters): ParseResult['chips'] {
   if (party) chips.push({ key: 'party_min', label: party });
   const vehicle = vehicleFilterLabel(f.vehicle_tags);
   if (vehicle) chips.push({ key: 'vehicle_tags', label: vehicle });
+  if (f.amenities.length) chips.push({ key: 'amenities', label: f.amenities.map(amenityLabel).join(', ') });
+  if (f.max_cost_for_two != null) {
+    chips.push({ key: 'max_cost_for_two', label: 'Up to ₹' + f.max_cost_for_two.toLocaleString('en-IN') + ' for two' });
+  }
   for (const t of f.deal_types) {
     const labels: Partial<Record<DealTypeCode, string>> = {
       free: 'Free',
@@ -574,6 +616,9 @@ export function removeFilter(f: SearchFilters, key: keyof SearchFilters): Search
     case 'party_max':
       next.party_min = null;
       next.party_max = null;
+      break;
+    case 'amenities':
+      next.amenities = [];
       break;
     case 'vehicle_tags':
       next.vehicle_tags = [];

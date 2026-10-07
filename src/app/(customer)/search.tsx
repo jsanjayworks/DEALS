@@ -35,6 +35,7 @@ import { useHideOnScroll } from '../../ui/chrome';
 import { useTabBarSpace } from '../../ui/FloatingTabBar';
 import { MAX_CONTENT_WIDTH } from '../../ui/layout';
 import { reach } from '../../lib/a11y';
+import { openVoice } from '../../voice/VoiceHost';
 
 export default function SearchScreen() {
   const insets = useSafeAreaInsets();
@@ -139,6 +140,15 @@ export default function SearchScreen() {
               <Icon name="x" size={18} color={color.textSecondary} />
             </Pressable>
           ) : null}
+          <Pressable
+            onPress={openVoice}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel="Search by voice"
+            style={reach(10)}
+          >
+            <Icon name="mic" size={20} color={color.brand} />
+          </Pressable>
         </View>
       </View>
 

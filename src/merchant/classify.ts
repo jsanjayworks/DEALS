@@ -71,7 +71,7 @@ const DEAL_TYPE_WORDS: [RegExp, DealTypeCode][] = [
 ];
 
 const STOP = new Set(
-  'a an and the for with of in on at to from by our your my per off get buy any all only just new now best deal deals offer offers special price prices rs inr flat upto up save just'.split(
+  'a an and the for with of in on at to from by our your my per off get buy any all only just new now best deal deals offer offers special price prices rs inr flat upto up save instead every needs need also very each usually normally was were are is it its this that these those have has had will would can could should rupees rupee bucks'.split(
     ' ',
   ),
 );

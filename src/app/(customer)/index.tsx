@@ -65,8 +65,12 @@ import { Container, useLayout } from '../../ui/layout';
 import { setLaunchRect, type LaunchRect } from '../../ui/launch';
 import { VehicleCard } from '../../home/VehicleCard';
 import { LocationAsk } from '../../home/LocationAsk';
+import { Collections } from '../../home/Collections';
+import { AskChips } from '../../home/AskChips';
+import { OrderAgain } from '../../home/OrderAgain';
 import { useLaunchDone } from '../../ui/LaunchSplash';
 import { locateMe } from '../../lib/location';
+import { openVoice } from '../../voice/VoiceHost';
 import { choiceLabel, choiceTags } from '../../data/vehicles';
 import type { TasteItem } from '../../data/api';
 import { reach } from '../../lib/a11y';
@@ -304,6 +308,7 @@ export default function HomeScreen() {
             />
 
             <SearchPill onPress={() => router.push('/search')} />
+            <AskChips signedIn={viewer !== null} />
 
             <View style={styles.bento}>
               {data ? (
@@ -352,6 +357,8 @@ export default function HomeScreen() {
               onOpen={openDeal}
               onSeeAll={seeAllNear}
             />
+            <OrderAgain />
+            <Collections origin={origin} />
             <Rail
               title="Picked for you"
               note={data?.because}
@@ -376,7 +383,7 @@ export default function HomeScreen() {
         locality={place.name}
         city={place.detail}
         unread={data?.unread ?? 0}
-        name={displayName}
+        name={viewer?.full_name?.trim() ?? ''}
         avatarUrl={viewer?.avatar_url ?? null}
         gutter={layout.gutter}
         onLocality={() => setPickerOpen(true)}
@@ -462,8 +469,9 @@ function SearchPill({ onPress }: { onPress: () => void }) {
   }, []);
 
   return (
+    <View>
     <Pressable onPress={onPress} {...handlers} accessibilityRole="search" accessibilityLabel="Search deals">
-      <Animated.View style={[styles.search, liftStyle]}>
+      <Animated.View style={[styles.search, styles.searchWithMic, liftStyle]}>
         <Icon name="search" size={20} color={theme.heroSearch.icon} strokeWidth={2} />
         <View style={styles.searchText}>
           <Text style={styles.searchLabel}>Search deals, dishes, places</Text>
@@ -481,6 +489,15 @@ function SearchPill({ onPress }: { onPress: () => void }) {
         </View>
       </Animated.View>
     </Pressable>
+    <Pressable
+      onPress={openVoice}
+      accessibilityRole="button"
+      accessibilityLabel="Search by voice"
+      style={({ pressed }) => [styles.searchMic, pressed && { opacity: 0.8 }]}
+    >
+      <Icon name="mic" size={20} color={color.onCta} strokeWidth={2} />
+    </Pressable>
+    </View>
   );
 }
 
@@ -642,6 +659,21 @@ const styles = StyleSheet.create({
     color: color.textSecondary,
     marginTop: 2,
     marginBottom: space.lg,
+  },
+  // Room at the end for the mic, which sits over the pill as its own button.
+  searchWithMic: {
+    paddingRight: 56,
+  },
+  searchMic: {
+    position: 'absolute',
+    right: 8,
+    top: space.md + 8,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: color.cta,
   },
   search: {
     marginTop: space.md,

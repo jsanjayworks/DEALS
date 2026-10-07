@@ -51,6 +51,9 @@ import {
 } from '../../merchant/wizard';
 import { AutoCategory } from '../../merchant/AutoCategory';
 import { classifyOffering } from '../../merchant/classify';
+import { VoiceSheet } from '../../voice/VoiceSheet';
+import { understand } from '../../voice/assist';
+import type { DealVoiceDraft, VoiceLang } from '../../voice/types';
 import { color, discountPct, font, inr, radius, space, status as statusColor, type } from '../../theme/tokens';
 import {
   Button,
@@ -59,6 +62,7 @@ import {
   EmptyState,
   Field,
   Header,
+  Icon,
   Label,
   Sheet,
 } from '../../components';
@@ -478,6 +482,52 @@ function CategoryStep({ form, patch, errors }: StepProps) {
   const typePatch = (t: DealTypeCode): Partial<WizardForm> =>
     t === 'free' ? { deal_type_code: t, deal_price: '0' } : { deal_type_code: t };
 
+  // By voice: one description fills the whole form, step by step.
+  const [voiceOpen, setVoiceOpen] = useState(false);
+  const [voiceBusy, setVoiceBusy] = useState(false);
+  const [fromVoice, setFromVoice] = useState(false);
+  const TIME = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+  const applyVoice = (v: DealVoiceDraft) => {
+    const offering = (v.offering ?? v.title ?? '').trim();
+    const found = classifyOffering(offering + ' ' + (v.description ?? ''));
+    const next: Partial<WizardForm> = {
+      ...(offering ? { offering } : {}),
+      title: v.title ? v.title.slice(0, 90) : offering ? titleFromOffering(offering) : form.title,
+      ...(v.short_description ? { short_description: v.short_description.slice(0, 120) } : {}),
+      ...(v.description ? { description: v.description } : {}),
+      ...(v.price != null ? { deal_price: String(v.price) } : {}),
+      ...(v.original_price != null ? { original_price: String(v.original_price) } : {}),
+      ...(v.start_time && TIME.test(v.start_time) ? { start_time: v.start_time } : {}),
+      ...(v.end_time && TIME.test(v.end_time) ? { end_time: v.end_time } : {}),
+      ...(v.days && v.days.length ? { days: v.days.filter((d) => d >= 0 && d <= 6) } : {}),
+      ...(v.party_min != null ? { party: [v.party_min, v.party_max ?? v.party_min] as [number, number] } : {}),
+      ...(v.keywords.length ? { keywords: v.keywords.join(', ') } : {}),
+      ...(found ? { ...categoryPatch(found.category_slug), ...typePatch(found.deal_type_code) } : {}),
+    };
+    if (v.needs_booking) {
+      const vertical = next.vertical ?? form.vertical;
+      Object.assign(next, {
+        booking_required: true,
+        primary_cta: vertical === 'food' ? 'reserve' : 'book',
+        ...(v.slot_capacity ? { slot_capacity: String(v.slot_capacity) } : {}),
+      });
+    }
+    patch(next);
+  };
+
+  const describe = async (text: string, lang: VoiceLang) => {
+    setVoiceBusy(true);
+    try {
+      const { result } = await understand('deal', text, lang);
+      applyVoice(result);
+      setFromVoice(true);
+      setVoiceOpen(false);
+    } finally {
+      setVoiceBusy(false);
+    }
+  };
+
   const onOffering = (text: string) => {
     const found = classifyOffering(text);
     // The title follows what is typed here until the merchant writes their own.
@@ -493,6 +543,26 @@ function CategoryStep({ form, patch, errors }: StepProps) {
 
   return (
     <>
+      <Pressable
+        onPress={() => setVoiceOpen(true)}
+        accessibilityRole="button"
+        accessibilityLabel="Describe the deal by voice"
+        style={({ pressed }) => [styles.voiceCard, pressed && { opacity: 0.85 }]}
+      >
+        <View style={styles.voiceMic}>
+          <Icon name="mic" size={22} color={color.onCta} strokeWidth={2} />
+        </View>
+        <View style={styles.flex}>
+          <Text style={styles.voiceTitle}>{fromVoice ? 'Describe it again' : 'Describe the deal by voice'}</Text>
+          <Text style={styles.voiceBody}>
+            What it is, the price, the usual price, when it runs. We fill in every step.
+          </Text>
+        </View>
+      </Pressable>
+      {fromVoice ? (
+        <Text style={styles.voiceDone}>Filled in from what you said. Check each step before you publish.</Text>
+      ) : null}
+
       <Field
         label="What are you offering?"
         value={form.offering}
@@ -525,6 +595,22 @@ function CategoryStep({ form, patch, errors }: StepProps) {
         autoCapitalize="none"
       />
       <Text style={styles.hint}>Words customers might search for. Separate them with commas.</Text>
+
+      <VoiceSheet
+        visible={voiceOpen}
+        onClose={() => setVoiceOpen(false)}
+        title="Describe the deal"
+        continuous
+        submitLabel="Fill in the deal"
+        busy={voiceBusy}
+        busyText="Filling it in…"
+        examples={[
+          'Chicken biryani family pack for 4 at 499 instead of 799, every evening 6 pm to 10 pm',
+          'Weekend brunch buffet for 699 instead of 999, Saturday and Sunday 9 am to 1 pm, table booking, 8 tables a slot',
+          'Haircut and beard trim for 299 instead of 450, weekdays 10 am to 8 pm, book a slot',
+        ]}
+        onSubmit={(t, l) => void describe(t, l)}
+      />
     </>
   );
 }
@@ -1139,6 +1225,37 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: space.sm,
+  },
+  voiceCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.md,
+    padding: space.lg,
+    borderRadius: radius.xl,
+    backgroundColor: color.brand,
+    marginBottom: space.md,
+  },
+  voiceMic: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: color.cta,
+  },
+  voiceTitle: {
+    ...type.bodySemibold,
+    color: color.white,
+  },
+  voiceBody: {
+    ...type.caption,
+    color: 'rgba(255,255,255,0.8)',
+    marginTop: 2,
+  },
+  voiceDone: {
+    ...type.captionMedium,
+    color: color.brand,
+    marginBottom: space.md,
   },
   hint: {
     ...type.caption,

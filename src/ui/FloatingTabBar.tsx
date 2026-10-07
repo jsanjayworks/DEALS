@@ -20,6 +20,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Glass, Icon, type IconName, useHoverPress } from '../components';
 import { color, font, rgbOf, shadow } from '../theme/tokens';
 import { useChromeHidden } from './chrome';
+import { openVoice } from '../voice/VoiceHost';
 
 export const TAB_ICONS: Record<string, { icon: IconName; label: string }> = {
   index: { icon: 'home', label: 'Home' },
@@ -53,6 +54,7 @@ export function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
 
   return (
     <Animated.View pointerEvents="box-none" style={[styles.wrap, { bottom }, slide]}>
+      <View style={styles.row}>
       <View style={styles.shadow}>
         <Glass tone="light" style={styles.pill} intensity={60}>
           {routes.map((route) => {
@@ -79,6 +81,15 @@ export function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
             );
           })}
         </Glass>
+      </View>
+      <Pressable
+        onPress={openVoice}
+        accessibilityRole="button"
+        accessibilityLabel="Ask by voice"
+        style={({ pressed }) => [styles.mic, pressed && { opacity: 0.85 }]}
+      >
+        <Icon name="mic" size={24} color={color.onCta} strokeWidth={2.1} />
+      </Pressable>
       </View>
     </Animated.View>
   );
@@ -127,6 +138,20 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     alignItems: 'center',
+  },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  mic: {
+    width: BAR_HEIGHT,
+    height: BAR_HEIGHT,
+    borderRadius: BAR_HEIGHT / 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: color.cta,
+    ...shadow.raised,
   },
   shadow: {
     borderRadius: 999,

@@ -17,6 +17,8 @@ import { useBusiness } from '../../merchant/useBusiness';
 import { color, radius, space, status, type } from '../../theme/tokens';
 import { Button, Chip, EmptyState, Field, Header, Label, VerifiedBadge } from '../../components';
 import { PinLocation } from '../../merchant/PinLocation';
+import { ShopEditor, type ShopDraft } from '../../merchant/ShopEditor';
+import { CATEGORIES } from '../../data/seed-reference';
 
 export default function BusinessDetailsScreen() {
   const { business, loading, reload } = useBusiness();
@@ -53,6 +55,17 @@ function DetailsForm({
   const [localityId, setLocalityId] = useState<string | null>(business.locality_id || null);
   /** The shop's exact position, when pinned with the device; with its area's name. */
   const [pin, setPin] = useState<{ point: { lat: number; lng: number }; area: string } | null>(null);
+  // The shop page: about, hours, cost for two, amenities, menu and photos.
+  const [shop, setShop] = useState<ShopDraft>({
+    description: business.description ?? '',
+    open_time: business.open_time ?? '',
+    close_time: business.close_time ?? '',
+    cost_for_two: business.cost_for_two != null ? String(business.cost_for_two) : '',
+    amenities: business.amenities ?? [],
+    menu: business.menu ?? [],
+    photos: business.photos ?? [],
+  });
+  const category = CATEGORIES.find((c) => c.id === business.primary_category_id) ?? null;
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
@@ -77,6 +90,13 @@ function DetailsForm({
         phone: phone.trim() || undefined,
         email: email.trim() || undefined,
         location: pin?.point,
+        description: shop.description.trim(),
+        open_time: /^([01]\d|2[0-3]):[0-5]\d$/.test(shop.open_time) ? shop.open_time : null,
+        close_time: /^([01]\d|2[0-3]):[0-5]\d$/.test(shop.close_time) ? shop.close_time : null,
+        cost_for_two: shop.cost_for_two ? Number(shop.cost_for_two) : null,
+        amenities: shop.amenities,
+        menu: shop.menu.filter((m) => m.name.trim()),
+        photos: shop.photos,
       });
       hapticSuccess();
       setSaved(true);
@@ -156,6 +176,18 @@ function DetailsForm({
           <Text style={styles.note}>Your live deals move to the new area too, so distances stay right.</Text>
         ) : null}
 
+        <ShopEditor
+          draft={shop}
+          onChange={(next) => {
+            setShop(next);
+            setSaved(false);
+          }}
+          businessId={business.id}
+          businessName={name}
+          vertical={category?.vertical ?? null}
+          categorySlug={category?.slug ?? null}
+        />
+
         {error ? (
           <Text style={styles.error} accessibilityLiveRegion="polite">
             {error}
@@ -168,6 +200,13 @@ function DetailsForm({
         ) : null}
         <Button variant="cta" full loading={busy} onPress={() => void save()}>
           Save changes
+        </Button>
+        <Button
+          variant="text"
+          full
+          onPress={() => router.push({ pathname: '/shop/[id]', params: { id: business.id } })}
+        >
+          See your shop page
         </Button>
       </ScrollView>
     </KeyboardAvoidingView>

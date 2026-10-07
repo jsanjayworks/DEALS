@@ -13,10 +13,20 @@ import { TOP_CATEGORIES } from '../data/seed-reference';
 import type { DealTypeCode, SearchFilters, SortKey } from '../data/types';
 import { color, space, type } from '../theme/tokens';
 import { Button, Chip, Label, Sheet } from '../components';
+import { AMENITIES } from '../data/amenities';
+
 import { EMPTY_FILTERS } from './parser';
 import { PARTY_OPTIONS, partyFilterLabel } from '../data/party';
 import { choiceLabel, choiceTags } from '../data/vehicles';
 import { useSession } from '../state/session';
+
+const COST_OPTIONS: { label: string; max: number | null }[] = [
+  { label: 'Any', max: null },
+  { label: 'Up to ₹500', max: 500 },
+  { label: 'Up to ₹1,000', max: 1000 },
+  { label: 'Up to ₹1,500', max: 1500 },
+  { label: 'Up to ₹2,500', max: 2500 },
+];
 
 export const SORT_OPTIONS: { key: SortKey; label: string }[] = [
   { key: 'relevance', label: 'Relevance' },
@@ -235,6 +245,35 @@ function FilterSheetOpen({ visible, filters, onApply, onClose, hideCategory }: F
             {o.label}
           </Chip>
         ))}
+      </Group>
+
+      <Group label="Cost for two">
+        {COST_OPTIONS.map((o) => (
+          <Chip
+            key={o.label}
+            selected={draft.max_cost_for_two === o.max}
+            onPress={() => patch({ max_cost_for_two: o.max })}
+          >
+            {o.label}
+          </Chip>
+        ))}
+      </Group>
+
+      <Group label="Amenities">
+        {AMENITIES.map((a) => {
+          const on = draft.amenities.includes(a.key);
+          return (
+            <Chip
+              key={a.key}
+              selected={on}
+              onPress={() =>
+                patch({ amenities: on ? draft.amenities.filter((x) => x !== a.key) : [...draft.amenities, a.key] })
+              }
+            >
+              {a.label}
+            </Chip>
+          );
+        })}
       </Group>
 
       <Group label="Rating">

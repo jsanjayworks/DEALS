@@ -16,6 +16,7 @@ import type { DealCardModel } from '../../../data/types';
 import { ACTION_STATUS_LABEL, quantityLabel, shortAgo, slotLabel } from '../../../lib/format';
 import { slotKey } from '../../../data/booking';
 import { BookingRow } from '../../../merchant/BookingRow';
+import { openVoice } from '../../../voice/VoiceHost';
 import { PAY_METHOD_LABEL, paymentOf } from '../../../lib/payment';
 import { useQuery } from '../../../lib/useQuery';
 import { MerchantDealRow } from '../../../merchant/DealRow';
@@ -91,17 +92,7 @@ export default function MerchantDashboard() {
     <ScrollView style={styles.screen} contentContainerStyle={{ paddingBottom: space.xxxl }}>
       <View style={[styles.head, { paddingTop: insets.top + space.lg }]}>
         <View style={styles.headRow}>
-          <View style={styles.headText}>
-            <Text style={styles.overline}>Merchant</Text>
-            <Text style={styles.bizName} numberOfLines={2}>
-              {business?.name ?? ' '}
-            </Text>
-            {business?.verification_status === 'verified' ? (
-              <View style={styles.verified}>
-                <VerifiedBadge />
-              </View>
-            ) : null}
-          </View>
+          <View style={styles.headText} />
           <Pressable
             onPress={() => router.push('/merchant/business')}
             accessibilityRole="button"
@@ -109,6 +100,14 @@ export default function MerchantDashboard() {
             style={styles.headButton}
           >
             <Icon name="gear" size={20} color={color.white} />
+          </Pressable>
+          <Pressable
+            onPress={openVoice}
+            accessibilityRole="button"
+            accessibilityLabel="Ask by voice"
+            style={styles.headButton}
+          >
+            <Icon name="mic" size={20} color={color.white} />
           </Pressable>
           <Pressable
             onPress={() => router.push('/notifications')}
@@ -133,6 +132,16 @@ export default function MerchantDashboard() {
             <Text style={styles.modePillText}>Customer view</Text>
           </Pressable>
         </View>
+        {/* The name gets the full width under the buttons, so long names read whole. */}
+        <Text style={styles.overline}>Merchant</Text>
+        <Text style={styles.bizName} numberOfLines={2}>
+          {business?.name ?? ' '}
+        </Text>
+        {business?.verification_status === 'verified' ? (
+          <View style={styles.verified}>
+            <VerifiedBadge />
+          </View>
+        ) : null}
 
         <View style={styles.periods}>
           {PERIODS.map((p) => (
@@ -411,8 +420,9 @@ const styles = StyleSheet.create({
   },
   headRow: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     gap: space.sm,
+    marginBottom: space.sm,
   },
   headText: {
     flex: 1,

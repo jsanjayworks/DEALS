@@ -26,6 +26,8 @@ import type {
   Locality,
   Notification,
   SearchFilters,
+  MenuItem,
+  Review,
 } from './types';
 import type { Viewer } from '../domain/rules';
 
@@ -259,6 +261,20 @@ export interface NewBusinessInput {
   owner_role?: string;
   /** The shop's exact position, when pinned with the device; else the area's centre. */
   location?: { lat: number; lng: number };
+  cost_for_two?: number | null;
+  amenities?: string[];
+  cuisines?: string[];
+  open_time?: string | null;
+  close_time?: string | null;
+  photos?: string[];
+  menu?: MenuItem[];
+}
+
+/** Stars and words about a redeemed visit. */
+export interface NewReview {
+  action_id: string;
+  rating: number;
+  body?: string;
 }
 
 /** How many bookings one time slot of a deal already holds. */
@@ -406,6 +422,16 @@ export interface DataSource {
   listBusinessOrders(businessId: string): Promise<BusinessOrder[]>;
   /** Bookings held per upcoming time slot of a deal, for marking full slots. Anyone may ask. */
   listSlotLoad(dealId: string): Promise<SlotLoad[]>;
+
+  /** A business's live deals, for its public shop page. */
+  listShopDeals(businessId: string, origin: LatLng): Promise<DealCardModel[]>;
+
+  // ---- reviews ----
+  /** Visible reviews of a business or one deal, newest first. */
+  listReviews(target: { businessId?: string; dealId?: string }, limit?: number): Promise<Review[]>;
+  listMyReviews(): Promise<Review[]>;
+  /** Rates a redeemed visit; one review per deal per customer. */
+  createReview(input: NewReview): Promise<Review>;
 
   // ---- admin ----
   listReviewQueue(): Promise<DealCardModel[]>;

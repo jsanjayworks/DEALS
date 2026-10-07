@@ -38,6 +38,7 @@ import type {
   DealStatusHistoryEntry,
   Locality,
   Notification,
+  Review,
 } from './types';
 
 /**
@@ -86,6 +87,35 @@ function fail(error: PostgrestError): never {
 
 /** A uuid-typed parameter given something else, e.g. an old demo link to /deal/d-010. */
 const isBadUuid = (e: PostgrestError | null) => e?.code === '22P02';
+
+interface ReviewRow {
+  id: string;
+  deal_id: string;
+  customer_id: string;
+  customer_action_id: string | null;
+  rating: number;
+  body: string | null;
+  created_at: string;
+  deals: { title: string; business_id: string } | { title: string; business_id: string }[] | null;
+}
+
+function rowToReview(row: unknown): Review {
+  const r = row as ReviewRow;
+  const deal = Array.isArray(r.deals) ? r.deals[0] : r.deals;
+  return {
+    id: r.id,
+    deal_id: r.deal_id,
+    deal_title: deal?.title,
+    business_id: deal?.business_id ?? '',
+    customer_id: r.customer_id,
+    // Names stay private to each customer on the live backend.
+    customer_name: null,
+    rating: r.rating,
+    body: r.body,
+    created_at: r.created_at,
+    action_id: r.customer_action_id,
+  };
+}
 
 function cards(rows: unknown): DealCardModel[] {
   return ((rows as DealCardRow[] | null) ?? []).map(rowToDealCard);
@@ -440,6 +470,63 @@ export function createSupabaseDataSource(client: SupabaseClient): DataSource {
         .order('created_at', { ascending: false });
       if (error) fail(error);
       return (data ?? []).map(rowToAction);
+    },
+
+    async listShopDeals(businessId) {
+      return cards(await rpc('shop_deals', { p_business_id: businessId }));
+    },
+
+    async listReviews(target, limit = 50) {
+      let q = client
+        .from('reviews')
+        .select('id, deal_id, customer_id, customer_action_id, rating, body, created_at, deals!inner(title, business_id)')
+        .eq('status', 'visible')
+        .order('created_at', { ascending: false })
+        .limit(limit);
+      if (target.dealId) q = q.eq('deal_id', target.dealId);
+      if (target.businessId) q = q.eq('deals.business_id', target.businessId);
+      const { data, error } = await q;
+      if (error) fail(error);
+      return (data ?? []).map(rowToReview);
+    },
+
+    async listMyReviews() {
+      const { data: auth } = await client.auth.getUser();
+      if (!auth.user) return [];
+      const { data, error } = await client
+        .from('reviews')
+        .select('id, deal_id, customer_id, customer_action_id, rating, body, created_at, deals!inner(title, business_id)')
+        .eq('customer_id', auth.user.id);
+      if (error) fail(error);
+      return (data ?? []).map(rowToReview);
+    },
+
+    async createReview(input) {
+      const { data: auth } = await client.auth.getUser();
+      if (!auth.user) throw new RuleViolation('Sign in to rate a visit');
+      const { data: action, error: aErr } = await client
+        .from('customer_actions')
+        .select('id, deal_id, status')
+        .eq('id', input.action_id)
+        .single();
+      if (aErr) fail(aErr);
+      if (action.status !== 'redeemed') throw new RuleViolation('You can rate a visit once your code has been used');
+      const { data, error } = await client
+        .from('reviews')
+        .insert({
+          deal_id: action.deal_id,
+          customer_id: auth.user.id,
+          customer_action_id: action.id,
+          rating: Math.round(input.rating),
+          body: (input.body ?? '').trim().slice(0, 600) || null,
+        })
+        .select('id, deal_id, customer_id, customer_action_id, rating, body, created_at, deals!inner(title, business_id)')
+        .single();
+      if (error) {
+        if (error.code === '23505') throw new RuleViolation('You have already rated this deal');
+        fail(error);
+      }
+      return rowToReview(data);
     },
 
     async listSlotLoad(dealId) {

@@ -53,7 +53,8 @@ export function isVisibleTo(deal: DealCardModel, viewer: Viewer | null): boolean
   return age !== null && age >= minAge;
 }
 
-function withinWindow(deal: DealCardModel, at: Date): boolean {
+/** Inside the deal's days and hours right now, in IST: what a claim without a slot needs. */
+export function withinWindow(deal: DealCardModel, at: Date): boolean {
   const { dow, minutes } = istNow(at);
   const days = deal.availability.days;
   if (days.length > 0 && !days.includes(dow)) return false;

@@ -150,6 +150,43 @@ export interface Business {
   keywords?: string[];
   /** The person who set it up: owner, manager… */
   owner_role?: string | null;
+  /** What a meal for two usually costs, in rupees: restaurants show it like District does. */
+  cost_for_two?: number | null;
+  /** Keys from data/amenities.ts: parking, rooftop, pure veg… */
+  amenities?: string[];
+  cuisines?: string[];
+  /** Usual opening hours, HH:MM. */
+  open_time?: string | null;
+  close_time?: string | null;
+  /** Photos of the place and its food or work, first one the cover. */
+  photos?: string[];
+  /** What it sells, with prices: the menu or rate card on the shop page. */
+  menu?: MenuItem[];
+}
+
+/** A customer's stars and words about a visit, shown on deal and shop pages. */
+export interface Review {
+  id: string;
+  deal_id: string;
+  deal_title?: string;
+  business_id: string;
+  customer_id: string;
+  /** First name and initial, or null where the backend keeps names private. */
+  customer_name: string | null;
+  rating: number;
+  body: string | null;
+  created_at: string;
+  /** The redeemed order it is about: a verified visit. */
+  action_id: string | null;
+}
+
+export interface MenuItem {
+  name: string;
+  price: number | null;
+  description?: string | null;
+  /** Food only: vegetarian or not; null for everything else. */
+  veg?: boolean | null;
+  photo?: string | null;
 }
 
 export interface DealAvailability {
@@ -247,7 +284,9 @@ export interface Notification {
     | 'business_verified'
     | 'business_rejected'
     | 'support_reply'
-    | 'deal_paused';
+    | 'deal_paused'
+    | 'rate_visit'
+    | 'new_review';
   title: string;
   body: string;
   data: Record<string, unknown>;
@@ -283,6 +322,10 @@ export interface SearchFilters {
   party_max: number | null;
   /** A deal matches when its attributes.vehicles shares any of these tags. */
   vehicle_tags: string[];
+  /** Amenity keys (data/amenities.ts) the place must have: rooftop, pure veg… */
+  amenities: string[];
+  /** Places at or under this cost for two, in rupees. */
+  max_cost_for_two: number | null;
   verified_only: boolean;
   min_rating: number | null;
   ending_soon: boolean;

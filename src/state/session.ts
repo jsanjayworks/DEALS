@@ -82,6 +82,9 @@ interface SessionState {
   markLocationAsked(): void;
   radiusM: number;
   recentSearches: string[];
+  /** The language the voice assistant last listened in. */
+  voiceLang: 'en-IN' | 'hi-IN' | 'kn-IN';
+  setVoiceLang(lang: 'en-IN' | 'hi-IN' | 'kn-IN'): void;
   /** The customer's own vehicle (see data/vehicles.ts), for "everything for it". */
   vehicleId: string | null;
   setVehicle(id: string | null): void;
@@ -115,6 +118,8 @@ export const useSession = create<SessionState>()(
       markLocationAsked: () => set({ locationAsked: true }),
       radiusM: 3000,
       recentSearches: [],
+      voiceLang: 'en-IN',
+      setVoiceLang: (voiceLang) => set({ voiceLang }),
       vehicleId: null,
       setVehicle: (id) => set({ vehicleId: id }),
       setAccount: (kind) => {
@@ -151,6 +156,7 @@ export const useSession = create<SessionState>()(
         locationAsked: s.locationAsked,
         radiusM: s.radiusM,
         recentSearches: s.recentSearches,
+        voiceLang: s.voiceLang,
         vehicleId: s.vehicleId,
       }),
       // The data layer keeps its own viewer; put it back in step after a

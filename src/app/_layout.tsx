@@ -27,6 +27,7 @@ import { ChromeProvider } from '../ui/chrome';
 import { LaunchSplash, markLaunchDone } from '../ui/LaunchSplash';
 import { LoadErrorBanner } from '../ui/LoadErrorBanner';
 import { PageTitle } from '../ui/PageTitle';
+import { VoiceHost } from '../voice/VoiceHost';
 
 // A deep link to a deal, a category or Profile still has Home underneath, so
 // Back and "go home" land somewhere instead of leaving the app.
@@ -92,6 +93,7 @@ export default function RootLayout() {
           </Stack>
           <LoadErrorBanner />
           <PageTitle />
+          <VoiceHost />
           {splashDone ? null : <LaunchSplash ready onDone={endSplash} />}
         </ChromeProvider>
       </SafeAreaProvider>

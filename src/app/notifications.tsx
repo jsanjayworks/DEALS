@@ -15,7 +15,7 @@ import { color, space, type } from '../theme/tokens';
 import { Divider, EmptyState, Header, Icon, type IconName } from '../components';
 
 /** Notes about a merchant's own deals. */
-const MERCHANT_KINDS = new Set<Notification['kind']>(['deal_approved', 'deal_rejected', 'deal_paused', 'new_claim']);
+const MERCHANT_KINDS = new Set<Notification['kind']>(['deal_approved', 'deal_rejected', 'deal_paused', 'new_claim', 'new_review']);
 
 const KIND_ICON: Record<Notification['kind'], IconName> = {
   deal_approved: 'check',
@@ -27,6 +27,8 @@ const KIND_ICON: Record<Notification['kind'], IconName> = {
   business_rejected: 'x',
   support_reply: 'chat',
   deal_paused: 'clock',
+  rate_visit: 'star',
+  new_review: 'star',
 };
 
 export default function NotificationsScreen() {
@@ -48,6 +50,8 @@ export default function NotificationsScreen() {
     // merchant view, a customer's in the deal page, a reply in Help.
     if (MERCHANT_KINDS.has(n.kind) && dealId) {
       router.push({ pathname: '/merchant/deal/[id]', params: { id: dealId } });
+    } else if (n.kind === 'rate_visit') {
+      router.push({ pathname: '/my-deals', params: { tab: 'past' } });
     } else if (n.kind === 'business_verified' || n.kind === 'business_rejected') {
       router.push('/merchant');
     } else if (n.kind === 'support_reply') {

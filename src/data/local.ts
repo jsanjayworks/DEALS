@@ -24,12 +24,14 @@ import { dealToCard, haversineKm } from './mapping';
 import { matchPhoto } from './photo-library';
 import { PAY_METHOD_LABEL, paymentOf } from '../lib/payment';
 import { SLOT_HOLDING, slotCapacity, slotKey } from './booking';
+import { enrichBusinesses, seedReviews } from './seed-extras';
 import {
   RuleViolation,
   type ActionWithDeal,
   type AppViewer,
   type BusinessOrder,
   type SlotLoad,
+  type NewReview,
   type DataSource,
   type DealDraftInput,
   type FeedQuery,
@@ -78,8 +80,12 @@ import type {
   LatLng,
   Locality,
   Notification,
+  Review,
   SearchFilters,
 } from './types';
+
+// Menus, photos, hours, cost for two and amenities for the demo businesses.
+enrichBusinesses(BUSINESSES, [...SEED_DEALS, ...SEED_PIPELINE_DEALS]);
 
 /** The demo accounts use the same viewer shape the Supabase session produces. */
 export type LocalViewer = AppViewer;
@@ -156,6 +162,7 @@ export interface LocalStore {
   verifications: (BusinessVerification & { business_id: string; owner_profile_id: string })[];
   /** Every account by id: the three demo ones and any made by signing in with a new email. */
   users: Record<string, LocalViewer>;
+  reviews: Review[];
   viewer: LocalViewer;
 }
 
@@ -291,12 +298,98 @@ function seedBookings(): CustomerAction[] {
   return out;
 }
 
+/**
+ * The demo customer's own past orders over the last six weeks, so the
+ * assistant has something to learn from: weekday lunches at Meghana Foods
+ * (their usual), coffee at Third Wave, a kebab plate, a biryani pack, a
+ * comedy night and a bike wash. All paid and used.
+ */
+const DEMO_HISTORY: [dealId: string, daysAgo: number, hh: number, mm: number, qty: number][] = [
+  ['d-048', 3, 13, 10, 1],
+  ['d-003', 6, 9, 40, 1],
+  ['d-048', 10, 13, 25, 1],
+  ['d-068', 12, 20, 15, 1],
+  ['d-020', 15, 19, 30, 2],
+  ['d-048', 17, 13, 5, 1],
+  ['d-003', 20, 10, 5, 1],
+  ['d-004', 24, 20, 45, 1],
+  ['d-062', 27, 11, 0, 1],
+  ['d-048', 31, 13, 20, 1],
+  ['d-003', 41, 9, 15, 1],
+];
+
+function seedHistory(): CustomerAction[] {
+  return DEMO_HISTORY.flatMap(([dealId, daysAgo, hh, mm, qty], n) => {
+    const deal = SEED_DEALS.find((d) => d.id === dealId);
+    if (!deal) return [];
+    let code = '';
+    for (let k = 0; k < 6; k++) code += CODE_CHARS[(n * 17 + k * 5 + 3) % CODE_CHARS.length];
+    const at = istAt(-daysAgo, hh, mm);
+    const amount = (deal.deal_price ?? 0) * qty;
+    return [
+      {
+        id: 'act-hist-' + n,
+        deal_id: deal.id,
+        customer_id: DEMO_CUSTOMER.id,
+        action_type: deal.booking_required ? 'booking' : 'claim',
+        status: 'redeemed',
+        quantity: qty,
+        slot_start: deal.booking_required ? at.toISOString() : null,
+        redemption_code: 'YOLO-' + code,
+        payload:
+          amount > 0
+            ? {
+                payment: {
+                  status: 'paid',
+                  method: (['upi', 'upi', 'card'] as const)[n % 3],
+                  amount,
+                  currency: 'INR',
+                  order_id: 'ORD-' + code,
+                  paid_at: new Date(at.getTime() - 20 * 60_000).toISOString(),
+                  mock: true,
+                },
+              }
+            : {},
+        created_at: new Date(at.getTime() - 20 * 60_000).toISOString(),
+      } satisfies CustomerAction,
+    ];
+  });
+}
+
+/** Two of those visits the demo customer has already rated. */
+function seedHistoryReviews(actions: CustomerAction[]): Review[] {
+  const rated: [string, number, string][] = [
+    ['act-hist-2', 5, 'Quick lunch, generous biryani portion. My weekday go-to.'],
+    ['act-hist-6', 4, 'Good coffee and the offer worked without any fuss.'],
+  ];
+  return rated.flatMap(([actionId, rating, body]) => {
+    const a = actions.find((x) => x.id === actionId);
+    const deal = a && SEED_DEALS.find((d) => d.id === a.deal_id);
+    if (!a || !deal) return [];
+    return [
+      {
+        id: 'rev-' + actionId,
+        deal_id: deal.id,
+        deal_title: deal.title,
+        business_id: deal.business_id,
+        customer_id: DEMO_CUSTOMER.id,
+        customer_name: 'Aarav S.',
+        rating,
+        body,
+        created_at: new Date(new Date(a.created_at).getTime() + 3 * 3_600_000).toISOString(),
+        action_id: a.id,
+      },
+    ];
+  });
+}
+
 export function createStore(viewer: LocalViewer = DEMO_CUSTOMER): LocalStore {
+  const history = seedHistory();
   return {
     deals: [...SEED_DEALS, ...SEED_PIPELINE_DEALS, ...SEED_ADMIN_QUEUE_DEALS].map((d) => ({
       ...d,
     })),
-    actions: [...seedActions(), ...seedBookings()],
+    actions: [...seedActions(), ...seedBookings(), ...history],
     notifications: [],
     history: [],
     saved: new Set<string>(),
@@ -307,6 +400,7 @@ export function createStore(viewer: LocalViewer = DEMO_CUSTOMER): LocalStore {
     views: [],
     savedAt: new Map<string, number>(),
     users: Object.fromEntries([DEMO_CUSTOMER, DEMO_MERCHANT, DEMO_ADMIN, ...seedCustomers()].map((u) => [u.id, u])),
+    reviews: [...seedHistoryReviews(history), ...seedReviews(BUSINESSES, SEED_DEALS)],
     viewer,
   };
 }
@@ -314,8 +408,8 @@ export function createStore(viewer: LocalViewer = DEMO_CUSTOMER): LocalStore {
 // ----------------------------------------------------------- persistence ----
 
 // Bumped when the seed data changes shape or gains deals, so old snapshots give way to it.
-const STORAGE_KEY = 'yolo-demo-data-v2';
-const OLD_KEYS = ['yolo-demo-data-v1'];
+const STORAGE_KEY = 'yolo-demo-data-v4';
+const OLD_KEYS = ['yolo-demo-data-v1', 'yolo-demo-data-v2', 'yolo-demo-data-v3'];
 
 function webStorage(): Storage | null {
   try {
@@ -339,6 +433,7 @@ interface Snapshot {
   savedAt: [string, number][];
   users: Record<string, LocalViewer>;
   businesses: Business[];
+  reviews: Review[];
 }
 
 function snapshot(store: LocalStore, dropPhotos = false): Snapshot {
@@ -362,6 +457,7 @@ function snapshot(store: LocalStore, dropPhotos = false): Snapshot {
     savedAt: [...store.savedAt],
     users: store.users,
     businesses: BUSINESSES,
+    reviews: store.reviews,
   };
 }
 
@@ -387,6 +483,7 @@ export function loadStore(): LocalStore {
     store.views = s.views;
     store.savedAt = new Map(s.savedAt);
     store.users = { ...store.users, ...s.users };
+    store.reviews = s.reviews ?? store.reviews;
     BUSINESSES.splice(0, BUSINESSES.length, ...s.businesses);
   } catch {
     // A snapshot that does not read starts the demo afresh.
@@ -612,6 +709,14 @@ export function createLocalDataSource(
       }
 
       if (!partyFits(dealParty(c.attributes), f.party_min, f.party_max)) return false;
+      if ((f.amenities ?? []).length > 0) {
+        const has = c.business.amenities ?? [];
+        if (!f.amenities.every((a) => has.includes(a))) return false;
+      }
+      if (f.max_cost_for_two != null) {
+        const cost = c.business.cost_for_two;
+        if (cost == null || cost > f.max_cost_for_two) return false;
+      }
       if (f.vehicle_tags.length > 0) {
         const fits = dealVehicleTags(c.attributes);
         if (!fits.some((t) => f.vehicle_tags.includes(t))) return false;
@@ -781,6 +886,13 @@ export function createLocalDataSource(
         description: input.description?.trim() || null,
         keywords: input.keywords ?? [],
         owner_role: input.owner_role?.trim() || null,
+        cost_for_two: input.cost_for_two ?? null,
+        amenities: input.amenities ?? [],
+        cuisines: input.cuisines ?? [],
+        open_time: input.open_time ?? null,
+        close_time: input.close_time ?? null,
+        photos: input.photos ?? [],
+        menu: input.menu ?? [],
       });
       // Kept on the demo account too, so switching accounts and back keeps the
       // business; the fresh object is what makes subscribers re-render.
@@ -809,6 +921,14 @@ export function createLocalDataSource(
       if (!biz) throw new RuleViolation('Business not found');
       const moved = biz.locality_id !== locality.id;
       Object.assign(biz, { name, phone, email, address_line: address, locality_id: locality.id });
+      // The shop page: only what was sent changes.
+      if (input.description !== undefined) biz.description = input.description || null;
+      if (input.open_time !== undefined) biz.open_time = input.open_time;
+      if (input.close_time !== undefined) biz.close_time = input.close_time;
+      if (input.cost_for_two !== undefined) biz.cost_for_two = input.cost_for_two;
+      if (input.amenities !== undefined) biz.amenities = input.amenities;
+      if (input.menu !== undefined) biz.menu = input.menu;
+      if (input.photos !== undefined) biz.photos = input.photos;
       // A pinned position wins; a new area without one uses the area's centre.
       const to = input.location ?? (moved ? locality.centroid : null);
       if (to) {
@@ -1394,6 +1514,14 @@ export function createLocalDataSource(
         deal_id: deal.id,
         business_id: deal.business_id,
       });
+      // Ask the customer how it went while it is fresh.
+      notify(
+        action.customer_id,
+        'rate_visit',
+        'How was ' + deal.title + '?',
+        'Rate your visit to ' + (businessById(deal.business_id)?.name ?? 'the business') + '. It helps others choose.',
+        { deal_id: deal.id, action_id: action.id },
+      );
       return action;
     },
 
@@ -1401,6 +1529,65 @@ export function createLocalDataSource(
       const deal = findDeal(dealId);
       if (!isMember(deal.business_id)) throw new RuleViolation('Not your deal');
       return store.actions.filter((a) => a.deal_id === dealId);
+    },
+
+    async listShopDeals(businessId, origin): Promise<DealCardModel[]> {
+      return candidates(origin, null).filter((c) => c.business.id === businessId);
+    },
+
+    async listReviews(target, limit = 50): Promise<Review[]> {
+      return store.reviews
+        .filter((r) => (target.dealId ? r.deal_id === target.dealId : true))
+        .filter((r) => (target.businessId ? r.business_id === target.businessId : true))
+        .slice(0, limit);
+    },
+
+    async listMyReviews(): Promise<Review[]> {
+      return store.reviews.filter((r) => r.customer_id === store.viewer.id);
+    },
+
+    async createReview(input: NewReview): Promise<Review> {
+      const action = store.actions.find((a) => a.id === input.action_id);
+      if (!action || action.customer_id !== store.viewer.id) throw new RuleViolation('Only your own visits can be rated');
+      if (action.status !== 'redeemed') throw new RuleViolation('You can rate a visit once your code has been used');
+      if (store.reviews.some((r) => r.deal_id === action.deal_id && r.customer_id === store.viewer.id)) {
+        throw new RuleViolation('You have already rated this deal');
+      }
+      const rating = Math.round(input.rating);
+      if (!(rating >= 1 && rating <= 5)) throw new RuleViolation('Pick from one to five stars');
+      const body = (input.body ?? '').trim().slice(0, 600) || null;
+      const deal = findDeal(action.deal_id);
+      const name = (store.viewer.full_name ?? '').trim();
+      const parts = name.split(/\s+/);
+      const review: Review = {
+        id: uid('rev'),
+        deal_id: deal.id,
+        deal_title: deal.title,
+        business_id: deal.business_id,
+        customer_id: store.viewer.id,
+        customer_name: name ? parts[0] + (parts[1] ? ' ' + parts[1][0] : '') : (store.viewer.email ?? '').split('@')[0] || null,
+        rating,
+        body,
+        created_at: new Date().toISOString(),
+        action_id: action.id,
+      };
+      store.reviews.unshift(review);
+      // The business's rating moves with every review.
+      const biz = BUSINESSES.find((b) => b.id === deal.business_id);
+      if (biz) {
+        biz.rating_avg = Math.round(((biz.rating_avg * biz.rating_count + rating) / (biz.rating_count + 1)) * 10) / 10;
+        biz.rating_count += 1;
+      }
+      for (const owner of ownersOf(deal.business_id)) {
+        notify(
+          owner,
+          'new_review',
+          'New review: ' + '★'.repeat(rating) + ' on ' + deal.title,
+          body ? (body.length > 90 ? body.slice(0, 90) + '…' : body) : 'No comment, just stars.',
+          { deal_id: deal.id },
+        );
+      }
+      return review;
     },
 
     async listSlotLoad(dealId): Promise<SlotLoad[]> {

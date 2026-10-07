@@ -40,7 +40,9 @@ import {
   shareDeal,
 } from '../../lib/device';
 import { useQuery } from '../../lib/useQuery';
-import { ClaimSheet } from '../../deal/ClaimSheet';
+import { openVoice } from '../../voice/VoiceHost';
+import { RatingSummary, ReviewCard } from '../../reviews/Reviews';
+import { ClaimSheet, type ClaimPrefill } from '../../deal/ClaimSheet';
 import { DealTiles } from '../../deal/DealTiles';
 import { MAX_CONTENT_WIDTH, useLayout } from '../../ui/layout';
 import { useOrigin, useViewer } from '../../state/session';
@@ -124,7 +126,17 @@ function attributeLabel(key: string, value: AttributeValue): string | null {
 }
 
 export default function DealDetailScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  // take=1 (with day, time, qty) comes from the voice assistant: open the sheet set up.
+  const { id, take, day, time, qty } = useLocalSearchParams<{
+    id: string;
+    take?: string;
+    day?: string;
+    time?: string;
+    qty?: string;
+  }>();
+  const takeKey = take === '1' ? [id, day, time, qty].join('|') : null;
+  const [handledTake, setHandledTake] = useState<string | null>(null);
+  const [prefill, setPrefill] = useState<ClaimPrefill | null>(null);
   const insets = useSafeAreaInsets();
   const layout = useLayout();
   const wide = layout.isExpanded;
@@ -161,7 +173,8 @@ export default function DealDetailScreen() {
       db.listSavedDeals(),
       db.listMyActions(),
     ]);
-    return { deal, saved: saved.some((d) => d.id === id), actions };
+    const reviews = deal ? await db.listReviews({ businessId: deal.business.id }, 30).catch(() => []) : [];
+    return { deal, saved: saved.some((d) => d.id === id), actions, reviews };
   }, [id, origin, account]);
 
   const { data, loading, reload } = useQuery(fetchDeal);
@@ -236,6 +249,19 @@ export default function DealDetailScreen() {
 
   // Signed out on Supabase: the button leads to sign-in instead of sitting disabled.
   const needsSignIn = !live && !verdict.ok && verdict.reason === 'Sign in to continue';
+
+  // Opened by the voice assistant to book: once per request, open the sheet with its choices.
+  if (takeKey && handledTake !== takeKey) {
+    setHandledTake(takeKey);
+    if (!needsSignIn && !live && !isOutbound) {
+      // "For 4" on a deal already sized for 4 is one table; otherwise it is how many.
+      const sized = dealParty(deal.attributes);
+      const people = qty ? Number(qty) : undefined;
+      const quantity = sized && people && people >= sized[0] && people <= sized[1] ? 1 : people;
+      setPrefill({ day, time, quantity });
+      setSheetOpen(true);
+    }
+  }
 
   const onPrimary = () => {
     if (needsSignIn) {
@@ -370,7 +396,12 @@ export default function DealDetailScreen() {
           </Text>
           <Text style={styles.short}>{deal.short_description}</Text>
 
-          <View style={styles.bizRow}>
+          <Pressable
+            onPress={() => router.push({ pathname: '/shop/[id]', params: { id: deal.business.id } })}
+            accessibilityRole="link"
+            accessibilityLabel={'Open ' + deal.business.name + ', menu, photos and reviews'}
+            style={({ pressed }) => [styles.bizRow, pressed && { opacity: 0.8 }]}
+          >
             <View style={styles.bizAvatar}>
               <Text style={styles.bizInitial}>{deal.business.name.charAt(0)}</Text>
             </View>
@@ -396,7 +427,8 @@ export default function DealDetailScreen() {
                 </Text>
               </View>
             </View>
-          </View>
+            <Text style={styles.bizLink}>Menu, photos ›</Text>
+          </Pressable>
 
           <DealTiles
             deal={deal}
@@ -482,6 +514,28 @@ export default function DealDetailScreen() {
             </Block>
           ) : null}
 
+          <Block title="Ratings and reviews">
+            <RatingSummary
+              avg={deal.business.rating_avg}
+              count={deal.business.rating_count}
+              reviews={data?.reviews ?? []}
+            />
+            <View style={styles.reviewList}>
+              {(data?.reviews ?? []).slice(0, 3).map((r) => (
+                <ReviewCard key={r.id} review={r} />
+              ))}
+            </View>
+            {(data?.reviews ?? []).length > 3 ? (
+              <Pressable
+                onPress={() => router.push({ pathname: '/shop/[id]', params: { id: deal.business.id } })}
+                accessibilityRole="link"
+                style={styles.reviewMore}
+              >
+                <Text style={styles.bizLink}>See all {(data?.reviews ?? []).length} reviews ›</Text>
+              </Pressable>
+            ) : null}
+          </Block>
+
           <Pressable
             onPress={() => setReportOpen(true)}
             accessibilityRole="button"
@@ -521,6 +575,7 @@ export default function DealDetailScreen() {
         </Animated.View>
         <RoundButton icon="back" label="Go back" onPress={() => router.back()} />
         <View style={styles.topRight}>
+          <RoundButton icon="mic" label="Ask by voice" onPress={openVoice} />
           <RoundButton
             icon="share"
             label="Share"
@@ -551,10 +606,14 @@ export default function DealDetailScreen() {
       {!isOutbound ? (
         <ClaimSheet
           visible={sheetOpen}
+          prefill={prefill}
           deal={deal}
           actionType={actionType}
           existing={actions}
-          onClose={() => setSheetOpen(false)}
+          onClose={() => {
+            setSheetOpen(false);
+            setPrefill(null);
+          }}
           onTaken={() => reload()}
           onViewMyDeals={() => {
             setSheetOpen(false);
@@ -972,6 +1031,18 @@ const styles = StyleSheet.create({
     ...type.body,
     color: color.text,
     flex: 1,
+  },
+  bizLink: {
+    ...type.captionMedium,
+    color: color.brand,
+  },
+  reviewList: {
+    gap: space.md,
+    marginTop: space.md,
+  },
+  reviewMore: {
+    marginTop: space.sm,
+    alignSelf: 'flex-start',
   },
   reportLink: {
     flexDirection: 'row',

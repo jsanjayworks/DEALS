@@ -36,6 +36,7 @@ import {
   Icon,
 } from '../components';
 import { reach } from '../lib/a11y';
+import { openVoice } from '../voice/VoiceHost';
 
 const PAGE = 20;
 
@@ -381,6 +382,14 @@ function SearchHeader({ label, query, onBack }: { label: string; query: string |
           <Text style={styles.searchBoxText} numberOfLines={1}>
             {query ?? label}
           </Text>
+        </Pressable>
+        <Pressable
+          onPress={openVoice}
+          accessibilityRole="button"
+          accessibilityLabel="Search by voice"
+          style={({ pressed }) => [styles.searchBack, pressed && styles.searchPressed]}
+        >
+          <Icon name="mic" size={22} color={color.brand} />
         </Pressable>
       </View>
     </View>

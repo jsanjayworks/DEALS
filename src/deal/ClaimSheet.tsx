@@ -141,8 +141,18 @@ const CONFIRM_LABEL: Record<CustomerActionType, string> = {
   purchase_intent: 'Request to buy',
 };
 
+/** Choices already made elsewhere, e.g. "tomorrow at 8 for 4" said to the voice assistant. */
+export interface ClaimPrefill {
+  /** YYYY-MM-DD, Bengaluru time. */
+  day?: string;
+  /** HH:MM, 24-hour; the nearest open time that day is picked. */
+  time?: string;
+  quantity?: number;
+}
+
 export interface ClaimSheetProps {
   visible: boolean;
+  prefill?: ClaimPrefill | null;
   deal: DealCardModel;
   actionType: CustomerActionType;
   /** The viewer's actions, for the one-live-action-per-deal rule. */
@@ -161,8 +171,23 @@ export function ClaimSheet(props: ClaimSheetProps) {
   return props.visible ? <ClaimSheetOpen {...props} /> : null;
 }
 
+/** The slot nearest the asked-for time on the asked-for day, among those offered. */
+function prefillSlot(deal: DealCardModel, actionType: CustomerActionType, now: Date, prefill?: ClaimPrefill | null) {
+  if (!prefill?.day) return { dayKey: null, slot: null };
+  const [y, m, d] = prefill.day.split('-').map(Number);
+  const key = y + '-' + (m - 1) + '-' + d;
+  const day = slotDays(deal, actionType, now, () => false).find((x) => x.key === key);
+  if (!day) return { dayKey: null, slot: null };
+  if (!prefill.time) return { dayKey: key, slot: null };
+  const [hh, mm] = prefill.time.split(':').map(Number);
+  const want = istInstant(y, m - 1, d, hh, mm || 0).getTime();
+  const best = [...day.times].sort((a, b) => Math.abs(a.getTime() - want) - Math.abs(b.getTime() - want))[0];
+  return { dayKey: key, slot: best ? best.toISOString() : null };
+}
+
 function ClaimSheetOpen({
   visible,
+  prefill,
   deal,
   actionType,
   existing,
@@ -171,14 +196,17 @@ function ClaimSheetOpen({
   onViewMyDeals,
 }: ClaimSheetProps) {
   const viewer = useViewer();
-  const [quantity, setQuantity] = useState(1);
-  const [dayKey, setDayKey] = useState<string | null>(null);
-  const [slot, setSlot] = useState<string | null>(null);
+  const [now] = useState(() => new Date());
+  const [start] = useState(() => prefillSlot(deal, actionType, now, prefill));
+  const [quantity, setQuantity] = useState(() =>
+    Math.max(1, Math.min(prefill?.quantity ?? 1, deal.max_qty_per_customer ?? 10, deal.capacity_remaining ?? 10, 10)),
+  );
+  const [dayKey, setDayKey] = useState<string | null>(start.dayKey);
+  const [slot, setSlot] = useState<string | null>(start.slot);
   const [message, setMessage] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<CustomerAction | null>(null);
-  const [now] = useState(() => new Date());
   const [stage, setStage] = useState<'form' | 'pay' | 'paying'>('form');
   const [method, setMethod] = useState<PayMethod>('upi');
   const pays = needsPayment(deal, actionType);

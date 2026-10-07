@@ -14,10 +14,11 @@ import { router, useLocalSearchParams } from 'expo-router';
 import QRCode from 'react-native-qrcode-svg';
 import Animated from 'react-native-reanimated';
 import { backend, db, RuleViolation, type ActionWithDeal } from '../../data';
-import type { DealCardModel } from '../../data/types';
+import type { DealCardModel, Review } from '../../data/types';
 import { ACTION_LABEL, ACTION_STATUS_LABEL, dateLabel, quantityLabel, slotLabel } from '../../lib/format';
 import { mintsCode } from '../../domain/rules';
 import { PAY_METHOD_LABEL, paymentOf } from '../../lib/payment';
+import { RateSheet, StarRow } from '../../reviews/Reviews';
 import { hapticTap } from '../../lib/device';
 import { useQuery } from '../../lib/useQuery';
 import { useOrigin, useViewer } from '../../state/session';
@@ -66,6 +67,7 @@ export default function MyDealsScreen() {
   const [cancelFor, setCancelFor] = useState<ActionWithDeal | null>(null);
   const [cancelling, setCancelling] = useState(false);
   const [cancelError, setCancelError] = useState<string | null>(null);
+  const [rateFor, setRateFor] = useState<ActionWithDeal | null>(null);
   const origin = useOrigin();
   const { onScroll } = useHideOnScroll();
   const tabSpace = useTabBarSpace();
@@ -76,8 +78,12 @@ export default function MyDealsScreen() {
   const fetchAll = useCallback(async () => {
     void account;
     void viewer;
-    const [actions, saved] = await Promise.all([db.listMyActions(), db.listSavedDeals(origin)]);
-    return { actions, saved };
+    const [actions, saved, reviews] = await Promise.all([
+      db.listMyActions(),
+      db.listSavedDeals(origin),
+      db.listMyReviews().catch(() => [] as Review[]),
+    ]);
+    return { actions, saved, reviews };
   }, [origin, account, viewer]);
   const { data, loading, reload } = useQuery(fetchAll);
 
@@ -85,6 +91,8 @@ export default function MyDealsScreen() {
   const active = actions.filter(isLive);
   const past = actions.filter((a) => !isLive(a));
   const saved = data?.saved ?? [];
+  /** Each deal's review by this person, for "You rated it" on used codes. */
+  const myReview = (dealId: string) => (data?.reviews ?? []).find((r) => r.deal_id === dealId) ?? null;
 
   const openDeal = (d: DealCardModel) =>
     router.push({ pathname: '/deal/[id]', params: { id: d.id } });
@@ -190,6 +198,8 @@ export default function MyDealsScreen() {
                 setCancelError(null);
                 setCancelFor(item);
               }}
+              review={myReview(item.deal_id)}
+              onRate={() => setRateFor(item)}
             />
           )}
           ListEmptyComponent={
@@ -199,6 +209,17 @@ export default function MyDealsScreen() {
           }
         />
       )}
+
+      <RateSheet
+        visible={rateFor !== null}
+        actionId={rateFor?.id ?? null}
+        title={rateFor ? rateFor.deal.title + ' at ' + rateFor.deal.business.name : ''}
+        onClose={() => setRateFor(null)}
+        onDone={() => {
+          setRateFor(null);
+          reload();
+        }}
+      />
 
       <Sheet visible={qrFor !== null} onClose={() => setQrFor(null)} title="Show at the counter">
         {qrFor?.redemption_code ? (
@@ -276,11 +297,15 @@ function ActionCard({
   onOpen,
   onShowQr,
   onCancel,
+  review,
+  onRate,
 }: {
   action: ActionWithDeal;
   onOpen: () => void;
   onShowQr: () => void;
   onCancel: () => void;
+  review: Review | null;
+  onRate: () => void;
 }) {
   const live = isLive(action);
   const d = action.deal;
@@ -352,6 +377,24 @@ function ActionCard({
 
       {live && action.action_type === 'enquiry' ? (
         <Text style={styles.waiting}>Waiting for {d.business.name} to reply.</Text>
+      ) : null}
+
+      {action.status === 'redeemed' ? (
+        review ? (
+          <View style={styles.rated}>
+            <Text style={styles.ratedText}>You rated it</Text>
+            <StarRow rating={review.rating} size={14} />
+          </View>
+        ) : (
+          <Pressable
+            onPress={onRate}
+            accessibilityRole="button"
+            style={({ pressed }) => [styles.rateButton, pressed && { opacity: 0.8 }]}
+          >
+            <Icon name="star" size={16} color={color.onCta} filled />
+            <Text style={styles.rateText}>Rate your visit</Text>
+          </Pressable>
+        )
       ) : null}
 
       {live ? (
@@ -478,6 +521,31 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+  },
+  rated: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.sm,
+    marginTop: space.md,
+  },
+  ratedText: {
+    ...type.captionMedium,
+    color: color.textSecondary,
+  },
+  rateButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: space.sm,
+    height: 40,
+    paddingHorizontal: space.lg,
+    marginTop: space.md,
+    borderRadius: radius.pill,
+    backgroundColor: color.cta,
+  },
+  rateText: {
+    ...type.captionMedium,
+    color: color.onCta,
   },
   paid: {
     flexDirection: 'row',
