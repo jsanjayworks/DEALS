@@ -165,7 +165,10 @@ function scoreDeal(d: DealCardModel, h: History, query: string | null, now: numb
   return { deal: d, why: reasons, score: s };
 }
 
-/** The best few for them, one per place, skipping deals they already hold a code for. */
+/**
+ * The best few for them, one per place, skipping deals they already hold a
+ * code for and anything they said "not for me" to.
+ */
 export async function picksFor({
   origin,
   query,
@@ -179,10 +182,14 @@ export async function picksFor({
   limit?: number;
   now?: number;
 }): Promise<Pick[]> {
-  const pool = await candidatesFor(origin, query);
+  // Nothing is hidden for someone signed out, or when the list cannot be read.
+  const [pool, hidden] = await Promise.all([candidatesFor(origin, query), db.listHidden().catch(() => [])]);
   const holding = new Set(history.open.map((a) => a.deal.id));
+  // "Not for me" covers the deal, its place or its kind, as they chose.
+  const hid = new Set(hidden.map((x) => x.kind + ':' + x.target_id));
   const ranked = pool
     .filter((d) => !holding.has(d.id))
+    .filter((d) => !hid.has('deal:' + d.id) && !hid.has('business:' + d.business_id) && !hid.has('category:' + d.category_id))
     .map((d) => scoreDeal(d, history, query, now))
     .sort((a, b) => b.score - a.score || a.deal.distance_km - b.deal.distance_km);
   // Favourites lead, but one slot is kept for something they have not had yet.

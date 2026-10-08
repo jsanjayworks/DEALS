@@ -18,12 +18,11 @@ import { Redirect, router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { DemoLogins } from '../auth/DemoLogins';
 import { DoorLink, OtpForm } from '../auth/OtpForm';
-import { auth, backend, refreshViewer } from '../data';
-import { useSession, useViewer, useViewerReady } from '../state/session';
+import { ExploreDemo } from '../auth/ExploreDemo';
+import { auth, refreshViewer } from '../data';
+import { useDemo, useSession, useViewer, useViewerReady } from '../state/session';
 import { color, radius, shadow, space, theme, type } from '../theme/tokens';
 import { Icon, type IconName } from '../components';
-
-const DEMO = backend === 'local';
 
 const PERKS: { icon: IconName; title: string; body: string }[] = [
   { icon: 'pin', title: 'Seen by people nearby', body: 'Your deals show to customers within a few kilometres.' },
@@ -36,6 +35,8 @@ export default function BusinessLoginScreen() {
   const viewer = useViewer();
   const ready = useViewerReady();
   const setMode = useSession((s) => s.setMode);
+  // The demo's parts appear once the page is live; the server renders the real app.
+  const demo = useDemo();
 
   const close = () => (router.canGoBack() ? router.back() : router.dismissTo('/'));
 
@@ -69,16 +70,16 @@ export default function BusinessLoginScreen() {
               api={auth}
               title="Sign in to your business"
               lead={
-                DEMO
+                demo
                   ? 'Demo: enter any email, no code needed. A new email goes on to set up its business.'
-                  : 'New here? Use your email and we will set up your business next.'
+                  : 'New here? Sign in with your mobile number and set up your business next, by voice if you like.'
               }
               onSignedIn={async () => {
                 setMode('merchant');
                 await refreshViewer();
               }}
             />
-            {DEMO ? (
+            {demo ? (
               <DemoLogins
                 only={['merchant', 'customer']}
                 onSignedIn={(kind) => {
@@ -87,6 +88,7 @@ export default function BusinessLoginScreen() {
                 }}
               />
             ) : null}
+            <ExploreDemo lead="See how a merchant posts deals, takes bookings and redeems codes, with a ready-made restaurant account. Nothing there is real." />
             </View>
           </View>
 

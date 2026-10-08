@@ -31,7 +31,7 @@ import { VEHICLES, VEHICLE_TYPES, VEHICLE_TYPE_LABEL, brandKey, vehicleFitLabel 
 import { isEditable } from '../../domain/lifecycle';
 import { DEAL_TYPE_LABEL, availabilityLabel, dateLabel } from '../../lib/format';
 import { hapticSuccess } from '../../lib/device';
-import { useBusinessId } from '../../merchant/useBusiness';
+import { useBusiness, useBusinessId } from '../../merchant/useBusiness';
 import { DealPhotoPicker } from '../../merchant/DealPhotoPicker';
 import {
   PARTY_CHOICES,
@@ -166,6 +166,9 @@ const AUDIENCES: { label: string; value: AudienceKind }[] = [
 export default function DealWizardScreen() {
   const params = useLocalSearchParams<{ id?: string; copy?: string }>();
   const businessId = useBusinessId();
+  // A verified business's deals go live on submit (0016); others once it is verified.
+  const verified = useBusiness().business?.verification_status === 'verified';
+  const liveOnSubmit = backend === 'local' || verified;
   const insets = useSafeAreaInsets();
   const [form, setForm] = useState<WizardForm>(() => emptyForm());
   const [draftId, setDraftId] = useState<string | null>(params.id ?? null);
@@ -186,12 +189,12 @@ export default function DealWizardScreen() {
   useEffect(() => {
     if (!params.id) return;
     let active = true;
-    db.getRawDeal(params.id).then((d) => {
+    Promise.all([db.getRawDeal(params.id), db.getCategories()]).then(([d, categories]) => {
       if (!active) return;
       if (!d || !isEditable(d.status)) {
         setLocked(true);
       } else {
-        setForm(fromDeal(d));
+        setForm(fromDeal(d, categories));
         if (d.status === 'REJECTED' && d.rejection_reason) setSentBack(d.rejection_reason);
       }
       setLoading(false);
@@ -375,7 +378,7 @@ export default function DealWizardScreen() {
           {current.key === 'schedule' ? <ScheduleStep form={form} patch={patch} errors={errors} /> : null}
           {current.key === 'rules' ? <RulesStep form={form} patch={patch} errors={errors} /> : null}
           {current.key === 'actions' ? <ActionsStep form={form} patch={patch} errors={errors} /> : null}
-          {isReview ? <ReviewStep form={form} preview={preview} onEdit={setStep} /> : null}
+          {isReview ? <ReviewStep form={form} preview={preview} onEdit={setStep} liveOnSubmit={liveOnSubmit} /> : null}
 
           {saveError ? <Text style={styles.saveError}>{saveError}</Text> : null}
         </ScrollView>
@@ -390,7 +393,7 @@ export default function DealWizardScreen() {
           <View style={styles.flex}>
             {isReview ? (
               <Button variant="cta" full loading={saving} onPress={() => void submit()}>
-                {backend === 'local' ? 'Publish deal' : 'Submit for verification'}
+                {liveOnSubmit ? 'Publish deal' : 'Submit deal'}
               </Button>
             ) : (
               <Button full loading={saving} onPress={() => void next()}>
@@ -1029,10 +1032,13 @@ function ReviewStep({
   form,
   preview,
   onEdit,
+  liveOnSubmit,
 }: {
   form: WizardForm;
   preview: DealCardModel | null;
   onEdit: (step: number) => void;
+  /** Whether publishing puts it live at once (a verified business), or it waits for verification. */
+  liveOnSubmit: boolean;
 }) {
   const rows: { step: number; label: string; value: string }[] = [
     {
@@ -1119,8 +1125,9 @@ function ReviewStep({
       </View>
 
       <Text style={styles.hint}>
-        The YOLO team checks every deal before it goes live, usually within a few hours. You will get a
-        notification either way.
+        {liveOnSubmit
+          ? 'Your business is verified, so this goes live for customers nearby as soon as you publish it.'
+          : 'This goes live as soon as YOLO verifies your business, usually within a day. Verify it from your dashboard if you have not yet. You will get a notification either way.'}
       </Text>
     </>
   );

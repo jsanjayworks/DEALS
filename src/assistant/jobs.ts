@@ -7,7 +7,7 @@
 
 import { router, type Href } from 'expo-router';
 import { db } from '../data';
-import type { ActionWithDeal } from '../data/api';
+import type { ActionWithDeal, ConsentState } from '../data/api';
 import type { DealCardModel, LatLng } from '../data/types';
 import { amenityLabel } from '../data/amenities';
 import { timeLabel } from '../lib/format';
@@ -18,6 +18,7 @@ import type { IconName } from '../components';
 import type { CustomerIntent } from '../voice/types';
 import { findDeal, nextOnLabel, orderableNow, takesBookings } from './find';
 import {
+  EMPTY_HISTORY,
   dealMatches,
   isLiveDeal,
   matchScore,
@@ -34,6 +35,8 @@ export interface AnswerAction {
   label: string;
   tone?: 'cta' | 'secondary' | 'danger';
   icon?: IconName;
+  /** The deal it opens, so the button goes when they say "not for me" to that deal. */
+  dealId?: string;
   /** A new answer to show, or 'close' once it has taken them somewhere. */
   run: () => Promise<Answer | 'close'> | Answer | 'close';
 }
@@ -63,6 +66,12 @@ export interface JobContext {
   signedIn: boolean;
   /** The business an owner is acting for, on merchant screens. */
   businessId: string | null;
+  /** Agreed to personalised suggestions and 18+: only then do picks use their history. */
+  personalised?: boolean;
+  /** The deal on screen when they spoke, for "not for me". */
+  dealId?: string | null;
+  /** Re-reads the signed-in person after a consent change. */
+  refresh?: () => Promise<unknown>;
 }
 
 // ------------------------------------------------------------- helpers ----
@@ -106,7 +115,10 @@ function whenOf(a: ActionWithDeal, now: number = Date.now()): string {
 // ------------------------------------------------------------ customer ----
 
 export async function recommend(query: string | null, ctx: JobContext, history?: History): Promise<Answer> {
-  const h = history ?? (await loadHistory(ctx.signedIn));
+  const mine = history ?? (await loadHistory(ctx.signedIn));
+  // Picks learn from their orders only with their consent (Privacy). The codes
+  // they hold still count either way: offering a deal they already have helps nobody.
+  const h = ctx.personalised === false ? { ...EMPTY_HISTORY, open: mine.open } : mine;
   const picks = await picksFor({ origin: ctx.origin, query, history: h });
   if (picks.length === 0) {
     return {
@@ -116,20 +128,184 @@ export async function recommend(query: string | null, ctx: JobContext, history?:
     };
   }
   const personal = h.orders.length > 0;
+  const switchedOff = ctx.signedIn && ctx.personalised === false;
   const more = query ?? h.kinds[0]?.name.toLowerCase() ?? null;
   const takeable = picks.find((p) => orderableNow(p.deal));
   return {
     title: query ? 'Best ' + query + ' for you' : personal ? 'Best for you today' : 'Best near you today',
     lines: [personal ? 'Picked from your ' + h.orders.length + ' orders and what is live near you now.' : null],
     picks,
-    note: personal ? undefined : 'Sign in and order a few times, and these get picked from what you like.',
+    note: personal
+      ? undefined
+      : !ctx.signedIn
+        ? 'Sign in and order a few times, and these get picked from what you like.'
+        : switchedOff
+          ? 'These are the same for everyone nearby. Turn on personalised suggestions to get picks from what you like.'
+          : 'These get more personal as you use YOLO.',
     actions: [
       ...(takeable
-        ? [{ label: takeable === picks[0] ? 'Get the top pick' : 'Get the best one on now', tone: 'cta' as const, run: () => openDeal(takeable.deal, true) }]
+        ? [
+            {
+              label: takeable === picks[0] ? 'Get the top pick' : 'Get the best one on now',
+              tone: 'cta' as const,
+              dealId: takeable.deal.id,
+              run: () => openDeal(takeable.deal, true),
+            },
+          ]
         : []),
       ...(more
-        ? [{ label: 'See more like these', tone: 'secondary' as const, run: () => go({ pathname: '/results', params: { q: more } }) }]
+        ? [{ label: 'See more like these', tone: 'secondary' as const, run: () => go({ pathname: '/results', params: { q: more, from: 'voice' } }) }]
         : []),
+      ...(switchedOff
+        ? [{ label: 'Turn on personalised suggestions', tone: 'secondary' as const, run: () => privacy('on', ctx) }]
+        : []),
+    ],
+  };
+}
+
+const SCOPE_WORDS = { deal: 'this deal', business: 'deals from this place', category: 'this kind of deal' } as const;
+
+async function notInterested(intent: CustomerIntent, ctx: JobContext): Promise<Answer> {
+  if (!ctx.signedIn) return signIn('Sign in to tune your suggestions', 'What you hide is kept on your account.');
+  if (!ctx.dealId) {
+    return {
+      title: 'Which deal?',
+      lines: ['Open a deal, then say "not for me", and it will not be suggested again.'],
+    };
+  }
+  const scope = intent.query === 'business' || intent.query === 'category' ? intent.query : 'deal';
+  const deal = await db.getDeal(ctx.dealId, ctx.origin);
+  if (!deal) return { title: 'That deal is not there any more' };
+  await db.notInterested(deal.id, scope);
+  const what = scope === 'business' ? deal.business.name : scope === 'category' ? deal.category.name.toLowerCase() + ' deals' : deal.title;
+  return {
+    title: 'Got it',
+    done: true,
+    lines: ['You will not see ' + what + ' in your suggestions.'],
+    note: 'Change your mind in Profile > Privacy and data.',
+    actions: [
+      {
+        label: 'Undo',
+        tone: 'secondary',
+        run: async () => {
+          await db.unhide(scope, scope === 'business' ? deal.business_id : scope === 'category' ? deal.category_id : deal.id);
+          return { title: 'Back in your suggestions', done: true, lines: [SCOPE_WORDS[scope].charAt(0).toUpperCase() + SCOPE_WORDS[scope].slice(1) + ' can be suggested again.'] };
+        },
+      },
+    ],
+  };
+}
+
+const ACTIVITY_WORDS: Record<string, string> = {
+  deal_open: 'deals opened',
+  shop_open: 'shop pages visited',
+  search: 'searches',
+  voice_query: 'things asked by voice',
+  save: 'deals saved',
+  cta_tap: 'calls and directions',
+  share: 'deals shared',
+  collection_open: 'collections opened',
+  checkout_start: 'checkouts started',
+  reorder_tap: 'reorders',
+  app_open: 'visits',
+};
+
+/** Privacy by voice: what is known, clear it, or switch suggestions on or off. */
+export async function privacy(what: string | null, ctx: JobContext): Promise<Answer> {
+  if (!ctx.signedIn) return signIn('Sign in to manage your data', 'Your privacy settings are on your account.');
+  const settings = { label: 'Privacy settings', tone: 'secondary' as const, run: () => go('/account/privacy') };
+  if (what === 'off') {
+    // Switching off also forgets what was learned, so it asks first, as clearing does.
+    return {
+      title: 'Turn off personalised suggestions?',
+      lines: [
+        'YOLO stops learning from what you do, and forgets what it learned from the deals you opened, your searches and what you asked.',
+        'Suggestions become the same for everyone nearby. Your "not for me" choices, orders and bookings stay.',
+      ],
+      actions: [
+        {
+          label: 'Turn off and forget',
+          tone: 'danger',
+          run: async () => {
+            await db.setConsent('personalisation', false, 'voice');
+            await ctx.refresh?.();
+            return {
+              title: 'Personalised suggestions are off',
+              done: true,
+              lines: ['YOLO has forgotten what it learned, and suggestions are now the same for everyone nearby.'],
+              actions: [settings],
+            };
+          },
+        },
+        { label: 'Keep it', tone: 'secondary', run: () => 'close' },
+      ],
+    };
+  }
+  if (what === 'on') {
+    const consents = await db.getMyConsents();
+    const adult = consents.find((c) => c.purpose === 'adult')?.granted ?? false;
+    const turnOn = async (): Promise<Answer> => {
+      await db.setConsent('adult', true, 'voice');
+      await db.setConsent('personalisation', true, 'voice');
+      await ctx.refresh?.();
+      return {
+        title: 'Personalised suggestions are on',
+        done: true,
+        lines: ['YOLO will learn from the deals you open, search for, ask about and book. Turn it off or clear it any time.'],
+        actions: [{ label: 'Best deals for me', tone: 'cta', run: () => recommend(null, { ...ctx, personalised: true }) }, settings],
+      };
+    };
+    if (adult) return turnOn();
+    return {
+      title: 'Are you 18 or older?',
+      lines: ['YOLO only personalises for adults.'],
+      actions: [
+        { label: 'Yes, I am 18 or older', tone: 'cta', run: turnOn },
+        { label: 'No', tone: 'secondary', run: () => ({ title: 'Suggestions stay general', lines: ['They will be the same for everyone nearby.'] }) },
+      ],
+    };
+  }
+  if (what === 'clear') {
+    return {
+      title: 'Clear your activity?',
+      lines: ['YOLO forgets the deals you opened, your searches and what you asked, and what it learned from them. Your orders and bookings stay.'],
+      actions: [
+        {
+          label: 'Yes, clear it',
+          tone: 'danger',
+          run: async () => {
+            await db.eraseMyActivity();
+            return { title: 'Cleared', done: true, lines: ['Your activity is gone. Suggestions start afresh.'] };
+          },
+        },
+        { label: 'Keep it', tone: 'secondary', run: () => 'close' },
+      ],
+    };
+  }
+  const [summary, consents] = await Promise.all([db.getMyActivitySummary().catch(() => []), db.getMyConsents()]);
+  const said = (purpose: ConsentState['purpose']) => consents.find((c) => c.purpose === purpose)?.granted ?? false;
+  // Personal only with both yeses: 18 or older, and personalisation.
+  const on = said('personalisation') && said('adult');
+  return {
+    title: 'What YOLO knows about you',
+    lines: [
+      on ? 'Personalised suggestions are on.' : 'Personalised suggestions are off, so nothing new is tied to you.',
+      summary.length
+        ? 'In the last 180 days: ' +
+          summary
+            .slice(0, 5)
+            .map((r) => r.events + ' ' + (ACTIVITY_WORDS[r.name] ?? r.name))
+            .join(', ') +
+          '.'
+        : 'No activity is recorded against you.',
+      'Your orders, bookings and reviews are kept to run your account.',
+    ],
+    actions: [
+      ...(summary.length ? [{ label: 'Clear my activity', tone: 'secondary' as const, run: () => privacy('clear', ctx) }] : []),
+      on
+        ? { label: 'Turn off suggestions', tone: 'secondary' as const, run: () => privacy('off', ctx) }
+        : { label: 'Turn on suggestions', tone: 'secondary' as const, run: () => privacy('on', ctx) },
+      settings,
     ],
   };
 }
@@ -162,7 +338,7 @@ async function reorder(intent: CustomerIntent, ctx: JobContext): Promise<Answer>
       title: usual.deal.title + ' has ended',
       lines: ['You had it ' + timesLabel(usual.count) + ' at ' + usual.deal.business.name + '. These are the closest now:'],
       picks: like,
-      actions: like[0] ? [{ label: 'Get the top pick', tone: 'cta', run: () => openDeal(like[0].deal, true) }] : [],
+      actions: like[0] ? [{ label: 'Get the top pick', tone: 'cta', dealId: like[0].deal.id, run: () => openDeal(like[0].deal, true) }] : [],
     };
   }
   const ready = live.filter((x) => orderableNow(x.d));
@@ -187,7 +363,7 @@ async function reorder(intent: CustomerIntent, ctx: JobContext): Promise<Answer>
           ? 'None of your usuals are on right now.'
           : undefined,
     actions: ready.length
-      ? [{ label: 'Order again', tone: 'cta', icon: 'bag', run: () => openDeal(ready[0].d, true, ready[0].u.quantity) }]
+      ? [{ label: 'Order again', tone: 'cta', icon: 'bag', dealId: ready[0].d.id, run: () => openDeal(ready[0].d, true, ready[0].u.quantity) }]
       : [{ label: 'Best deals on now', tone: 'cta', run: () => recommend(null, ctx, h) }],
   };
 }
@@ -325,7 +501,7 @@ async function businessInfo(intent: CustomerIntent, ctx: JobContext): Promise<An
     return {
       title: 'Could not find ' + (name ?? 'that place'),
       lines: ['Try the full name, or search for it.'],
-      actions: name ? [{ label: 'Search for ' + name, tone: 'secondary', run: () => go({ pathname: '/results', params: { q: name } }) }] : [],
+      actions: name ? [{ label: 'Search for ' + name, tone: 'secondary', run: () => go({ pathname: '/results', params: { q: name, from: 'voice' } }) }] : [],
     };
   }
   const [b, offers] = await Promise.all([
@@ -350,7 +526,7 @@ async function businessInfo(intent: CustomerIntent, ctx: JobContext): Promise<An
     picks: offers.slice(0, 2).map((d) => ({ deal: d, why: [], score: 0 })),
     actions: [
       { label: 'Open shop page', tone: 'cta', icon: 'store', run: () => go({ pathname: '/shop/[id]', params: { id: b.id } }) },
-      ...(bookable ? [{ label: 'Book a table', tone: 'secondary' as const, run: () => openDeal(bookable, true) }] : []),
+      ...(bookable ? [{ label: 'Book a table', tone: 'secondary' as const, dealId: bookable.id, run: () => openDeal(bookable, true) }] : []),
     ],
   };
 }
@@ -377,6 +553,8 @@ async function merchantSummary(ctx: JobContext): Promise<Answer> {
   const real = orders.filter((o) => o.status !== 'cancelled' && o.action_type !== 'enquiry');
   const todays = real.filter((o) => onToday(o.created_at));
   const earned = todays.reduce((s, o) => s + (paymentOf(o)?.amount ?? 0), 0);
+  // Paid at the counter (no online payment yet): the value of today's orders instead.
+  const orderValue = todays.reduce((s, o) => s + (o.deal_price ?? 0) * o.quantity, 0);
   const tables = real.filter((o) => o.slot_start && onToday(o.slot_start));
   const next = tables
     .filter((o) => o.status === 'confirmed' && new Date(o.slot_start!).getTime() > Date.now())
@@ -404,7 +582,9 @@ async function merchantSummary(ctx: JobContext): Promise<Answer> {
     title: 'Today at ' + (biz?.name ?? 'your business'),
     stats: [
       { label: 'Orders today', value: String(todays.length) },
-      { label: 'Earned today', value: inr(earned), highlight: true },
+      earned > 0
+        ? { label: 'Paid online today', value: inr(earned), highlight: true }
+        : { label: 'Order value today', value: inr(orderValue), highlight: true },
       { label: 'Tables today', value: String(tables.length) },
     ],
     lines: [
@@ -531,6 +711,10 @@ export async function runJob(intent: CustomerIntent, ctx: JobContext): Promise<A
       return cancel(intent, ctx);
     case 'business_info':
       return businessInfo(intent, ctx);
+    case 'not_interested':
+      return notInterested(intent, ctx);
+    case 'privacy':
+      return privacy(intent.query, ctx);
     case 'merchant_summary':
       return merchantSummary(ctx);
     case 'merchant_pause':

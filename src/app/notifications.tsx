@@ -11,11 +11,11 @@ import type { Notification } from '../data/types';
 import { shortAgo } from '../lib/format';
 import { useQuery } from '../lib/useQuery';
 import { useViewer } from '../state/session';
+import { track } from '../lib/track';
+import { openNotification } from '../lib/notificationRoute';
 import { color, space, type } from '../theme/tokens';
 import { Divider, EmptyState, Header, Icon, type IconName } from '../components';
 
-/** Notes about a merchant's own deals. */
-const MERCHANT_KINDS = new Set<Notification['kind']>(['deal_approved', 'deal_rejected', 'deal_paused', 'new_claim', 'new_review']);
 
 const KIND_ICON: Record<Notification['kind'], IconName> = {
   deal_approved: 'check',
@@ -29,6 +29,9 @@ const KIND_ICON: Record<Notification['kind'], IconName> = {
   deal_paused: 'clock',
   rate_visit: 'star',
   new_review: 'star',
+  order_cancelled: 'x',
+  review_needed: 'shield',
+  verification_needed: 'shield',
 };
 
 export default function NotificationsScreen() {
@@ -41,25 +44,12 @@ export default function NotificationsScreen() {
   const { data, loading, reload } = useQuery(fetchAll);
 
   const open = async (n: Notification) => {
+    track({ name: 'notif_open', surface: 'notifications', props: { kind: n.kind } });
     if (!n.read_at) {
       await db.markNotificationRead(n.id);
       reload();
     }
-    const dealId = typeof n.data.deal_id === 'string' ? n.data.deal_id : null;
-    // Each note opens where its reader acts on it: a merchant's deal in the
-    // merchant view, a customer's in the deal page, a reply in Help.
-    if (MERCHANT_KINDS.has(n.kind) && dealId) {
-      router.push({ pathname: '/merchant/deal/[id]', params: { id: dealId } });
-    } else if (n.kind === 'rate_visit') {
-      router.push({ pathname: '/my-deals', params: { tab: 'past' } });
-    } else if (n.kind === 'business_verified' || n.kind === 'business_rejected') {
-      router.push('/merchant');
-    } else if (n.kind === 'support_reply') {
-      const ticket = typeof n.data.ticket_id === 'string' ? n.data.ticket_id : undefined;
-      router.push({ pathname: '/account/help', params: ticket ? { ticket } : {} });
-    } else if (dealId) {
-      router.push({ pathname: '/deal/[id]', params: { id: dealId } });
-    }
+    openNotification(n);
   };
 
   return (

@@ -45,7 +45,7 @@ sign-in by email or phone code. The remaining list, in build order, is
 | Scheduled jobs | `supabase/migrations/0005_cron.sql` | pg_cron: activate and expire deals every minute, analytics rollup, partitions. Skipped where pg_cron is absent |
 | Security | `supabase/migrations/0003_rls.sql` | RLS on every table, plus table-level write lockdown routing all writes through RPCs |
 | Seed SQL | `supabase/seed.sql` | Generated from the TypeScript seed by `npm run gen:seed`. Not a migration, so Supabase never applies it to production |
-| Backend tests | `supabase/local/0{1,2}_*.sql` | **241 assertions, all passing** against Postgres 16.4 + PostGIS 3.4.3; the migrations and seed also apply cleanly on the Supabase CLI stack (Postgres 17) |
+| Backend tests | `supabase/local/0{1..6}_*.sql` | **410 assertions in six suites, all passing** against Postgres 16.4 + PostGIS 3.4.3 (`bash scripts/db-verify.sh`); the migrations also apply cleanly on the Supabase CLI stack (Postgres 17) |
 | Domain types | `src/data/types.ts` | Field names mirror the SQL one-to-one |
 | Mapping layer | `src/data/mapping.ts` | SQL `deal_card` row ↔ nested `DealCardModel`, both directions |
 | Data contract | `src/data/api.ts` | The single interface every screen will call |
@@ -149,14 +149,22 @@ rails go stale after a few days — rerun `npm run gen:seed`.
 
 ### Against the Supabase CLI stack
 
-Needs Docker. This runs the real Auth, PostgREST and Postgres locally, applies
-`supabase/migrations/` and then `supabase/seed.sql`:
+Needs Docker. This runs the real Auth, PostgREST and Postgres locally and
+applies `supabase/migrations/`. Seeding is off in `config.toml`, so the sample
+data (demo accounts, one of them an admin) can never reach a real database
+through `db push --include-seed` or a preview branch; load it into the local
+stack by hand:
 
 ```bash
 npx supabase start -x studio,imgproxy,edge-runtime,logflare,vector,supavisor,realtime,storage-api,postgres-meta
-npx supabase db reset      # reapply migrations + seed
+npx supabase db reset      # reapply migrations to an empty local database
+{ echo "set app.allow_seed = 'on';"; cat supabase/seed.sql; } \
+  | docker exec -i supabase_db_yolo-deals psql -U postgres -d postgres -v ON_ERROR_STOP=1 -q
 npx supabase status        # prints the API URL and publishable key
 ```
+
+`seed.sql` refuses to run without that setting, on a database marked as
+production, or on one that already has accounts.
 
 Start the app pointed at it:
 
@@ -170,10 +178,10 @@ Stop the stack with `npx supabase stop`.
 
 ### Against the hosted project
 
-The Supabase GitHub integration applies `supabase/migrations/` when `main`
-changes, if "Deploy to production" is on. It never runs `seed.sql`, and nobody
-should run it there by hand. Only the publishable key belongs in
-`EXPO_PUBLIC_` variables — never the secret or service-role key.
+Push the migrations with the Supabase CLI and mark the database as
+production, as in `docs/LAUNCH.md` step 2. Never run `seed.sql` there. Only
+the publishable key belongs in `EXPO_PUBLIC_` variables — never the secret or
+service-role key.
 
 ---
 

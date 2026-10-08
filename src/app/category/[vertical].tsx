@@ -124,9 +124,11 @@ export default function CategoryScreen() {
   const radiusKm = refine.radius_km ?? 5;
   const chosenLabels = Object.values(picked).filter((s): s is Subhead => s !== null).map((s) => s.label);
 
-  const openDeal = (d: DealCardModel) => {
-    void db.recordEvents([{ deal_id: d.id, event_type: 'view', source: 'category' }]);
-    router.push({ pathname: '/deal/[id]', params: { id: d.id } });
+  const openDeal = (d: DealCardModel, position?: number) => {
+    router.push({
+      pathname: '/deal/[id]',
+      params: { id: d.id, from: 'category', ...(position != null ? { pos: String(position) } : {}) },
+    });
   };
 
   const back = () => (router.canGoBack() ? router.back() : router.dismissTo('/'));
@@ -288,9 +290,9 @@ export default function CategoryScreen() {
                         <DealCardSkeleton variant="compact" />
                       </View>
                     ))
-                  : deals.map((d) => (
+                  : deals.map((d, i) => (
                       <View key={d.id} style={{ width: cell }}>
-                        <DealCard deal={d} variant="compact" style={{ width: cell }} onPress={() => openDeal(d)} />
+                        <DealCard deal={d} variant="compact" style={{ width: cell }} onPress={() => openDeal(d, i)} />
                       </View>
                     ))}
               </View>

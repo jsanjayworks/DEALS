@@ -18,7 +18,7 @@
 import { useCallback, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import QRCode from 'react-native-qrcode-svg';
-import { db, RuleViolation } from '../data';
+import { backend, db, RuleViolation } from '../data';
 import { slotCapacity, slotKey } from '../data/booking';
 import { useQuery } from '../lib/useQuery';
 import { useViewer } from '../state/session';
@@ -42,6 +42,9 @@ const PAY_METHODS: { key: PayMethod; icon: IconName; detail: string }[] = [
   { key: 'card', icon: 'ticket', detail: 'Credit or debit card' },
   { key: 'netbanking', icon: 'building', detail: 'All major banks' },
 ];
+
+/** Paying inside the app: only the demo's mock gateway for now (see lib/payment.ts). */
+const PAY_IN_APP = backend === 'local';
 
 /** How long the mock "processing" shows, so paying reads as a step. */
 const PROCESSING_MS = 1400;
@@ -209,7 +212,10 @@ function ClaimSheetOpen({
   const [done, setDone] = useState<CustomerAction | null>(null);
   const [stage, setStage] = useState<'form' | 'pay' | 'paying'>('form');
   const [method, setMethod] = useState<PayMethod>('upi');
-  const pays = needsPayment(deal, actionType);
+  // Priced deals are paid in the app only where a gateway is connected: the
+  // demo's mock today. The real app has none yet, so they are paid at the shop.
+  const priced = needsPayment(deal, actionType);
+  const pays = priced && PAY_IN_APP;
 
   const needsSlot =
     actionType === 'booking' ||
@@ -509,8 +515,10 @@ function ClaimSheetOpen({
             ? deal.business.name + ' will reply to the number on your profile.'
             : pays
               ? 'You pay now, then show your code at ' + deal.business.name + '.'
+              : priced && deal.deal_price != null
+                ? 'Pay ' + inr(deal.deal_price * quantity) + ' at ' + deal.business.name + ' when you show your code.'
               : actionType === 'purchase_intent'
-                ? deal.business.name + ' will contact you to complete the purchase.'
+                ? 'Show your code at ' + deal.business.name + ' to buy; the price is confirmed there.'
                 : 'Free. Show your code at ' + deal.business.name + '.'}
         </Text>
       </View>

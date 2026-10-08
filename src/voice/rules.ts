@@ -147,8 +147,66 @@ function merchantJob(t: string, blank: Blank): CustomerIntent | null {
   return null;
 }
 
+/** Which "not for me" they mean: the whole place, that kind of thing, or just this deal. */
+function hideScope(t: string): 'deal' | 'business' | 'category' {
+  return /\b(place|shop|restaurant|salon|store|business|from (them|here|there))\b/i.test(t)
+    ? 'business'
+    : /\b(kind|type|category|these|such|like this|like these)\b/i.test(t)
+      ? 'category'
+      : 'deal';
+}
+
+/**
+ * "Stop suggesting…", "don't recommend…", "turn off suggestions for…", and
+ * "stop showing me this" (only with a this or that: "don't show me pricey
+ * ones" is a search).
+ */
+const STOP_SUGGESTING =
+  /\b(stop|quit|never|no more|don['’]?t|do not)\s+([\w'’]+\s+){0,3}(suggest|recommend)|\b(stop|quit|never|no more)\s+show\w*\b.*\b(this|that|these|those|it|them)\b|\b(turn|switch) off\b.*\b(suggest|recommend)/i;
+
+/** "Turn off personalised suggestions", "stop tracking me", "turn suggestions off". */
+const SWITCH_OFF =
+  /\b(turn off|switch off|stop|disable|pause|don['’]?t|do not)\b.*\b(suggest|recommend|personali[sz]|learning|tracking)|\b(turn|switch)\b.*\b(suggest|recommend|personali[sz])\w*\s+off\b/i;
+
+/**
+ * What a "stop" points at beyond the suggestions themselves: "this place" in
+ * "stop suggesting this place", "biryani" in "don't recommend biryani", and
+ * nothing in "turn off personalised suggestions".
+ */
+function stopObject(t: string): string {
+  return t
+    .replace(
+      /\b(turn(ed)?|switch(ed)?|off|stop|quit|disable|pause|never|no more|don['’]?t|do not|please|can you|could you|just|now|any ?more|again|and|so|yolo|you|your|me|my|i['’]?m|i|all|any|anything|everything|the|for|to|from|about|on|of|based|what|do|does|did|want|need|deals?|offers?|picks|things|stuff|activity|history|data|forget|clear|personali[sz]\w*|suggest\w*|recommend\w*|show\w*|learn\w*|track\w*)\b/gi,
+      ' ',
+    )
+    .replace(/[^\w\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 /** Jobs a customer asks for: answers from their own orders, or an action to confirm. */
 function customerJob(t: string, blank: Blank): CustomerIntent | null {
+  if (/\b(not for me|not interested|not my thing|show (me )?(less|fewer)|don'?t show (me )?(this|these|that|them)|don'?t (want|like) (this|these|that|them|deals)|hide (this|it|these))\b|नहीं चाहिए|ಬೇಡ/i.test(t)) {
+    return { ...blank, kind: 'not_interested', query: hideScope(t), heard: 'Not for me' };
+  }
+  if (/\b(clear|delete|erase|forget|wipe)\b.*\b(activity|history|data|what you (know|learned))\b/i.test(t)) {
+    return { ...blank, kind: 'privacy', query: 'clear', heard: 'Clear my activity' };
+  }
+  // "Stop suggesting this place", "don't recommend biryani": one thing they do
+  // not want, not the whole feature. Checked before switching suggestions off.
+  if (STOP_SUGGESTING.test(t) && stopObject(t)) {
+    return { ...blank, kind: 'not_interested', query: hideScope(t), heard: 'Not for me' };
+  }
+  // Off only when they name the feature and nothing else: "turn off personalised suggestions".
+  if (SWITCH_OFF.test(t) && !stopObject(t)) {
+    return { ...blank, kind: 'privacy', query: 'off', heard: 'Turn off personalised suggestions' };
+  }
+  if (/\b(turn on|switch on|enable|start)\b.*\b(suggest|personali[sz])/i.test(t)) {
+    return { ...blank, kind: 'privacy', query: 'on', heard: 'Turn on personalised suggestions' };
+  }
+  if (/\bwhat (do you|does yolo) know about me\b|\bmy (data|privacy)\b|\bwhat have you (recorded|learned|learnt)\b/i.test(t)) {
+    return { ...blank, kind: 'privacy', query: 'summary', heard: 'What YOLO knows about you' };
+  }
   if (/\bhow much\b.*\b(sav|spen)|\b(my savings|saved so far|total sav|money saved)\b|कितना (बचा|बचत)|बचत|ಎಷ್ಟು ಉಳಿ|ಉಳಿತಾಯ/i.test(t)) {
     return { ...blank, kind: 'savings', heard: 'Your savings' };
   }

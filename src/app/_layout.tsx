@@ -5,7 +5,7 @@
  */
 
 import { useCallback, useEffect, useState } from 'react';
-import { Platform } from 'react-native';
+import { Platform, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
@@ -24,10 +24,14 @@ import { Fraunces_600SemiBold } from '@expo-google-fonts/fraunces/600SemiBold';
 import { color } from '../theme/tokens';
 import { installFocusRing } from '../lib/focus-ring';
 import { ChromeProvider } from '../ui/chrome';
+import { DemoBar } from '../ui/DemoBar';
+import { FirstRun } from '../ui/FirstRun';
+import { LiveAlerts } from '../ui/LiveAlerts';
 import { LaunchSplash, markLaunchDone } from '../ui/LaunchSplash';
 import { LoadErrorBanner } from '../ui/LoadErrorBanner';
 import { PageTitle } from '../ui/PageTitle';
 import { VoiceHost } from '../voice/VoiceHost';
+import { track } from '../lib/track';
 
 // A deep link to a deal, a category or Profile still has Home underneath, so
 // Back and "go home" land somewhere instead of leaving the app.
@@ -61,6 +65,11 @@ export default function RootLayout() {
     markLaunchDone();
   }, []);
 
+  // One visit per launch, for activity (kept per the person's consent, server-side).
+  useEffect(() => {
+    track({ name: 'app_open', surface: Platform.OS });
+  }, []);
+
   useEffect(() => {
     // Hide on error too: a missing font should degrade to the system face,
     // not leave the user staring at the splash forever.
@@ -76,6 +85,10 @@ export default function RootLayout() {
       <SafeAreaProvider>
         <ChromeProvider>
           <StatusBar style="dark" />
+          {/* The demo bar, when shown, sits above every screen rather than over it. */}
+          <View style={{ flex: 1 }}>
+            <DemoBar />
+            <View style={{ flex: 1 }}>
           <Stack
             screenOptions={{
               headerShown: false,
@@ -91,8 +104,12 @@ export default function RootLayout() {
             <Stack.Screen name="merchant" />
             <Stack.Screen name="admin" />
           </Stack>
+            </View>
+          </View>
           <LoadErrorBanner />
           <PageTitle />
+          <FirstRun />
+          <LiveAlerts />
           <VoiceHost />
           {splashDone ? null : <LaunchSplash ready onDone={endSplash} />}
         </ChromeProvider>

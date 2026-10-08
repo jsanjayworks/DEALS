@@ -10,7 +10,7 @@ import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, View } fr
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { db, RuleViolation } from '../../data';
-import type { Business, Locality } from '../../data/types';
+import type { Business, Category, Locality } from '../../data/types';
 import { hapticSuccess } from '../../lib/device';
 import { useQuery } from '../../lib/useQuery';
 import { useBusiness } from '../../merchant/useBusiness';
@@ -24,13 +24,22 @@ export default function BusinessDetailsScreen() {
   const { business, loading, reload } = useBusiness();
   const fetchLocalities = useCallback(() => db.getLocalities(), []);
   const { data: localities } = useQuery(fetchLocalities);
+  // The backend's categories: on Supabase their ids are uuids, not the seed's.
+  const fetchCategories = useCallback(() => db.getCategories(), []);
+  const { data: categories } = useQuery(fetchCategories);
 
   return (
     <View style={styles.screen}>
       <Header title="Business details" dark onBack={() => (router.canGoBack() ? router.back() : router.replace('/merchant'))} />
       {business ? (
         // Keyed by business, so the form starts from that business's details.
-        <DetailsForm key={business.id} business={business} localities={localities ?? []} onSaved={reload} />
+        <DetailsForm
+          key={business.id}
+          business={business}
+          localities={localities ?? []}
+          categories={categories ?? CATEGORIES}
+          onSaved={reload}
+        />
       ) : loading ? null : (
         <EmptyState icon="store" title="No business yet" body="List your business first." />
       )}
@@ -41,10 +50,12 @@ export default function BusinessDetailsScreen() {
 function DetailsForm({
   business,
   localities,
+  categories,
   onSaved,
 }: {
   business: Business;
   localities: Locality[];
+  categories: Category[];
   onSaved: () => void;
 }) {
   const insets = useSafeAreaInsets();
@@ -65,7 +76,7 @@ function DetailsForm({
     menu: business.menu ?? [],
     photos: business.photos ?? [],
   });
-  const category = CATEGORIES.find((c) => c.id === business.primary_category_id) ?? null;
+  const category = categories.find((c) => c.id === business.primary_category_id) ?? null;
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);

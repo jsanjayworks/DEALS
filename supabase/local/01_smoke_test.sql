@@ -326,6 +326,9 @@ begin
   v_me := act_as('customer@yolodeals.in');
   delete from deal_events where profile_id = v_me;
   delete from saved_deals where profile_id = v_me;
+  -- Learning needs consent and 18+ (0018); this customer agrees to both.
+  perform set_consent('adult', true);
+  perform set_consent('personalisation', true);
   select count(*) into v_n from my_taste();
   perform assert(v_n = 0 or exists (select 1 from customer_actions where customer_id = v_me),
                  'taste: nothing learned before any signal');
@@ -337,8 +340,10 @@ begin
   insert into saved_deals (profile_id, deal_id)
   values (v_me, (select id from deals where title = 'Chicken Seekh Kebab Plate'));
 
+  -- Both deals are also tagged non-veg, so the two tie at the top.
   perform assert(
-    (select key from my_taste() where kind = 'tag' order by weight desc limit 1) = 'chicken',
+    (select weight from my_taste() where kind = 'tag' and key = 'chicken')
+      >= (select max(weight) from my_taste() where kind = 'tag') - 1e-9,
     'taste: chicken is the strongest tag');
   perform assert(
     (select key from my_taste() where kind = 'category' order by weight desc limit 1) = 'dinner',
@@ -627,9 +632,9 @@ begin
   perform save_deal_draft(jsonb_build_object(
     'id', v_id, 'business_id', v_biz, 'original_price', 400, 'capacity_total', 25));
 
-  -- Submit it.
-  perform assert(transition_deal(v_id, 'SUBMITTED') = 'SUBMITTED',
-                 'a merchant can submit a draft');
+  -- Submit it. The demo merchant's business is verified, so it goes live (0016).
+  perform assert(transition_deal(v_id, 'SUBMITTED') in ('ACTIVE', 'PUBLISHED'),
+                 'a verified merchant''s submitted deal goes live');
 
   -- A submitted deal is no longer editable.
   declare v_failed boolean := false;

@@ -15,7 +15,7 @@
  * mention become deals with matched photos, posted when the business is made.
  */
 
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Redirect, router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -67,6 +67,22 @@ export default function ListBusinessScreen() {
       />
     </View>
   );
+}
+
+/** "HH:MM" as the database takes it, or null: '9:30' becomes '09:30', and midnight's '24:00' '23:59'. */
+function cleanTime(t: string | null): string | null {
+  const m = /^(\d{1,2}):(\d{2})(?::\d{2})?$/.exec((t ?? '').trim());
+  if (!m) return null;
+  const hhmm = m[1].padStart(2, '0') + ':' + m[2];
+  if (hhmm === '24:00') return '23:59';
+  return /^([01]\d|2[0-3]):[0-5]\d$/.test(hhmm) ? hhmm : null;
+}
+
+/** Whole rupees from 0 to 1,00,000, as the database takes it; anything else is left out. */
+function cleanCost(n: number | null): number | null {
+  if (typeof n !== 'number' || !Number.isFinite(n)) return null;
+  const rupees = Math.round(n);
+  return rupees >= 0 && rupees <= 100000 ? rupees : null;
 }
 
 function SetupForm({
@@ -128,7 +144,14 @@ function SetupForm({
       if (p.address) setAddress(p.address);
       if (p.phone) setPhone(p.phone);
       setProducts(draftProducts(p.products));
-      setHeard(p);
+      // Only hours and a cost the database takes: one it refuses would stop the
+      // whole business being made, over a field this form never shows.
+      setHeard({
+        ...p,
+        open_time: cleanTime(p.open_time),
+        close_time: cleanTime(p.close_time),
+        cost_for_two: cleanCost(p.cost_for_two),
+      });
       setError(null);
       setVoiceOpen(false);
     } finally {
@@ -149,6 +172,10 @@ function SetupForm({
     refs?.localities.find((l) => l.name === defaultLocalityName)?.id ??
     null;
 
+  // Kept across tries: a failed deal post after the business was made never makes a second business.
+  const createdId = useRef<string | null>(null);
+  const postedProducts = useRef(new Set<number>());
+
   const submit = async () => {
     setError(null);
     if (owner.trim().length < 2) return setError('Enter your name');
@@ -161,7 +188,7 @@ function SetupForm({
     try {
       if (owner.trim() !== defaultName.trim()) await db.updateMyProfile({ full_name: owner.trim() });
       const businessType = does.trim() || null;
-      const businessId = await db.createBusiness({
+      const businessId = createdId.current ?? await db.createBusiness({
         name: name.trim(),
         primary_category_id: categoryId,
         locality_id: localityId,
@@ -180,6 +207,7 @@ function SetupForm({
         photos: products.slice(0, 6).map((p) => productPhoto(p, businessType)),
         menu: menuFrom(products, businessType),
       });
+      createdId.current = businessId;
       // The products said by voice go live as deals with the business.
       if (products.some((p) => p.post)) {
         await publishProducts(businessId, products, {
@@ -188,6 +216,8 @@ function SetupForm({
           open: heard?.open_time ?? null,
           close: heard?.close_time ?? null,
           days: heard?.days ?? null,
+          done: postedProducts.current,
+          onPosted: (i) => postedProducts.current.add(i),
         });
       }
       await onCreated();

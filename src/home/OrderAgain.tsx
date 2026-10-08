@@ -11,6 +11,7 @@ import { router } from 'expo-router';
 import { nextOnLabel, orderableNow } from '../assistant/find';
 import { isLiveDeal, loadHistory, timesLabel } from '../assistant/history';
 import { useQuery } from '../lib/useQuery';
+import { track } from '../lib/track';
 import { useViewer } from '../state/session';
 import { color, inr, radius, space, type } from '../theme/tokens';
 import { Button } from '../components';
@@ -33,11 +34,18 @@ export function OrderAgain() {
   const { data } = useQuery(fetchUsuals);
   if (!data || data.length === 0) return null;
 
-  const open = (id: string, take: boolean, qty: number) =>
+  const open = (id: string, take: boolean, qty: number) => {
+    if (take) track({ name: 'reorder_tap', deal_id: id, surface: 'home.order_again' });
     router.push({
       pathname: '/deal/[id]',
-      params: { id, ...(take ? { take: '1' } : {}), ...(take && qty > 1 ? { qty: String(qty) } : {}) },
+      params: {
+        id,
+        from: 'home.order_again',
+        ...(take ? { take: '1' } : {}),
+        ...(take && qty > 1 ? { qty: String(qty) } : {}),
+      },
     });
+  };
 
   return (
     <View style={styles.section}>

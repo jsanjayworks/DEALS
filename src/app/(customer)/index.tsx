@@ -239,11 +239,14 @@ export default function HomeScreen() {
 
   // Stable callbacks: the rails, spotlight and grid are memoised, and a new
   // function every render would make every one of them re-render on a tap.
-  const openDeal = useCallback((deal: DealCardModel, source = 'home') => {
-    void db.recordEvents([{ deal_id: deal.id, event_type: 'view', source }]);
-    router.push({ pathname: '/deal/[id]', params: { id: deal.id } });
+  // The deal page records the open, with which rail and where in it (lib/track.ts).
+  const openDeal = useCallback((deal: DealCardModel, from = 'home', position?: number) => {
+    router.push({
+      pathname: '/deal/[id]',
+      params: { id: deal.id, from, ...(position != null ? { pos: String(position) } : {}) },
+    });
   }, []);
-  const openSpotlight = useCallback((d: DealCardModel) => openDeal(d, 'spotlight'), [openDeal]);
+  const openSpotlight = useCallback((d: DealCardModel) => openDeal(d, 'home.spotlight'), [openDeal]);
 
   const openCategory = useCallback((c: Category, from: LaunchRect | null) => {
     setLaunchRect(from);
@@ -351,6 +354,7 @@ export default function HomeScreen() {
         ) : (
           <>
             <Rail
+              surface="home.near_you"
               title="Deals near you"
               deals={rails?.near_you}
               loading={loading}
@@ -360,21 +364,23 @@ export default function HomeScreen() {
             <OrderAgain />
             <Collections origin={origin} />
             <Rail
+              surface="home.for_you"
               title="Picked for you"
               note={data?.because}
               deals={data?.forYou}
               loading={false}
               onOpen={openDeal}
             />
-            <Rail title="Trending" ranked deals={rails?.trending} loading={loading} onOpen={openDeal} />
+            <Rail surface="home.trending" title="Trending" ranked deals={rails?.trending} loading={loading} onOpen={openDeal} />
             <Rail
+              surface="home.ending_soon"
               title="Ending soon"
               deals={rails?.ending_soon}
               loading={loading}
               onOpen={openDeal}
               onSeeAll={seeAllEnding}
             />
-            <Rail title="New this week" compact deals={rails?.new} loading={loading} onOpen={openDeal} />
+            <Rail surface="home.new" title="New this week" compact deals={rails?.new} loading={loading} onOpen={openDeal} />
           </>
         )}
       </Animated.ScrollView>
@@ -510,6 +516,7 @@ const Rail = memo(RailSection);
  * buttons page through it and grey out at either end.
  */
 function RailSection({
+  surface,
   title,
   deals,
   loading,
@@ -522,7 +529,9 @@ function RailSection({
   title: string;
   deals: DealCardModel[] | undefined;
   loading: boolean;
-  onOpen: (d: DealCardModel) => void;
+  onOpen: (d: DealCardModel, from: string, position: number) => void;
+  /** Where these deals were seen, for activity: 'home.for_you'. */
+  surface: string;
   onSeeAll?: () => void;
   ranked?: boolean;
   compact?: boolean;
@@ -586,7 +595,7 @@ function RailSection({
                 ))
               : list.map((d, i) => (
                   <View key={d.id} style={{ width }}>
-                    <DealCard deal={d} variant={compact ? 'compact' : 'large'} style={{ width }} onPress={() => onOpen(d)} />
+                    <DealCard deal={d} variant={compact ? 'compact' : 'large'} style={{ width }} onPress={() => onOpen(d, surface, i)} />
                     {ranked ? (
                       <View style={styles.rank} pointerEvents="none">
                         <Text style={styles.rankText}>{i + 1}</Text>

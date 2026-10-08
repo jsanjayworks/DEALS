@@ -14,6 +14,7 @@ import { photoUrl } from '../data/photo-library';
 import { PHOTO_TOPICS } from '../data/photo-library-data';
 import type { LatLng } from '../data/types';
 import { parseQuery } from '../search/parser';
+import { track } from '../lib/track';
 import { useQuery } from '../lib/useQuery';
 import { color, radius, space, type } from '../theme/tokens';
 import { Container } from '../ui/layout';
@@ -66,7 +67,11 @@ export function Collections({ origin }: { origin: LatLng }) {
         {shown.map((c) => (
           <Pressable
             key={c.key}
-            onPress={() => router.push({ pathname: '/results', params: { q: c.q, radius: String(CITY_M) } })}
+            onPress={() => {
+              track({ name: 'collection_open', surface: 'home.collections', props: { collection: c.key } });
+              // Counted as a collection, not as a search they typed.
+              router.push({ pathname: '/results', params: { q: c.q, radius: String(CITY_M), from: 'collection' } });
+            }}
             accessibilityRole="button"
             accessibilityLabel={c.title + (data ? ', ' + (data[c.key] ?? 0) + ' deals' : '')}
             style={({ pressed }) => [styles.card, pressed && { transform: [{ scale: 0.98 }] }]}

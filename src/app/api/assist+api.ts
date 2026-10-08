@@ -6,6 +6,12 @@
  * Runs only where ANTHROPIC_API_KEY is set (.env.local, or the host's
  * secrets); the key never reaches the browser. Without it this answers 503
  * and the app falls back to its built-in rules (src/voice/rules.ts).
+ *
+ * Only a signed-in person may use it, within a daily allowance
+ * (use_voice_quota, migration 0017), so nobody can spend the key by finding
+ * the URL. The demo and signed-out visitors get 401 and use the built-in
+ * rules instead. Without the Supabase settings it refuses everyone (503),
+ * unless ASSIST_OPEN_DEV=1 is set for local development; deploys never set it.
  */
 
 import Anthropic from '@anthropic-ai/sdk';
@@ -15,7 +21,48 @@ import { AMENITY_KEYS } from '../../data/amenities';
 import { INTENT_KINDS, SCREENS } from '../../voice/types';
 
 const MODEL = 'claude-opus-5-5';
-const MAX_CHARS = 4000;
+
+/** Longest input and answer per task: a command is a sentence, a business a paragraph or two. */
+const MAX_CHARS = { customer: 600, deal: 2000, merchant: 4000 } as const;
+const MAX_TOKENS = { customer: 2000, deal: 4000, merchant: 8000 } as const;
+
+/**
+ * How long the server waits for Claude, a little under how long the app
+ * waits (src/voice/assist.ts), so a slow answer is stopped, not billed for
+ * nothing. A whole business description takes longest.
+ */
+const TIMEOUT_MS = { customer: 18_000, deal: 28_000, merchant: 55_000 } as const;
+
+const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL;
+const SUPABASE_KEY = process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY || process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
+
+/**
+ * Null when the caller may go ahead, else the response to send. Supabase
+ * checks the token itself when the quota function runs as that person.
+ */
+async function refusal(request: Request, task: keyof typeof MAX_CHARS): Promise<Response | null> {
+  if (!SUPABASE_URL || !SUPABASE_KEY) {
+    // Local development with no backend at all, by explicit choice only.
+    if (process.env.ASSIST_OPEN_DEV === '1') return null;
+    console.error('assist refused: EXPO_PUBLIC_SUPABASE_URL or its key is not set on the server');
+    return Response.json({ error: 'misconfigured' }, { status: 503 });
+  }
+  const token = (request.headers.get('authorization') ?? '').replace(/^Bearer\s+/i, '').trim();
+  if (!token) return Response.json({ error: 'sign_in' }, { status: 401 });
+  try {
+    const res = await fetch(SUPABASE_URL.replace(/\/$/, '') + '/rest/v1/rpc/use_voice_quota', {
+      method: 'POST',
+      headers: { apikey: SUPABASE_KEY, Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ p_task: task }),
+    });
+    if (res.status === 401 || res.status === 403) return Response.json({ error: 'sign_in' }, { status: 401 });
+    if (!res.ok) return Response.json({ error: 'quota_check' }, { status: 503 });
+    if ((await res.json()) !== true) return Response.json({ error: 'daily_limit' }, { status: 429 });
+    return null;
+  } catch {
+    return Response.json({ error: 'quota_check' }, { status: 503 });
+  }
+}
 
 const nullableString = z.string().nullable();
 const nullableInt = z.number().int().nullable();
@@ -54,7 +101,7 @@ const MerchantSchema = z.object({
   open_time: nullableString,
   close_time: nullableString,
   days: z.array(z.number().int()).nullable(),
-  cost_for_two: z.number().nullable(),
+  cost_for_two: nullableInt,
   amenities: z.array(z.enum(AMENITY_KEYS as [string, ...string[]])),
   cuisines: z.array(z.string()),
   products: z.array(ProductSchema),
@@ -95,6 +142,8 @@ Jobs the app answers from the customer's own orders (prefer these over search wh
 - my_codes: their codes, QR or upcoming bookings ("what's my code", "when is my table booking"). business if they named a place.
 - cancel: cancel one of their orders or bookings. business and query (what it was) when said. The app asks them to confirm.
 - business_info: a question about one place: is it open, timings, cost for two, rating ("is Rangoli Kitchen open now"). business is the name.
+- not_interested: they do not want something suggested again ("not for me", "show less of this", "I don't eat here", "stop suggesting this", "stop suggesting this place", "don't recommend biryani"). query is "business" when it is about the place, "category" for that kind of thing, else "deal".
+- privacy: about their data. query is "summary" (what do you know about me), "clear" (clear or forget my activity), "off" (turn off personalised suggestions or tracking altogether, naming no particular deal, place or thing) or "on" (turn them on). "Stop suggesting this" is not_interested, never off.
 
 Jobs for a business owner (only when they are on their merchant screens):
 - merchant_summary: how business is going today: orders, earnings, bookings, best seller.
@@ -137,53 +186,77 @@ export async function POST(request: Request) {
     return Response.json({ error: 'no_key' }, { status: 503 });
   }
 
-  let body: {
-    task?: string;
-    text?: string;
-    lang?: string;
-    today?: string;
-    now?: string;
-    areas?: string[];
-    mode?: string;
-    business?: string | null;
-  };
+  let raw: unknown;
   try {
-    body = await request.json();
+    raw = await request.json();
   } catch {
     return Response.json({ error: 'bad_request' }, { status: 400 });
   }
-  const task = body.task;
-  const text = (body.text ?? '').trim();
-  if ((task !== 'customer' && task !== 'merchant' && task !== 'deal') || !text || text.length > MAX_CHARS) {
+  // Anyone can post here: check every field's type before using it.
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
     return Response.json({ error: 'bad_request' }, { status: 400 });
   }
+  const fields = raw as Record<string, unknown>;
+  const str = (v: unknown) => (typeof v === 'string' ? v : undefined);
+  const body = {
+    task: str(fields.task),
+    text: str(fields.text),
+    lang: str(fields.lang),
+    today: str(fields.today),
+    now: str(fields.now),
+    areas: fields.areas,
+    mode: str(fields.mode),
+    business: fields.business,
+  };
+  const task = body.task;
+  const text = (body.text ?? '').trim();
+  if ((task !== 'customer' && task !== 'merchant' && task !== 'deal') || !text || text.length > MAX_CHARS[task]) {
+    return Response.json({ error: 'bad_request' }, { status: 400 });
+  }
+  const refused = await refusal(request, task);
+  if (refused) return refused;
 
+  // Everything that reaches the prompt is bounded, not only the words said.
+  const today = /^\d{4}-\d{2}-\d{2}$/.test(body.today ?? '') ? body.today : '';
+  const now = /^\d{2}:\d{2}$/.test(body.now ?? '') ? body.now : '';
+  const areas = (Array.isArray(body.areas) ? body.areas : [])
+    .filter((a): a is string => typeof a === 'string')
+    .slice(0, 60)
+    .map((a) => a.slice(0, 40));
+  const business = typeof body.business === 'string' ? body.business.slice(0, 80) : '';
   const context = [
-    'Today in Bengaluru: ' + (body.today ?? '') + ', ' + (body.now ?? '') + '.',
+    'Today in Bengaluru: ' + today + ', ' + now + '.',
     'The speaker chose ' + (LANG_NAME[body.lang ?? ''] ?? 'English') + ' for speech recognition.',
-    'Areas the app covers: ' + (body.areas ?? []).join(', ') + '.',
+    'Areas the app covers: ' + areas.join(', ') + '.',
     body.mode === 'merchant'
-      ? 'They are the owner of ' + (body.business || 'a business') + ', on their merchant screens.'
+      ? 'They are the owner of ' + (business || 'a business') + ', on their merchant screens.'
       : 'They are a customer.',
   ].join('\n');
 
-  const client = new Anthropic();
+  const client = new Anthropic({ timeout: TIMEOUT_MS[task], maxRetries: 0 });
   try {
     const response = await client.beta.messages.parse({
       model: MODEL,
-      max_tokens: task === 'merchant' ? 16000 : 8000,
+      max_tokens: MAX_TOKENS[task],
       // If this model declines, the API retries on a suitable fallback model.
       betas: ['server-side-fallback-2026-07-01'],
       fallbacks: 'default',
       output_config: { effort: EFFORT[task], format: FORMATS[task] },
       system: SYSTEM[task],
       messages: [{ role: 'user', content: context + '\n\nWhat they said:\n"""\n' + text + '\n"""' }],
-    });
+    },
+    // If the app gives up first, stop the call then too.
+    { signal: request.signal });
     if (response.stop_reason === 'refusal' || !response.parsed_output) {
       return Response.json({ error: 'not_understood' }, { status: 422 });
     }
     return Response.json({ result: response.parsed_output });
   } catch (error) {
+    // The app stopped waiting: nothing to log, nobody to answer.
+    if (error instanceof Anthropic.APIUserAbortError) return new Response(null, { status: 499 });
+    if (error instanceof Anthropic.APIConnectionTimeoutError) return Response.json({ error: 'slow' }, { status: 504 });
+    // Shows in the host's logs; the person just gets the built-in rules.
+    console.error('assist failed', task, error instanceof Error ? error.message : error);
     if (error instanceof Anthropic.AuthenticationError) return Response.json({ error: 'bad_key' }, { status: 503 });
     if (error instanceof Anthropic.RateLimitError) return Response.json({ error: 'busy' }, { status: 429 });
     if (error instanceof Anthropic.APIError) return Response.json({ error: 'upstream' }, { status: 502 });

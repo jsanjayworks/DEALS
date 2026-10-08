@@ -17,6 +17,7 @@ import { slotCapacity } from '../data/booking';
 import type {
   AttributeValue,
   AudienceKind,
+  Category,
   CtaType,
   Deal,
   DealTypeCode,
@@ -181,11 +182,15 @@ export function emptyForm(now: Date = new Date()): WizardForm {
 
 const str = (n: number | null | undefined) => (n == null ? '' : String(n));
 
-/** Rehydrate the form from a saved draft or a rejected deal. */
-export function fromDeal(d: Deal): WizardForm {
-  const category = CATEGORIES.find((c) => c.id === d.category_id);
+/**
+ * Rehydrate the form from a saved draft or a rejected deal. `categories` are
+ * the backend's own: on Supabase their ids are uuids, not the seed's.
+ */
+export function fromDeal(d: Deal, categories: Category[] = CATEGORIES): WizardForm {
+  const category = categories.find((c) => c.id === d.category_id);
   return {
-    offering: '',
+    // The title stands in for what they are offering, so step 1 reads as done.
+    offering: d.title === 'Untitled deal' ? '' : d.title,
     keywords: (d.tags ?? []).join(', '),
     vertical: category?.vertical ?? null,
     category_slug: category?.slug ?? null,

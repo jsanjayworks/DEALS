@@ -4,7 +4,7 @@
 set -uo pipefail
 CONTAINER="${YOLO_PG_CONTAINER:-yolo-pg}"
 status=0
-for f in supabase/local/01_smoke_test.sql supabase/local/02_rls_test.sql; do
+for f in supabase/local/01_smoke_test.sql supabase/local/02_rls_test.sql supabase/local/03_production_core_test.sql supabase/local/04_activity_test.sql supabase/local/05_launch_test.sql supabase/local/06_review_fixes_test.sql; do
   echo "### $f"
   docker exec -i "$CONTAINER" psql -U postgres -d yolo -v ON_ERROR_STOP=1 < "$f" 2>&1 \
     | sed -E 's/^(NOTICE|ERROR):[[:space:]]+//' \

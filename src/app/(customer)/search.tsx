@@ -97,8 +97,7 @@ export default function SearchScreen() {
 
   const openDeal = (deal: DealCardModel) => {
     addRecent(text.trim());
-    void db.recordEvents([{ deal_id: deal.id, event_type: 'view', source: 'search' }]);
-    router.push({ pathname: '/deal/[id]', params: { id: deal.id } });
+    router.push({ pathname: '/deal/[id]', params: { id: deal.id, from: 'search.suggest' } });
   };
 
   const submit = (q: string) => {

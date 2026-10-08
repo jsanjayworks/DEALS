@@ -4,7 +4,8 @@
  * Entered four ways: a typed query (?q=), a category tile (?vertical=), a
  * "See all" on Home (?sort=, ?radius=) or My vehicle (?vehicle=). All become
  * one SearchFilters value and one search_deals call, so they rank and filter
- * identically.
+ * identically. A collection or the assistant adds ?from=: they record their
+ * own event, so the words are not counted again as a typed search.
  *
  * When nothing matches, the search loosens itself a step at a time (see
  * search/relax) and says what it changed, instead of showing an empty page.
@@ -14,7 +15,7 @@
  * did not mean without retyping.
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -37,6 +38,7 @@ import {
 } from '../components';
 import { reach } from '../lib/a11y';
 import { openVoice } from '../voice/VoiceHost';
+import { track } from '../lib/track';
 
 const PAGE = 20;
 
@@ -99,6 +101,7 @@ export default function ResultsScreen() {
     sort?: string;
     radius?: string;
     vehicle?: string;
+    from?: string;
   }>();
   const sessionRadius = useSession((s) => s.radiusM);
   const layout = useLayout();
@@ -120,6 +123,29 @@ export default function ResultsScreen() {
   const relaxNote = relaxed && relaxed.to === filters ? relaxed.note : null;
 
   const q = params.q ?? '';
+  const typed = !params.from;
+  const searched = useRef<string | null>(null);
+  /** Counts a typed search once per query and filters. */
+  const recordSearch = (f: SearchFilters, resultCount: number) => {
+    const key = q + '|' + JSON.stringify(f);
+    if (!typed || !q.trim() || searched.current === key) return;
+    searched.current = key;
+    track({
+      name: 'search',
+      surface: 'search',
+      query: q.trim(),
+      props: {
+        result_count: resultCount,
+        filters: {
+          vertical: f.vertical,
+          category: f.category_slug,
+          price_max: f.price_max,
+          locality: f.locality,
+          amenities: f.amenities,
+        },
+      },
+    });
+  };
   const fetchPage = useCallback(
     (offset: number) => db.searchDeals({ q, filters, origin, limit: PAGE, offset }),
     [q, filters, origin],
@@ -144,6 +170,9 @@ export default function ResultsScreen() {
             const found = await db.searchDeals({ q, filters: step.filters, origin, limit: 1 });
             if (!active) return;
             if (found.total > 0) {
+              // What they asked found nothing: that is the search to count,
+              // not the loosened one shown instead.
+              recordSearch(filters, 0);
               setRelaxed({ from: filters, to: step.filters, note: step.note });
               setFilters(step.filters);
               return;
@@ -151,6 +180,7 @@ export default function ResultsScreen() {
           }
         }
         setLoaded({ source: fetchPage, deals: r.deals, total: r.total, error: null });
+        if (relaxed?.to !== filters) recordSearch(filters, r.total);
       })
       .catch(() => {
         if (active) {
@@ -190,9 +220,11 @@ export default function ResultsScreen() {
   const centreName = filters.locality ?? place.of;
   const radiusKm = filters.radius_km ?? 5;
 
-  const openDeal = (deal: DealCardModel) => {
-    void db.recordEvents([{ deal_id: deal.id, event_type: 'view', source: 'search' }]);
-    router.push({ pathname: '/deal/[id]', params: { id: deal.id } });
+  const openDeal = (deal: DealCardModel, position?: number) => {
+    router.push({
+      pathname: '/deal/[id]',
+      params: { id: deal.id, from: 'search', ...(position != null ? { pos: String(position) } : {}) },
+    });
   };
 
   const clearRefinements = () =>
@@ -284,9 +316,9 @@ export default function ResultsScreen() {
           columnWrapperStyle={layout.listColumns > 1 ? { gap: space.md } : undefined}
           data={deals ?? []}
           keyExtractor={(d) => d.id}
-          renderItem={({ item }) => (
+          renderItem={({ item, index }) => (
             <View style={layout.listColumns > 1 ? { width: cell } : styles.cell}>
-              <DealCard deal={item} variant="list" onPress={() => openDeal(item)} />
+              <DealCard deal={item} variant="list" onPress={() => openDeal(item, index)} />
             </View>
           )}
           ListHeaderComponent={header}

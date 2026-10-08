@@ -15,9 +15,9 @@ import { useCallback, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Constants from 'expo-constants';
 import { router } from 'expo-router';
-import { auth, backend, db, demoAccounts, resetDemoData } from '../data';
+import { auth, db, demoAccounts, demoIsOptional, leaveDemo, resetDemoData } from '../data';
 import { useQuery } from '../lib/useQuery';
-import { type AccountKind, useSession, useViewer } from '../state/session';
+import { type AccountKind, useDemo, useSession, useViewer } from '../state/session';
 import { choiceLabel } from '../data/vehicles';
 import { color, radius, size, space, type } from '../theme/tokens';
 import { Avatar, Button, Chip, EmptyState, Header, Icon, type IconName, VerifiedBadge } from '../components';
@@ -32,6 +32,8 @@ export default function ProfileScreen() {
   const setAccount = useSession((s) => s.setAccount);
   const viewer = useViewer();
   const vehicle = choiceLabel(useSession((s) => s.vehicleId));
+  // The demo's parts appear once the page is live; the server renders the real app.
+  const demo = useDemo();
 
   const fetchCounts = useCallback(async () => {
     void viewer;
@@ -238,15 +240,23 @@ export default function ProfileScreen() {
         <Text style={styles.sectionTitle}>Account</Text>
         <View style={styles.group}>
           <Row icon="user" title="Edit profile" onPress={() => router.push('/account/edit')} />
+          <Row
+            icon="shield"
+            title="Privacy and data"
+            value={viewer.personalised ? 'Suggestions on' : 'Suggestions off'}
+            onPress={() => router.push('/account/privacy')}
+          />
           <Row icon="x" title="Delete account" tone="alert" onPress={() => router.push('/account/delete')} last />
         </View>
 
-        {backend === 'local' ? (
+        {demo ? (
           <>
             <Text style={styles.sectionTitle}>Demo account</Text>
             <View style={styles.group}>
               <Text style={styles.demoNote}>
-                Running on offline demo data. Switch accounts here without signing out.
+                {demoIsOptional
+                  ? 'You are exploring the demo: sample data in this browser only. Switch accounts here without signing out.'
+                  : 'Running on offline demo data. Switch accounts here without signing out.'}
               </Text>
               <View style={styles.chips}>
                 {(Object.keys(ACCOUNT_LABEL) as AccountKind[]).map((k) => (
@@ -256,6 +266,13 @@ export default function ProfileScreen() {
                 ))}
               </View>
               <ResetDemo />
+              {demoIsOptional ? (
+                <View style={styles.reset}>
+                  <Button small variant="secondary" icon="back" onPress={leaveDemo}>
+                    Leave demo for the real app
+                  </Button>
+                </View>
+              ) : null}
             </View>
           </>
         ) : null}
@@ -266,7 +283,7 @@ export default function ProfileScreen() {
         </View>
 
         <Text style={styles.version}>
-          YOLO Deals {Constants.expoConfig?.version ?? ''} · {db.kind === 'local' ? 'offline demo data' : 'live'}
+          YOLO Deals {Constants.expoConfig?.version ?? ''} · {demo ? 'offline demo data' : 'live'}
         </Text>
       </ScrollView>
     </View>

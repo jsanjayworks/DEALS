@@ -15,7 +15,12 @@ DB="${YOLO_PG_DB:-yolo}"
 USER_="${YOLO_PG_USER:-postgres}"
 
 psql_file() {
-  docker exec -i "$CONTAINER" psql -U "$USER_" -d "$DB" -v ON_ERROR_STOP=1 -q < "$1"
+  # The seed refuses to run unless the session says this is a local database.
+  if [ "$(basename "$1")" = "seed.sql" ]; then
+    { echo "set app.allow_seed = 'on';"; cat "$1"; } | docker exec -i "$CONTAINER" psql -U "$USER_" -d "$DB" -v ON_ERROR_STOP=1 -q
+  else
+    docker exec -i "$CONTAINER" psql -U "$USER_" -d "$DB" -v ON_ERROR_STOP=1 -q < "$1"
+  fi
 }
 
 echo "Dropping and recreating schemas..."

@@ -49,3 +49,6 @@ yarn-error.*
 .expo/
 .expo-export/
 expo-env.d.ts
+
+# Local secrets (Expo and EAS docs use .env too)
+.env

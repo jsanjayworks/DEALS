@@ -3,12 +3,16 @@
  * so swapping the backing store is a change to this file alone.
  *
  * With EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY set
- * (in .env.local, or the build environment), the app talks to Supabase and
- * people sign in with a one-time code. Without them it runs on the local
- * adapter: the same Bengaluru deals the database is seeded with, the same
- * rules, three demo accounts and no network. That keeps the app demoable
- * anywhere. The demo starts signed out; any email signs in straight away (a
- * new one makes a new account), and what happens is kept in the browser.
+ * (in .env.local, or the build environment), the app is the real thing: it
+ * talks to Supabase and people sign in with a one-time code. Without them it
+ * runs on the local adapter: sample Bengaluru businesses, the same rules,
+ * three demo accounts and no network.
+ *
+ * A real build can still show the demo: "Explore the demo" (enterDemo) flips
+ * this browser to the local adapter until "Leave demo". Its sample data and
+ * accounts live only in that browser and never touch the real database. The
+ * demo starts signed out; any email signs in straight away (a new one makes
+ * a new account).
  *
  * The viewer (who is signed in) is cached here and pushed to listeners, so
  * screens can read it synchronously and still re-render when it changes.
@@ -45,7 +49,55 @@ export function hasSupabaseConfig(): boolean {
   return Boolean(SUPABASE_URL && SUPABASE_KEY);
 }
 
-const client = hasSupabaseConfig() ? createSupabase(SUPABASE_URL!, SUPABASE_KEY!) : null;
+/** Set in this browser by "Explore the demo"; cleared by "Leave demo". */
+const DEMO_FLAG = 'yolo-demo-mode';
+
+function demoChosen(): boolean {
+  try {
+    return typeof window !== 'undefined' && window.localStorage?.getItem(DEMO_FLAG) === 'on';
+  } catch {
+    return false;
+  }
+}
+
+/** This build has the real backend, so the demo is somewhere a visitor steps into and out of. */
+export const demoIsOptional = hasSupabaseConfig();
+
+// A production build without its backend must not quietly become the demo,
+// where any email signs in without a code. EAS production builds set
+// EXPO_PUBLIC_APP_ENV=production (eas.json).
+if (process.env.EXPO_PUBLIC_APP_ENV === 'production' && !demoIsOptional) {
+  throw new Error(
+    'YOLO is misconfigured: EXPO_PUBLIC_SUPABASE_URL and the publishable key are missing from this production build.',
+  );
+}
+
+const client = demoIsOptional && !demoChosen() ? createSupabase(SUPABASE_URL!, SUPABASE_KEY!) : null;
+
+/** Starts afresh on Home, so nothing from the other side is left on screen. */
+function restartOnHome(): void {
+  if (typeof window !== 'undefined') window.location.assign('/');
+}
+
+/** Into the demo: sample businesses and ready-made accounts, kept in this browser only. */
+export function enterDemo(): void {
+  try {
+    window.localStorage.setItem(DEMO_FLAG, 'on');
+  } catch {
+    return;
+  }
+  restartOnHome();
+}
+
+/** Back to the real app; the demo's data stays in this browser for next time. */
+export function leaveDemo(): void {
+  try {
+    window.localStorage.removeItem(DEMO_FLAG);
+  } catch {
+    // Nothing stored, so nothing to clear.
+  }
+  restartOnHome();
+}
 // The demo keeps its data in the browser; alongside Supabase it is never used.
 const local: LocalDataSource = client
   ? createLocalDataSource()
@@ -84,6 +136,13 @@ export function viewerReady(): boolean {
 export function onViewerChange(cb: (v: AppViewer | null) => void): () => void {
   listeners.add(cb);
   return () => listeners.delete(cb);
+}
+
+/** The signed-in person's access token for our own server routes; null in the demo or signed out. */
+export async function accessToken(): Promise<string | null> {
+  if (!client) return null;
+  const { data } = await client.auth.getSession();
+  return data.session?.access_token ?? null;
 }
 
 /** Re-read the viewer, e.g. after editing the profile. */
@@ -137,6 +196,8 @@ export function resetDemoData(): void {
 /** Back to a visitor on the local demo. */
 export function signOutDemo(): void {
   if (client) return;
+  // The adapter too, so a visitor's activity is tied to nobody, not to the last account.
+  local.signOut();
   publish(null);
 }
 
@@ -181,7 +242,11 @@ export const auth: AuthApi = client ? createSupabaseAuth(client) : demoAuth;
 export { RuleViolation } from './api';
 export type {
   ActionWithDeal,
+  ActivityEvent,
   AppViewer,
+  ConsentPurpose,
+  ConsentState,
+  HiddenItem,
   BusinessOrder,
   BusinessVerification,
   AuthApi,

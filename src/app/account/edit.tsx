@@ -66,6 +66,8 @@ function EditForm({ viewer, onDone }: { viewer: AppViewer; onDone: () => void })
   const [name, setName] = useState(viewer.full_name ?? '');
   const [email, setEmail] = useState(viewer.email ?? '');
   const [dob, setDob] = useState(toDisplay(viewer.date_of_birth));
+  // Once set, a date of birth changes only through support (it decides 18+ deals).
+  const dobLocked = !!viewer.date_of_birth;
   const [busy, setBusy] = useState(false);
   const [photoBusy, setPhotoBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -111,7 +113,7 @@ function EditForm({ viewer, onDone }: { viewer: AppViewer; onDone: () => void })
   const save = async () => {
     if (name.trim().length < 2) return setError('Enter your name');
     if (email.trim() && !EMAIL_RE.test(email.trim())) return setError('Enter a valid email address');
-    const parsed = parseDob(dob);
+    const parsed = dobLocked ? { iso: viewer.date_of_birth ?? null } : parseDob(dob);
     if ('error' in parsed) return setError(parsed.error);
     setBusy(true);
     setError(null);
@@ -163,16 +165,29 @@ function EditForm({ viewer, onDone }: { viewer: AppViewer; onDone: () => void })
             autoCapitalize="none"
             accessibilityLabel="Email"
           />
-          <Field
-            label="Date of birth"
-            value={dob}
-            onChangeText={(t) => edit(setDob)(maskDob(t))}
-            placeholder="DD/MM/YYYY"
-            keyboardType="number-pad"
-            maxLength={10}
-            accessibilityLabel="Date of birth"
-          />
-          <Text style={styles.hint}>Some deals are for 18+ or 21+. Your date of birth lets you claim them.</Text>
+          {dobLocked ? (
+            <View style={styles.locked}>
+              <Text style={styles.lockedLabel}>Date of birth</Text>
+              <Text style={styles.lockedValue}>{dob}</Text>
+              <Text style={styles.hint}>Some deals are for 18+ or 21+. To correct it, contact support from Help.</Text>
+            </View>
+          ) : (
+            <>
+              <Field
+                label="Date of birth"
+                value={dob}
+                onChangeText={(t) => edit(setDob)(maskDob(t))}
+                placeholder="DD/MM/YYYY"
+                keyboardType="number-pad"
+                maxLength={10}
+                accessibilityLabel="Date of birth"
+              />
+              <Text style={styles.hint}>
+                Some deals are for 18+ or 21+. Your date of birth lets you claim them. Once saved, only support can
+                change it.
+              </Text>
+            </>
+          )}
 
           <View style={styles.locked}>
             <Text style={styles.lockedLabel}>Phone</Text>

@@ -20,7 +20,7 @@ export const LEGAL = {
   /** Courts for disputes. */
   jurisdiction: 'Bengaluru, Karnataka',
   /** When this version of the policy and terms took effect. */
-  effectiveDate: '5 October 2026',
+  effectiveDate: '8 October 2026',
 } as const;
 
 /** Fields still empty; the deploy script and the pages read this. */

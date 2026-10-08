@@ -83,7 +83,7 @@ export function enrichBusinesses(businesses: Business[], deals: Deal[]): void {
       (a, i) => !base.includes(a) && (h >>> i) % 3 === 0 && (a !== 'pure_veg' || !/meat|biryani|kebab|chicken|tandoor|sushi|bbq|grill/i.test(b.name)),
     );
     b.amenities = [...base, ...extras];
-    if (/\b(sky|roof|terrace|toit)\b/i.test(b.name)) b.amenities.push('rooftop');
+    if (/\b(sky|roof|terrace)\b/i.test(b.name)) b.amenities.push('rooftop');
     if (food && b.cuisines.includes('South Indian') && h % 2 === 0 && !b.amenities.includes('pure_veg')) b.amenities.push('pure_veg');
   }
 }

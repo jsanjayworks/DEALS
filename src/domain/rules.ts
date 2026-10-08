@@ -134,8 +134,13 @@ export function checkAction({
   if (live.length > 0 && actionType !== 'enquiry') {
     return deny('You have already taken this deal');
   }
+  // But one question at a time: the business has not answered the first yet.
+  if (actionType === 'enquiry' && live.some((a) => a.action_type === 'enquiry' && a.status === 'pending')) {
+    return deny('You have already asked; the business will reply');
+  }
 
-  if (deal.capacity_remaining != null && deal.capacity_remaining < quantity) {
+  // A question takes nothing from what is left to sell.
+  if (actionType !== 'enquiry' && deal.capacity_remaining != null && deal.capacity_remaining < quantity) {
     return deal.capacity_remaining === 0
       ? deny('Sold out')
       : deny('Only ' + deal.capacity_remaining + ' left');
@@ -165,7 +170,9 @@ export function mintsCode(actionType: CustomerActionType): boolean {
     actionType === 'claim' ||
     actionType === 'booking' ||
     actionType === 'reserve' ||
-    actionType === 'registration'
+    actionType === 'registration' ||
+    // Bought at the counter: the code is what the shop checks (0019).
+    actionType === 'purchase_intent'
   );
 }
 

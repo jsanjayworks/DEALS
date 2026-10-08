@@ -23,13 +23,17 @@ import { SEED_ADMIN_QUEUE_DEALS, SEED_DEALS, SEED_PIPELINE_DEALS } from './seed-
 import { dealToCard, haversineKm } from './mapping';
 import { matchPhoto } from './photo-library';
 import { PAY_METHOD_LABEL, paymentOf } from '../lib/payment';
+import { slotLabel } from '../lib/format';
 import { SLOT_HOLDING, slotCapacity, slotKey } from './booking';
 import { enrichBusinesses, seedReviews } from './seed-extras';
 import {
   RuleViolation,
   type ActionWithDeal,
+  type ActivityEvent,
   type AppViewer,
   type BusinessOrder,
+  type ConsentPurpose,
+  type HiddenItem,
   type SlotLoad,
   type NewReview,
   type DataSource,
@@ -63,6 +67,7 @@ import { computeTaste, tasteAffinity, TASTE_SHARE, type TasteSignal } from '../d
 import { dealVehicleTags } from './vehicles';
 import { scoreDeal, searchRelevance, textRelevance, vehicleRelevance } from '../domain/ranking';
 import {
+  ageFrom,
   checkAction,
   generateRedemptionCode,
   initialStatus,
@@ -99,6 +104,9 @@ export const DEMO_CUSTOMER: LocalViewer = {
   is_yolo_verified: true,
   is_admin: false,
   business_ids: [],
+  onboarded: true,
+  // Agreed to personalised suggestions at the welcome, so the demo shows them.
+  personalised: true,
 };
 
 export const DEMO_MERCHANT: LocalViewer = {
@@ -110,6 +118,7 @@ export const DEMO_MERCHANT: LocalViewer = {
   is_yolo_verified: true,
   is_admin: false,
   business_ids: [DEMO_BUSINESS_ID],
+  onboarded: true,
 };
 
 export const DEMO_ADMIN: LocalViewer = {
@@ -121,6 +130,7 @@ export const DEMO_ADMIN: LocalViewer = {
   is_yolo_verified: true,
   is_admin: true,
   business_ids: [],
+  onboarded: true,
 };
 
 interface OutboxEvent {
@@ -163,7 +173,18 @@ export interface LocalStore {
   /** Every account by id: the three demo ones and any made by signing in with a new email. */
   users: Record<string, LocalViewer>;
   reviews: Review[];
+  /** Consent answers, oldest first (0018's consent_records). */
+  consents: { profile_id: string; purpose: ConsentPurpose; granted: boolean; at: string }[];
+  /** "Not for me" (0018's hidden_items). */
+  hidden: { profile_id: string; kind: HiddenItem['kind']; target_id: string; at: string }[];
+  /** What people did (0018's activity_events); tied to them only with consent. */
+  activity: { profile_id: string | null; name: string; deal_id: string | null; business_id: string | null; at: number }[];
   viewer: LocalViewer;
+  /**
+   * False while nobody is signed in: `viewer` is then only the last account,
+   * and calls act as they do with no auth.uid() (nothing tied to anyone).
+   */
+  signedIn: boolean;
 }
 
 /** An open claim the demo customer holds, so the demo merchant can always try Redeem. */
@@ -300,8 +321,8 @@ function seedBookings(): CustomerAction[] {
 
 /**
  * The demo customer's own past orders over the last six weeks, so the
- * assistant has something to learn from: weekday lunches at Meghana Foods
- * (their usual), coffee at Third Wave, a kebab plate, a biryani pack, a
+ * assistant has something to learn from: weekday lunches at Saffron Dum
+ * Biryani (their usual), coffee at Brewline, a kebab plate, a biryani pack, a
  * comedy night and a bike wash. All paid and used.
  */
 const DEMO_HISTORY: [dealId: string, daysAgo: number, hh: number, mm: number, qty: number][] = [
@@ -401,15 +422,22 @@ export function createStore(viewer: LocalViewer = DEMO_CUSTOMER): LocalStore {
     savedAt: new Map<string, number>(),
     users: Object.fromEntries([DEMO_CUSTOMER, DEMO_MERCHANT, DEMO_ADMIN, ...seedCustomers()].map((u) => [u.id, u])),
     reviews: [...seedHistoryReviews(history), ...seedReviews(BUSINESSES, SEED_DEALS)],
+    consents: [
+      { profile_id: DEMO_CUSTOMER.id, purpose: 'adult', granted: true, at: new Date(Date.now() - 50 * 86_400_000).toISOString() },
+      { profile_id: DEMO_CUSTOMER.id, purpose: 'personalisation', granted: true, at: new Date(Date.now() - 50 * 86_400_000).toISOString() },
+    ],
+    hidden: [],
+    activity: [],
     viewer,
+    signedIn: true,
   };
 }
 
 // ----------------------------------------------------------- persistence ----
 
 // Bumped when the seed data changes shape or gains deals, so old snapshots give way to it.
-const STORAGE_KEY = 'yolo-demo-data-v4';
-const OLD_KEYS = ['yolo-demo-data-v1', 'yolo-demo-data-v2', 'yolo-demo-data-v3'];
+const STORAGE_KEY = 'yolo-demo-data-v5';
+const OLD_KEYS = ['yolo-demo-data-v1', 'yolo-demo-data-v2', 'yolo-demo-data-v3', 'yolo-demo-data-v4'];
 
 function webStorage(): Storage | null {
   try {
@@ -434,6 +462,9 @@ interface Snapshot {
   users: Record<string, LocalViewer>;
   businesses: Business[];
   reviews: Review[];
+  consents?: LocalStore['consents'];
+  hidden?: LocalStore['hidden'];
+  activity?: LocalStore['activity'];
 }
 
 function snapshot(store: LocalStore, dropPhotos = false): Snapshot {
@@ -458,12 +489,17 @@ function snapshot(store: LocalStore, dropPhotos = false): Snapshot {
     users: store.users,
     businesses: BUSINESSES,
     reviews: store.reviews,
+    consents: store.consents,
+    hidden: store.hidden,
+    activity: store.activity.slice(-500),
   };
 }
 
 /** A store from what this browser kept, or the seed data the first time. */
 export function loadStore(): LocalStore {
   const store = createStore();
+  // The demo starts signed out; the session puts the remembered account back (signInAs).
+  store.signedIn = false;
   const ls = webStorage();
   if (!ls) return store;
   try {
@@ -483,7 +519,13 @@ export function loadStore(): LocalStore {
     store.views = s.views;
     store.savedAt = new Map(s.savedAt);
     store.users = { ...store.users, ...s.users };
+    // The saved account, not the seed constant: that would be written back over
+    // it (allUsers, snapshot), undoing edits and withdrawn consent.
+    store.viewer = store.users[store.viewer.id] ?? store.viewer;
     store.reviews = s.reviews ?? store.reviews;
+    store.consents = s.consents ?? store.consents;
+    store.hidden = s.hidden ?? store.hidden;
+    store.activity = s.activity ?? store.activity;
     BUSINESSES.splice(0, BUSINESSES.length, ...s.businesses);
   } catch {
     // A snapshot that does not read starts the demo afresh.
@@ -516,6 +558,8 @@ export interface LocalDataSource extends DataSource {
   readonly kind: 'local';
   /** Switches the signed-in account: customer, merchant or admin. */
   setViewer(v: LocalViewer): void;
+  /** Nobody signed in: calls then act as the RPCs do when auth.uid() is null. */
+  signOut(): void;
   getViewer(): LocalViewer;
   /** The account for an email, made on first use: the demo signs in without a code. */
   userForEmail(email: string): LocalViewer;
@@ -535,6 +579,24 @@ export function createLocalDataSource(
     return Object.values(store.users);
   };
 
+  /** Who is signed in, or null for a visitor: what auth.uid() says in SQL. */
+  const me = (): LocalViewer | null => (store.signedIn ? store.viewer : null);
+
+  /** The signed-in account; a visitor is refused, as the RPCs refuse no auth.uid(). */
+  const mustSignIn = (why = 'Sign in first'): LocalViewer => {
+    if (!store.signedIn) throw new RuleViolation(why);
+    return store.viewer;
+  };
+
+  /** may_personalise() in 0019: both consents given, and not under 18 by the date of birth. */
+  const mayPersonalise = (v: LocalViewer): boolean => {
+    const said = (p: ConsentPurpose) => {
+      const mine = store.consents.filter((c) => c.profile_id === v.id && c.purpose === p);
+      return mine.length > 0 && mine[mine.length - 1].granted;
+    };
+    return said('personalisation') && said('adult') && !isUnder18(v.date_of_birth);
+  };
+
   const emit = (
     type: string,
     aggregateType: string,
@@ -552,6 +614,9 @@ export function createLocalDataSource(
     });
   };
 
+  /** Live listeners for the signed-in person's new notifications. */
+  const liveListeners = new Set<(n: Notification) => void>();
+
   const notify = (
     profileId: string,
     kind: Notification['kind'],
@@ -559,6 +624,11 @@ export function createLocalDataSource(
     body: string,
     data: Record<string, unknown> = {},
   ) => {
+    // Told after the call that caused it has finished, as Realtime would.
+    setTimeout(() => {
+      const n = store.notifications.find((x) => x.profile_id === profileId && x.title === title);
+      if (n && store.signedIn && profileId === store.viewer.id) liveListeners.forEach((cb) => cb(n));
+    }, 0);
     store.notifications.unshift({
       id: uid('ntf'),
       profile_id: profileId,
@@ -583,14 +653,20 @@ export function createLocalDataSource(
       .filter((v) => v.business_ids.includes(businessId))
       .map((v) => v.id);
 
-  const isMember = (businessId: string) =>
-    store.viewer.business_ids.includes(businessId) || store.viewer.is_admin;
+  /** An admin signed in now; the last account's flag means nothing once they sign out. */
+  const isAdmin = () => store.signedIn && store.viewer.is_admin;
 
-  /** Resolves the acting role the way transition_deal() does. */
+  const isMember = (businessId: string) =>
+    store.signedIn && (store.viewer.business_ids.includes(businessId) || store.viewer.is_admin);
+
+  /**
+   * Resolves the acting role the way transition_deal() does. Nobody using the
+   * app acts as the system; internal moves pass their actor explicitly.
+   */
   const actorFor = (businessId: string): Actor => {
-    if (store.viewer.is_admin) return 'admin';
-    if (store.viewer.business_ids.includes(businessId)) return 'merchant';
-    return 'system';
+    if (isAdmin()) return 'admin';
+    if (isMember(businessId)) return 'merchant';
+    throw new RuleViolation('You cannot change this deal');
   };
 
   const move = (dealId: string, to: DealStatus, reason?: string, forceActor?: Actor) => {
@@ -636,8 +712,20 @@ export function createLocalDataSource(
     return to;
   };
 
+  /**
+   * Forgets what was learned about one person (0020's erase_activity_of).
+   * "Not for me" choices are instructions, not tracking, so they stay; only
+   * deleting the account removes them, and demo accounts cannot be deleted.
+   */
+  const eraseActivity = (profileId: string) => {
+    store.activity = store.activity.filter((a) => a.profile_id !== profileId);
+    store.views = store.views.filter((v) => v.profile_id !== profileId);
+  };
+
   /** What the current viewer is into, from what they opened, saved and claimed. */
   const myTaste = (): TasteItem[] => {
+    // Learning needs someone signed in, consent and 18+, as my_taste() in 0018.
+    if (!store.signedIn || !store.viewer.personalised) return [];
     const me = store.viewer.id;
     const signal = (kind: TasteSignal['kind'], dealId: string, at: number): TasteSignal | null => {
       const d = store.deals.find((x) => x.id === dealId);
@@ -667,7 +755,7 @@ export function createLocalDataSource(
       .filter((d) => new Date(d.ends_at).getTime() > now)
       .filter((d) => new Date(d.starts_at).getTime() <= now)
       .map((d) => dealToCard(d, origin))
-      .filter((c) => isVisibleTo(c, store.viewer))
+      .filter((c) => isVisibleTo(c, me()))
       .filter((c) => radiusKm == null || origin == null || c.distance_km <= radiusKm);
   };
 
@@ -735,6 +823,10 @@ export function createLocalDataSource(
     setViewer(v) {
       store.viewer = v;
       store.users[v.id] = v;
+      store.signedIn = true;
+    },
+    signOut() {
+      store.signedIn = false;
     },
     getViewer() {
       return store.viewer;
@@ -753,6 +845,9 @@ export function createLocalDataSource(
         is_yolo_verified: false,
         is_admin: false,
         business_ids: [],
+        // A new account sees the welcome: name, age, and whether to personalise.
+        onboarded: false,
+        personalised: false,
       };
       store.users[user.id] = user;
       return user;
@@ -775,13 +870,25 @@ export function createLocalDataSource(
     // ---- account and support (mirrors 0007_support_and_account.sql) ----
 
     async updateMyProfile(input): Promise<void> {
+      const viewer = mustSignIn();
       if (input.full_name !== undefined && input.full_name.trim().length < 2) {
         throw new RuleViolation('Enter your name');
+      }
+      // A date of birth, once set, only support changes (0019's profiles_lock_dob).
+      const dobChanged = input.date_of_birth !== undefined && (input.date_of_birth ?? null) !== (viewer.date_of_birth ?? null);
+      if (dobChanged && viewer.date_of_birth && !viewer.is_admin) {
+        throw new RuleViolation('Your date of birth is set. To correct it, contact support from Help');
       }
       // Kept on the demo account itself, so switching accounts and back keeps it;
       // the fresh object is what makes subscribers re-render.
       Object.assign(store.viewer, input);
-      store.viewer = { ...store.viewer };
+      // Under 18 by the new date: what was learned is forgotten, and they are
+      // recorded as not an adult (0020's profiles_minor_erase).
+      if (dobChanged && isUnder18(store.viewer.date_of_birth)) {
+        eraseActivity(viewer.id);
+        store.consents.push({ profile_id: viewer.id, purpose: 'adult', granted: false, at: new Date().toISOString() });
+      }
+      store.viewer = { ...store.viewer, personalised: mayPersonalise(store.viewer) };
     },
 
     // The demo keeps the picked file's own URI; it lasts until the page reloads.
@@ -792,17 +899,20 @@ export function createLocalDataSource(
     },
 
     async setAvatar(image): Promise<string> {
+      mustSignIn();
       Object.assign(store.viewer, { avatar_url: image.uri });
       store.viewer = { ...store.viewer };
       return image.uri;
     },
 
     async removeAvatar(): Promise<void> {
+      mustSignIn();
       Object.assign(store.viewer, { avatar_url: null });
       store.viewer = { ...store.viewer };
     },
 
     async createSupportTicket(input): Promise<string> {
+      mustSignIn();
       const message = input.message.trim();
       if (message.length < 10) throw new RuleViolation('Tell us a little more, at least 10 characters');
       if (message.length > 2000) throw new RuleViolation('Keep it under 2,000 characters');
@@ -835,6 +945,7 @@ export function createLocalDataSource(
     },
 
     async listMySupportTickets(): Promise<SupportTicket[]> {
+      if (!store.signedIn) return [];
       return store.tickets
         .filter((t) => t.profile_id === store.viewer.id)
         .map(({ profile_id: _p, ...t }) => t)
@@ -849,6 +960,7 @@ export function createLocalDataSource(
 
     // Mirrors create_business() in 0006_merchant_onboarding.sql.
     async createBusiness(input): Promise<string> {
+      mustSignIn();
       const name = input.name.trim();
       const address = input.address_line.trim();
       const phone = input.phone?.trim() || '';
@@ -869,6 +981,8 @@ export function createLocalDataSource(
       if (store.viewer.business_ids.length >= 5) {
         throw new RuleViolation('You can own up to five businesses. Contact support to add more');
       }
+      const problem = shopProfileProblem(input);
+      if (problem) throw new RuleViolation(problem);
 
       const id = uid('biz');
       BUSINESSES.push({
@@ -919,6 +1033,8 @@ export function createLocalDataSource(
       }
       const biz = BUSINESSES.find((b) => b.id === businessId);
       if (!biz) throw new RuleViolation('Business not found');
+      const problem = shopProfileProblem(input);
+      if (problem) throw new RuleViolation(problem);
       const moved = biz.locality_id !== locality.id;
       Object.assign(biz, { name, phone, email, address_line: address, locality_id: locality.id });
       // The shop page: only what was sent changes.
@@ -944,7 +1060,7 @@ export function createLocalDataSource(
 
     // Mirrors submit_business_verification() in 0006_merchant_onboarding.sql.
     async submitBusinessVerification(businessId, input): Promise<'pending'> {
-      if (!store.viewer.business_ids.includes(businessId)) {
+      if (!mustSignIn().business_ids.includes(businessId)) {
         throw new RuleViolation('Only the owner can ask for verification');
       }
       const b = businessById(businessId);
@@ -1019,7 +1135,7 @@ export function createLocalDataSource(
     },
 
     async getBusinessVerification(businessId): Promise<BusinessVerification | null> {
-      if (!store.viewer.business_ids.includes(businessId) && !store.viewer.is_admin) return null;
+      if (!isMember(businessId)) return null;
       const mine = store.verifications.filter((v) => v.business_id === businessId);
       const last = mine[mine.length - 1];
       if (!last) return null;
@@ -1081,8 +1197,16 @@ export function createLocalDataSource(
       const acted = new Set(
         store.actions.filter((a) => a.customer_id === store.viewer.id).map((a) => a.deal_id),
       );
+      const hidden = store.hidden.filter((h) => h.profile_id === store.viewer.id);
+      const isHidden = (c: DealCardModel) =>
+        hidden.some(
+          (h) =>
+            (h.kind === 'deal' && h.target_id === c.id) ||
+            (h.kind === 'business' && h.target_id === c.business_id) ||
+            (h.kind === 'category' && h.target_id === c.category_id),
+        );
       return candidates(q.origin, radiusKm)
-        .filter((c) => !acted.has(c.id))
+        .filter((c) => !acted.has(c.id) && !isHidden(c))
         .map((c) => ({ card: c, a: tasteAffinity(c, taste) }))
         .filter((x) => x.a > 0)
         .map((x) => ({
@@ -1156,7 +1280,7 @@ export function createLocalDataSource(
       // Mirrors get_deal: public deals for anyone; otherwise the owning business,
       // an admin, or a customer who has already acted on it.
       const actedOn = store.actions.some(
-        (a) => a.deal_id === id && a.customer_id === store.viewer.id,
+        (a) => a.deal_id === id && a.customer_id === me()?.id,
       );
       if (!isPubliclyVisible(deal.status) && !isMember(deal.business_id) && !actedOn) return null;
       return dealToCard(deal, origin ?? null);
@@ -1170,16 +1294,28 @@ export function createLocalDataSource(
       const deal = findDeal(input.deal_id);
       const card = dealToCard(deal, null);
       const quantity = input.quantity ?? 1;
+      // A question takes nothing from what is left to sell (0020).
+      const enquiry = input.action_type === 'enquiry';
 
       const verdict = checkAction({
-        deal: card,
-        viewer: store.viewer,
+        deal: enquiry ? { ...card, capacity_remaining: null } : card,
+        viewer: me(),
         actionType: input.action_type,
         quantity,
         slotStart: input.slot_start ?? null,
         existing: store.actions.filter((a) => a.customer_id === store.viewer.id),
       });
       if (!verdict.ok) throw new RuleViolation(verdict.reason ?? 'Not allowed');
+      // One open question per deal: the business has not answered the first yet (0020).
+      if (
+        enquiry &&
+        store.actions.some(
+          (a) =>
+            a.deal_id === deal.id && a.customer_id === store.viewer.id && a.action_type === 'enquiry' && a.status === 'pending',
+        )
+      ) {
+        throw new RuleViolation('You have already asked; the business will reply');
+      }
 
       // One time slot takes only so many bookings (0014_slot_capacity.sql does the same).
       const perSlot = slotCapacity(deal.attributes);
@@ -1195,7 +1331,7 @@ export function createLocalDataSource(
         if (held >= perSlot) throw new RuleViolation('That time is full. Pick another time.');
       }
 
-      if (deal.capacity_remaining != null) {
+      if (deal.capacity_remaining != null && !enquiry) {
         deal.capacity_remaining -= quantity;
       }
 
@@ -1235,9 +1371,10 @@ export function createLocalDataSource(
         { deal_id: deal.id, action_id: action.id },
       );
 
-      // The business hears about every order, paid or not.
+      // The business hears about every order, paid or not, with a first name,
+      // never contact details (0016's customer_action_notify).
       const paid = paymentOf(action);
-      const who = store.viewer.full_name || store.viewer.email || 'A customer';
+      const who = firstName(store.viewer.full_name) ?? 'A customer';
       for (const owner of ownersOf(deal.business_id)) {
         notify(
           owner,
@@ -1251,16 +1388,17 @@ export function createLocalDataSource(
       }
 
       // Sold out closes the deal, same as the SQL does in one transaction.
-      if (deal.capacity_remaining === 0) {
+      if (deal.capacity_remaining === 0 && !enquiry) {
         move(deal.id, 'EXPIRED', 'sold out', 'system');
       }
       return action;
     },
 
     async cancelAction(actionId): Promise<CustomerAction> {
+      const viewer = mustSignIn();
       const action = store.actions.find((a) => a.id === actionId);
       if (!action) throw new RuleViolation('Booking not found');
-      if (action.customer_id !== store.viewer.id && !store.viewer.is_admin) {
+      if (action.customer_id !== viewer.id && !viewer.is_admin) {
         throw new RuleViolation('Not your booking');
       }
       if (action.status !== 'pending' && action.status !== 'confirmed') {
@@ -1269,17 +1407,30 @@ export function createLocalDataSource(
       action.status = 'cancelled';
 
       const deal = store.deals.find((d) => d.id === action.deal_id);
-      if (deal && deal.capacity_remaining != null) {
+      // An enquiry took nothing, so it gives nothing back (0020).
+      if (deal && deal.capacity_remaining != null && action.action_type !== 'enquiry') {
         deal.capacity_remaining = Math.min(
           deal.capacity_remaining + action.quantity,
           deal.capacity_total ?? Number.MAX_SAFE_INTEGER,
         );
       }
       emit('action.cancelled', 'action', action.id, { deal_id: action.deal_id });
+      // The business hears, as 0016's customer_action_notify tells its members.
+      if (deal) {
+        const customer = allUsers().find((u) => u.id === action.customer_id);
+        const body = [firstName(customer?.full_name) ?? 'A customer', action.slot_start ? slotLabel(action.slot_start) : null];
+        for (const owner of ownersOf(deal.business_id)) {
+          notify(owner, 'order_cancelled', 'Cancelled: ' + deal.title, body.filter(Boolean).join(' · '), {
+            deal_id: deal.id,
+            action_id: action.id,
+          });
+        }
+      }
       return action;
     },
 
     async listMyActions(): Promise<ActionWithDeal[]> {
+      if (!store.signedIn) return [];
       return store.actions
         .filter((a) => a.customer_id === store.viewer.id)
         .map((a) => {
@@ -1289,6 +1440,7 @@ export function createLocalDataSource(
     },
 
     async toggleSavedDeal(dealId): Promise<boolean> {
+      mustSignIn('Sign in to save deals');
       if (store.saved.has(dealId)) {
         store.saved.delete(dealId);
         return false;
@@ -1299,6 +1451,7 @@ export function createLocalDataSource(
     },
 
     async listSavedDeals(origin): Promise<DealCardModel[]> {
+      if (!store.signedIn) return [];
       return [...store.saved]
         .map((id) => store.deals.find((d) => d.id === id))
         .filter((d): d is Deal => Boolean(d))
@@ -1543,29 +1696,33 @@ export function createLocalDataSource(
     },
 
     async listMyReviews(): Promise<Review[]> {
+      if (!store.signedIn) return [];
       return store.reviews.filter((r) => r.customer_id === store.viewer.id);
     },
 
     async createReview(input: NewReview): Promise<Review> {
+      const viewer = mustSignIn('Sign in to rate your visit');
       const action = store.actions.find((a) => a.id === input.action_id);
-      if (!action || action.customer_id !== store.viewer.id) throw new RuleViolation('Only your own visits can be rated');
+      if (!action || action.customer_id !== viewer.id) throw new RuleViolation('Only your own visits can be rated');
+      const deal = findDeal(action.deal_id);
+      // A business's own team cannot rate its own deals (0020).
+      if (viewer.business_ids.includes(deal.business_id)) throw new RuleViolation('You cannot review your own business');
       if (action.status !== 'redeemed') throw new RuleViolation('You can rate a visit once your code has been used');
-      if (store.reviews.some((r) => r.deal_id === action.deal_id && r.customer_id === store.viewer.id)) {
+      if (store.reviews.some((r) => r.deal_id === action.deal_id && r.customer_id === viewer.id)) {
         throw new RuleViolation('You have already rated this deal');
       }
       const rating = Math.round(input.rating);
       if (!(rating >= 1 && rating <= 5)) throw new RuleViolation('Pick from one to five stars');
-      const body = (input.body ?? '').trim().slice(0, 600) || null;
-      const deal = findDeal(action.deal_id);
-      const name = (store.viewer.full_name ?? '').trim();
-      const parts = name.split(/\s+/);
+      // The same limit as create_review; the Supabase adapter cuts at it too.
+      const body = (input.body ?? '').trim().slice(0, 1000) || null;
       const review: Review = {
         id: uid('rev'),
         deal_id: deal.id,
         deal_title: deal.title,
         business_id: deal.business_id,
-        customer_id: store.viewer.id,
-        customer_name: name ? parts[0] + (parts[1] ? ' ' + parts[1][0] : '') : (store.viewer.email ?? '').split('@')[0] || null,
+        customer_id: viewer.id,
+        // "Aarav S.", never the email, as review_rows shows people.
+        customer_name: displayName(viewer.full_name),
         rating,
         body,
         created_at: new Date().toISOString(),
@@ -1614,19 +1771,20 @@ export function createLocalDataSource(
         .map((a) => {
           const d = deals.get(a.deal_id)!;
           const u = users.find((x) => x.id === a.customer_id);
-          return { ...a, deal_title: d.title, deal_price: d.deal_price, customer_name: u ? u.full_name || u.email || null : null };
+          // "Aarav S.", never contact details, as business_customer_names in 0019.
+          return { ...a, deal_title: d.title, deal_price: d.deal_price, customer_name: displayName(u?.full_name) };
         });
     },
 
     async listReviewQueue(): Promise<DealCardModel[]> {
-      if (!store.viewer.is_admin) throw new RuleViolation('Admin only');
+      if (!isAdmin()) throw new RuleViolation('Admin only');
       return store.deals
         .filter((d) => d.status === 'SUBMITTED' || d.status === 'VERIFICATION')
         .map((d) => dealToCard(d, null));
     },
 
     async reviewDeal(dealId, approve, reason): Promise<DealStatus> {
-      if (!store.viewer.is_admin) throw new RuleViolation('Admin only');
+      if (!isAdmin()) throw new RuleViolation('Admin only');
       const deal = findDeal(dealId);
 
       if (deal.status === 'SUBMITTED') move(dealId, 'VERIFICATION', undefined, 'admin');
@@ -1660,7 +1818,7 @@ export function createLocalDataSource(
     },
 
     async listReportsQueue(): Promise<ReportGroup[]> {
-      if (!store.viewer.is_admin) throw new RuleViolation('Admin only');
+      if (!isAdmin()) throw new RuleViolation('Admin only');
       const groups = new Map<string, ReportGroup>();
       for (const r of store.reports.filter((x) => x.status === 'open')) {
         const k = r.target_type + ':' + r.target_id;
@@ -1694,7 +1852,7 @@ export function createLocalDataSource(
     },
 
     async resolveReports(targetType, targetId, action, note): Promise<number> {
-      if (!store.viewer.is_admin) throw new RuleViolation('Admin only');
+      if (!isAdmin()) throw new RuleViolation('Admin only');
       if (action === 'pause') {
         if (targetType !== 'deal') throw new RuleViolation('Only a deal can be paused');
         if (!note?.trim()) throw new RuleViolation('Say why the deal is paused; the merchant sees it');
@@ -1716,7 +1874,7 @@ export function createLocalDataSource(
     },
 
     async listVerificationQueue(): Promise<VerificationRequest[]> {
-      if (!store.viewer.is_admin) throw new RuleViolation('Admin only');
+      if (!isAdmin()) throw new RuleViolation('Admin only');
       return store.verifications
         .filter((v) => v.status === 'submitted')
         .map((v) => {
@@ -1756,7 +1914,7 @@ export function createLocalDataSource(
     },
 
     async listSupportQueue(view = 'active'): Promise<SupportQueueItem[]> {
-      if (!store.viewer.is_admin) throw new RuleViolation('Admin only');
+      if (!isAdmin()) throw new RuleViolation('Admin only');
       const people = [DEMO_CUSTOMER, DEMO_MERCHANT, DEMO_ADMIN];
       return store.tickets
         .filter((t) => (view === 'closed' ? t.status === 'closed' : t.status !== 'closed'))
@@ -1784,7 +1942,7 @@ export function createLocalDataSource(
     },
 
     async replySupportTicket(ticketId, reply, close): Promise<'answered' | 'closed'> {
-      if (!store.viewer.is_admin) throw new RuleViolation('Admin only');
+      if (!isAdmin()) throw new RuleViolation('Admin only');
       const body = reply.trim();
       if (body.length < 2 && !close) throw new RuleViolation('Write a reply first');
       const t = store.tickets.find((x) => x.id === ticketId);
@@ -1802,7 +1960,7 @@ export function createLocalDataSource(
 
     async followUpSupportTicket(ticketId, message): Promise<'open'> {
       const t = store.tickets.find((x) => x.id === ticketId);
-      if (!t || t.profile_id !== store.viewer.id) throw new RuleViolation('That request is not yours');
+      if (!t || t.profile_id !== me()?.id) throw new RuleViolation('That request is not yours');
       const body = message.trim();
       if (body.length < 2) throw new RuleViolation('Write your message first');
       if (body.length > 2000) throw new RuleViolation('Keep it under 2,000 characters');
@@ -1814,7 +1972,7 @@ export function createLocalDataSource(
 
     // Mirrors review_business() in 0006_merchant_onboarding.sql.
     async reviewBusiness(businessId, approve, reason): Promise<'verified' | 'rejected'> {
-      if (!store.viewer.is_admin) throw new RuleViolation('Admin only');
+      if (!isAdmin()) throw new RuleViolation('Admin only');
       if (!approve && (reason?.trim().length ?? 0) < 5) {
         throw new RuleViolation('Give the owner a reason they can act on');
       }
@@ -1840,6 +1998,7 @@ export function createLocalDataSource(
     },
 
     async listNotifications(): Promise<Notification[]> {
+      if (!store.signedIn) return [];
       return store.notifications.filter((n) => n.profile_id === store.viewer.id);
     },
 
@@ -1848,7 +2007,110 @@ export function createLocalDataSource(
       if (n) n.read_at = new Date().toISOString();
     },
 
+    // ---- activity and privacy (mirrors 0018) ----
+
+    async track(events: ActivityEvent[]): Promise<void> {
+      // Signed out, nothing is tied to anyone, as with no auth.uid().
+      const learn = me()?.personalised ? store.viewer.id : null;
+      for (const e of events.slice(0, 50)) {
+        const deal = e.deal_id ? store.deals.find((d) => d.id === e.deal_id) : undefined;
+        store.activity.push({
+          profile_id: learn,
+          name: e.name,
+          deal_id: deal?.id ?? null,
+          business_id: deal?.business_id ?? e.business_id ?? null,
+          at: Date.now(),
+        });
+        if (e.name === 'deal_open' && deal) {
+          deal.views += 1;
+          if (learn) store.views.push({ deal_id: deal.id, profile_id: learn, at: Date.now() });
+        }
+      }
+      if (store.activity.length > 1000) store.activity.splice(0, store.activity.length - 1000);
+    },
+
+    async getMyConsents() {
+      if (!store.signedIn) return [];
+      const latest = new Map<ConsentPurpose, { purpose: ConsentPurpose; granted: boolean; created_at: string }>();
+      for (const c of store.consents) {
+        if (c.profile_id === store.viewer.id) latest.set(c.purpose, { purpose: c.purpose, granted: c.granted, created_at: c.at });
+      }
+      return [...latest.values()];
+    },
+
+    async setConsent(purpose, granted) {
+      const viewer = mustSignIn();
+      if (purpose === 'adult' && granted && isUnder18(viewer.date_of_birth)) {
+        throw new RuleViolation('Your date of birth says you are under 18');
+      }
+      store.consents.push({ profile_id: viewer.id, purpose, granted, at: new Date().toISOString() });
+      // Withdrawing forgets what was learned; "not for me" stays (0020).
+      if (!granted && (purpose === 'personalisation' || purpose === 'adult')) eraseActivity(viewer.id);
+      // A fresh object, so screens that read the viewer re-render.
+      store.viewer = { ...store.viewer, personalised: mayPersonalise(store.viewer) };
+    },
+
+    async eraseMyActivity() {
+      eraseActivity(mustSignIn().id);
+    },
+
+    async getMyActivitySummary() {
+      if (!store.signedIn) return [];
+      const since = Date.now() - 180 * 86_400_000;
+      const by = new Map<string, { name: string; events: number; last_at: string }>();
+      for (const a of store.activity) {
+        if (a.profile_id !== store.viewer.id || a.at < since) continue;
+        const row = by.get(a.name) ?? { name: a.name, events: 0, last_at: new Date(a.at).toISOString() };
+        row.events += 1;
+        if (new Date(a.at).toISOString() > row.last_at) row.last_at = new Date(a.at).toISOString();
+        by.set(a.name, row);
+      }
+      return [...by.values()].sort((a, b) => b.events - a.events);
+    },
+
+    async notInterested(dealId, scope) {
+      const deal = store.deals.find((d) => d.id === dealId);
+      if (!deal) throw new RuleViolation('That deal is not there any more');
+      const target = scope === 'business' ? deal.business_id : scope === 'category' ? deal.category_id : deal.id;
+      const id = mustSignIn().id;
+      if (!store.hidden.some((h) => h.profile_id === id && h.kind === scope && h.target_id === target)) {
+        store.hidden.push({ profile_id: id, kind: scope, target_id: target, at: new Date().toISOString() });
+      }
+    },
+
+    async listHidden() {
+      if (!store.signedIn) return [];
+      return store.hidden
+        .filter((h) => h.profile_id === store.viewer.id)
+        .map((h) => ({
+          kind: h.kind,
+          target_id: h.target_id,
+          created_at: h.at,
+          label:
+            h.kind === 'business'
+              ? (businessById(h.target_id)?.name ?? 'A place')
+              : h.kind === 'category'
+                ? (CATEGORIES.find((c) => c.id === h.target_id)?.name ?? 'A kind of deal')
+                : (store.deals.find((d) => d.id === h.target_id)?.title ?? 'A deal'),
+        }))
+        .reverse();
+    },
+
+    async unhide(kind, targetId) {
+      const id = mustSignIn().id;
+      store.hidden = store.hidden.filter((h) => !(h.profile_id === id && h.kind === kind && h.target_id === targetId));
+    },
+
+    subscribeNotifications(onNew) {
+      liveListeners.add(onNew);
+      return () => {
+        liveListeners.delete(onNew);
+      };
+    },
+
     async recordEvents(events): Promise<void> {
+      // Signed-in callers only, as record_deal_events since 0020.
+      if (!store.signedIn) return;
       for (const e of events) {
         const deal = store.deals.find((d) => d.id === e.deal_id);
         if (!deal) continue;
@@ -1888,6 +2150,41 @@ export function createLocalDataSource(
   }
 
   return src;
+}
+
+/** "Aarav S.": a first name and the last word's initial, as display_name() in 0016. */
+function displayName(fullName: string | null | undefined): string | null {
+  const name = (fullName ?? '').trim();
+  if (!name) return null;
+  if (!name.includes(' ')) return name;
+  return name.split(' ')[0] + ' ' + name.replace(/^.*\s/, '').charAt(0).toUpperCase() + '.';
+}
+
+/** The first word of a name, or null: how the order notes in 0016 name a customer. */
+function firstName(fullName: string | null | undefined): string | null {
+  return (fullName ?? '').trim().split(' ')[0] || null;
+}
+
+/** 0019's is_under_18: by the date of birth they gave; none counts as not under. */
+function isUnder18(dob: string | null | undefined): boolean {
+  const age = ageFrom(dob ?? null);
+  return age !== null && age < 18;
+}
+
+/** What apply_business_profile (0020) refuses in the hours or cost for two, or null. */
+function shopProfileProblem(input: {
+  open_time?: string | null;
+  close_time?: string | null;
+  cost_for_two?: number | null;
+}): string | null {
+  const hhmm = /^([01]\d|2[0-3]):[0-5]\d$/;
+  if (input.open_time && !hhmm.test(input.open_time)) return 'Opening time should look like 10:00';
+  if (input.close_time && !hhmm.test(input.close_time)) return 'Closing time should look like 22:00';
+  const cost = input.cost_for_two;
+  if (cost != null && !(Number.isInteger(cost) && cost >= 0 && cost <= 100000)) {
+    return 'Cost for two must be a number of rupees, up to 1,00,000';
+  }
+  return null;
 }
 
 function computeDiscount(mrp?: number | null, price?: number | null): number | null {

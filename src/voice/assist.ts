@@ -4,6 +4,7 @@
  * caller gets the same shape either way, and which one answered.
  */
 
+import { accessToken } from '../data';
 import { LOCALITIES } from '../data/seed-reference';
 import { ruleCustomerIntent, ruleDealDraft, ruleMerchantProfile } from './rules';
 import type { AssistMode, AssistTask, CustomerIntent, DealVoiceDraft, MerchantProfile, VoiceLang } from './types';
@@ -14,7 +15,8 @@ type ResultOf<T extends AssistTask> = T extends 'customer'
     ? MerchantProfile
     : DealVoiceDraft;
 
-const TIMEOUT_MS = 20_000;
+/** How long to wait before using the built-in rules; a whole business takes Claude longest. */
+const TIMEOUT_MS: Record<AssistTask, number> = { customer: 20_000, deal: 30_000, merchant: 60_000 };
 
 /** Today and the time in Bengaluru, whatever the device's clock zone. */
 export function bengaluruNow(at: Date = new Date()): { today: string; now: string } {
@@ -37,11 +39,12 @@ export async function understand<T extends AssistTask>(
   const mode = who.mode ?? 'customer';
   const { today, now } = bengaluruNow();
   const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
-  const timer = setTimeout(() => controller?.abort(), TIMEOUT_MS);
+  const timer = setTimeout(() => controller?.abort(), TIMEOUT_MS[task]);
   try {
+    const token = await accessToken().catch(() => null);
     const res = await fetch('/api/assist', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: 'Bearer ' + token } : {}) },
       body: JSON.stringify({
         task,
         text,

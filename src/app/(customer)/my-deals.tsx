@@ -13,7 +13,7 @@ import { Image } from 'expo-image';
 import { router, useLocalSearchParams } from 'expo-router';
 import QRCode from 'react-native-qrcode-svg';
 import Animated from 'react-native-reanimated';
-import { backend, db, RuleViolation, type ActionWithDeal } from '../../data';
+import { db, RuleViolation, type ActionWithDeal } from '../../data';
 import type { DealCardModel, Review } from '../../data/types';
 import { ACTION_LABEL, ACTION_STATUS_LABEL, dateLabel, quantityLabel, slotLabel } from '../../lib/format';
 import { mintsCode } from '../../domain/rules';
@@ -130,7 +130,8 @@ export default function MyDealsScreen() {
     },
   }[tab];
 
-  if (backend === 'supabase' && !viewer) {
+  // The demo too: a visitor there is signed out, as on the live app.
+  if (!viewer) {
     return (
       <View style={styles.screen}>
         <Header title="My Deals" />

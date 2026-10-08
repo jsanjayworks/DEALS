@@ -7,7 +7,7 @@
  * reads them; recent orders follow: who took what, and what they paid.
  */
 
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
@@ -19,6 +19,8 @@ import { BookingRow } from '../../../merchant/BookingRow';
 import { openVoice } from '../../../voice/VoiceHost';
 import { PAY_METHOD_LABEL, paymentOf } from '../../../lib/payment';
 import { useQuery } from '../../../lib/useQuery';
+import { onLiveNotification } from '../../../lib/notificationRoute';
+import { OrderAlerts } from '../../../merchant/OrderAlerts';
 import { MerchantDealRow } from '../../../merchant/DealRow';
 import { BUCKETS, type BucketKey, inBucket, useBusiness, useBusinessId } from '../../../merchant/useBusiness';
 import { VerificationCard } from '../../../merchant/VerificationCard';
@@ -72,7 +74,9 @@ export default function MerchantDashboard() {
       unread: notifications.filter((n) => n.read_at === null).length,
     };
   }, [businessId, days]);
-  const { data } = useQuery(fetchAll);
+  const { data, reload } = useQuery(fetchAll);
+  // A new order, booking or cancellation shows without pulling to refresh.
+  useEffect(() => onLiveNotification(() => reload()), [reload]);
 
   const deals = data?.deals ?? [];
   const live = deals.filter((d) => d.status === 'ACTIVE' || d.status === 'PAUSED');
@@ -195,6 +199,8 @@ export default function MerchantDashboard() {
         <VerificationCard business={business} />
       ) : null}
 
+      <OrderAlerts />
+
       <View style={styles.actions}>
         <View style={styles.flex}>
           <Button variant="cta" full icon="plus" onPress={() => router.push('/merchant/new')}>
@@ -291,9 +297,9 @@ export default function MerchantDashboard() {
             icon="store"
             title="Nothing live yet"
             body={
-              backend === 'local'
-                ? 'Create a deal and publish it. In the demo it goes live straight away.'
-                : 'Create a deal and submit it. Once it is approved it appears to customers nearby.'
+              backend === 'local' || business?.verification_status === 'verified'
+                ? 'Create a deal and publish it. It goes live for customers nearby straight away.'
+                : 'Create a deal now. It goes live as soon as YOLO verifies your business.'
             }
           />
         ) : (

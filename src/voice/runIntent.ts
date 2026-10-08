@@ -47,14 +47,15 @@ export async function runIntent(intent: CustomerIntent, ctx: JobContext): Promis
     case 'search': {
       const q = (intent.query ?? intent.heard ?? '').trim();
       if (!q) return NONE;
-      router.push({ pathname: '/results', params: { q } });
+      // VoiceHost has recorded what was said; Results need not count it again as a typed search.
+      router.push({ pathname: '/results', params: { q, from: 'voice' } });
       return DONE;
     }
     case 'open_business': {
       if (!intent.business) return NONE;
       const deal = await findDeal(intent.business, null, ctx.origin, false);
       if (deal) router.push({ pathname: '/shop/[id]', params: { id: deal.business.id } });
-      else router.push({ pathname: '/results', params: { q: intent.business } });
+      else router.push({ pathname: '/results', params: { q: intent.business, from: 'voice' } });
       return DONE;
     }
     case 'book': {
@@ -62,7 +63,7 @@ export async function runIntent(intent: CustomerIntent, ctx: JobContext): Promis
       if (!deal) {
         const q = [intent.query, intent.business].filter(Boolean).join(' ');
         if (!q) return NONE;
-        router.push({ pathname: '/results', params: { q } });
+        router.push({ pathname: '/results', params: { q, from: 'voice' } });
         return DONE;
       }
       router.push({

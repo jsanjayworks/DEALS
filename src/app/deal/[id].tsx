@@ -8,7 +8,7 @@
  * database will apply.
  */
 
-import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Image } from 'expo-image';
 import Animated, {
@@ -41,6 +41,7 @@ import {
 } from '../../lib/device';
 import { useQuery } from '../../lib/useQuery';
 import { openVoice } from '../../voice/VoiceHost';
+import { track } from '../../lib/track';
 import { RatingSummary, ReviewCard } from '../../reviews/Reviews';
 import { ClaimSheet, type ClaimPrefill } from '../../deal/ClaimSheet';
 import { DealTiles } from '../../deal/DealTiles';
@@ -127,12 +128,15 @@ function attributeLabel(key: string, value: AttributeValue): string | null {
 
 export default function DealDetailScreen() {
   // take=1 (with day, time, qty) comes from the voice assistant: open the sheet set up.
-  const { id, take, day, time, qty } = useLocalSearchParams<{
+  // from and pos say where it was opened (a Home rail, search, voice…), for activity.
+  const { id, take, day, time, qty, from, pos } = useLocalSearchParams<{
     id: string;
     take?: string;
     day?: string;
     time?: string;
     qty?: string;
+    from?: string;
+    pos?: string;
   }>();
   const takeKey = take === '1' ? [id, day, time, qty].join('|') : null;
   const [handledTake, setHandledTake] = useState<string | null>(null);
@@ -179,6 +183,19 @@ export default function DealDetailScreen() {
 
   const { data, loading, reload } = useQuery(fetchDeal);
   const deal = data?.deal ?? null;
+
+  // One open per deal page, wherever it came from (a link, a rail, voice).
+  const opened = useRef<string | null>(null);
+  useEffect(() => {
+    if (!deal || opened.current === deal.id) return;
+    opened.current = deal.id;
+    track({
+      name: 'deal_open',
+      deal_id: deal.id,
+      surface: from ?? (take === '1' ? 'voice' : 'deeplink'),
+      position: pos ? Number(pos) : undefined,
+    });
+  }, [deal, from, pos, take]);
 
   if (loading) {
     return (
@@ -240,8 +257,11 @@ export default function DealDetailScreen() {
         existing: actions,
       });
 
+  const tapped = (cta: string) => track({ name: 'cta_tap', deal_id: deal.id, props: { cta } });
+
   const runOutbound = (cta: CtaType) => {
     hapticTap();
+    tapped(cta);
     if (cta === 'call') callPhone(deal.business.phone);
     else if (cta === 'chat') openWhatsApp(deal.business.phone, 'Hi, about "' + deal.title + '" on YOLO Deals');
     else openDirections(deal.location);
@@ -273,11 +293,15 @@ export default function DealDetailScreen() {
       return;
     }
     if (isOutbound) runOutbound(primary);
-    else setSheetOpen(true);
+    else {
+      track({ name: 'checkout_start', deal_id: deal.id, props: { action: actionType } });
+      setSheetOpen(true);
+    }
   };
 
   const toggleSave = async () => {
     hapticTap();
+    track({ name: saved ? 'unsave' : 'save', deal_id: deal.id });
     setSavedOverride(!saved);
     try {
       setSavedOverride(await db.toggleSavedDeal(deal.id));
@@ -434,7 +458,10 @@ export default function DealDetailScreen() {
             deal={deal}
             saving={saving}
             lowStock={lowStock}
-            onDirections={() => openDirections(deal.location)}
+            onDirections={() => {
+              tapped('directions');
+              openDirections(deal.location);
+            }}
           />
 
           {wide ? actionBar : null}
@@ -444,7 +471,10 @@ export default function DealDetailScreen() {
               icon="pin"
               title={deal.business.address_line}
               detail={deal.locality_name}
-              onPress={() => openDirections(deal.location)}
+              onPress={() => {
+                tapped('directions');
+                openDirections(deal.location);
+              }}
               actionLabel="Map"
             />
             {deal.business.phone ? (
@@ -452,7 +482,10 @@ export default function DealDetailScreen() {
                 icon="phone"
                 title={formatPhone(deal.business.phone)}
                 detail="Call the business"
-                onPress={() => callPhone(deal.business.phone)}
+                onPress={() => {
+                  tapped('call');
+                  callPhone(deal.business.phone);
+                }}
                 actionLabel="Call"
               />
             ) : null}
@@ -579,11 +612,12 @@ export default function DealDetailScreen() {
           <RoundButton
             icon="share"
             label="Share"
-            onPress={() =>
+            onPress={() => {
+              track({ name: 'share', deal_id: deal.id });
               void shareDeal(deal).then((r) => {
                 if (r === 'copied') setToast('Link copied. Paste it anywhere to share.');
-              })
-            }
+              });
+            }}
           />
           <RoundButton
             icon="heart"

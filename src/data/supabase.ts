@@ -11,16 +11,20 @@
  */
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { createClient, type PostgrestError, type SupabaseClient } from '@supabase/supabase-js';
+import { createClient, REALTIME_SUBSCRIBE_STATES, type PostgrestError, type SupabaseClient } from '@supabase/supabase-js';
 import { AppState, Platform } from 'react-native';
 import {
   RuleViolation,
   type ActionWithDeal,
   type AppViewer,
   type AuthApi,
+  type ConsentPurpose,
+  type HiddenItem,
+  NOTICE_VERSION,
   type BusinessVerification,
   type DataSource,
   type MerchantStats,
+  type NewBusinessInput,
   type OtpTarget,
   type ReportGroup,
   type SupportMessage,
@@ -29,6 +33,7 @@ import {
   type VerificationRequest,
 } from './api';
 import { draftToPayload, num, rowToAction, rowToDealCard, type DealCardRow } from './mapping';
+import { ageFrom } from '../domain/rules';
 import type {
   Business,
   Category,
@@ -79,7 +84,8 @@ export function createSupabase(url: string, key: string): SupabaseClient {
  */
 function fail(error: PostgrestError): never {
   const message = error.message || 'Request failed';
-  if (error.code === 'P0001' || error.code === '42501') {
+  // P0002 "code not recognised" / "not found" and 22023 bad input are for the person too.
+  if (error.code === 'P0001' || error.code === '42501' || error.code === 'P0002' || error.code === '22023') {
     throw new RuleViolation(message.charAt(0).toUpperCase() + message.slice(1));
   }
   throw new Error(message);
@@ -88,33 +94,60 @@ function fail(error: PostgrestError): never {
 /** A uuid-typed parameter given something else, e.g. an old demo link to /deal/d-010. */
 const isBadUuid = (e: PostgrestError | null) => e?.code === '22P02';
 
+/** Numbers each live-notification channel, so no two share a topic. */
+let channelSeq = 0;
+
+/** A row from list_reviews, my_reviews or create_review (0016). */
 interface ReviewRow {
   id: string;
   deal_id: string;
-  customer_id: string;
-  customer_action_id: string | null;
+  deal_title: string | null;
+  business_id: string | null;
+  /** Only ever your own; null for other people's reviews. */
+  customer_id: string | null;
+  /** "Aarav S.", or null when they gave no name. */
+  customer_name: string | null;
   rating: number;
   body: string | null;
   created_at: string;
-  deals: { title: string; business_id: string } | { title: string; business_id: string }[] | null;
+  action_id: string | null;
 }
 
 function rowToReview(row: unknown): Review {
   const r = row as ReviewRow;
-  const deal = Array.isArray(r.deals) ? r.deals[0] : r.deals;
   return {
     id: r.id,
     deal_id: r.deal_id,
-    deal_title: deal?.title,
-    business_id: deal?.business_id ?? '',
-    customer_id: r.customer_id,
-    // Names stay private to each customer on the live backend.
-    customer_name: null,
-    rating: r.rating,
+    deal_title: r.deal_title ?? undefined,
+    business_id: r.business_id ?? '',
+    customer_id: r.customer_id ?? '',
+    customer_name: r.customer_name,
+    rating: Number(r.rating),
     body: r.body,
     created_at: r.created_at,
-    action_id: r.customer_action_id,
+    action_id: r.action_id,
   };
+}
+
+const str = (v: unknown): string | null => (typeof v === 'string' && v.length > 0 ? v : null);
+const strs = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []);
+
+/**
+ * The optional shop details and the pin, only the ones given: update_business
+ * leaves anything not sent as it was.
+ */
+function businessExtras(input: Omit<NewBusinessInput, 'primary_category_id'>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  if (input.location) {
+    out.lat = input.location.lat;
+    out.lng = input.location.lng;
+  }
+  const keys = [
+    'description', 'keywords', 'owner_role', 'cost_for_two', 'amenities', 'cuisines',
+    'open_time', 'close_time', 'photos', 'menu',
+  ] as const;
+  for (const k of keys) if (input[k] !== undefined) out[k] = input[k];
+  return out;
 }
 
 function cards(rows: unknown): DealCardModel[] {
@@ -138,17 +171,25 @@ async function requireUser(client: SupabaseClient, why: string): Promise<string>
 export async function loadViewer(client: SupabaseClient): Promise<AppViewer | null> {
   const id = await userId(client);
   if (!id) return null;
-  const [profile, members] = await Promise.all([
+  const [profile, members, consents] = await Promise.all([
     client
       .from('profiles')
-      .select('full_name, phone, email, date_of_birth, is_yolo_verified, is_admin, avatar_path')
+      .select('full_name, phone, email, date_of_birth, is_yolo_verified, is_admin, avatar_path, onboarded_at')
       .eq('id', id)
       .maybeSingle(),
     client.from('business_members').select('business_id').eq('profile_id', id),
+    client.rpc('my_consents'),
   ]);
   if (profile.error) fail(profile.error);
   if (members.error) fail(members.error);
   const p = profile.data;
+  // A database without 0018 yet answers with an error: nobody is personalised then.
+  const said = (purpose: string) =>
+    ((consents.data as { purpose: string; granted: boolean }[] | null) ?? []).some(
+      (c) => c.purpose === purpose && c.granted,
+    );
+  // As may_personalise() in 0019: a date of birth under 18 stops it, whatever was said.
+  const age = ageFrom(p?.date_of_birth ?? null);
   return {
     id,
     date_of_birth: p?.date_of_birth ?? null,
@@ -159,6 +200,8 @@ export async function loadViewer(client: SupabaseClient): Promise<AppViewer | nu
     phone: p?.phone ?? null,
     email: p?.email ?? null,
     avatar_url: p?.avatar_path ? avatarUrl(client, p.avatar_path) : null,
+    onboarded: Boolean(p?.onboarded_at),
+    personalised: said('personalisation') && said('adult') && !(age !== null && age < 18),
   };
 }
 
@@ -252,6 +295,16 @@ export function createSupabaseDataSource(client: SupabaseClient): DataSource {
         locality_id: (b.locality_id as string | null) ?? '',
         address_line: (b.address_line as string | null) ?? '',
         location: { lat: Number(b.lat ?? 0), lng: Number(b.lng ?? 0) },
+        description: str(b.description),
+        keywords: strs(b.keywords),
+        owner_role: str(b.owner_role),
+        cost_for_two: b.cost_for_two == null ? null : Number(b.cost_for_two),
+        amenities: strs(b.amenities),
+        cuisines: strs(b.cuisines),
+        open_time: str(b.open_time),
+        close_time: str(b.close_time),
+        photos: strs(b.photos),
+        menu: Array.isArray(b.menu) ? (b.menu as Business['menu']) : [],
       };
     },
 
@@ -472,61 +525,46 @@ export function createSupabaseDataSource(client: SupabaseClient): DataSource {
       return (data ?? []).map(rowToAction);
     },
 
-    async listShopDeals(businessId) {
-      return cards(await rpc('shop_deals', { p_business_id: businessId }));
+    async listShopDeals(businessId, origin) {
+      const { data, error } = await client.rpc('shop_deals', {
+        p_business_id: businessId,
+        p_lat: origin?.lat ?? null,
+        p_lng: origin?.lng ?? null,
+      });
+      // An old demo link (/shop/biz-rangoli): nothing to list, and the page says the shop is not there.
+      if (isBadUuid(error)) return [];
+      if (error) fail(error);
+      return cards(data);
     },
 
+    // Reviews go through 0016's RPCs: kept after a deal ends, with a first name
+    // and initial, and written only for a visit whose code was used.
     async listReviews(target, limit = 50) {
-      let q = client
-        .from('reviews')
-        .select('id, deal_id, customer_id, customer_action_id, rating, body, created_at, deals!inner(title, business_id)')
-        .eq('status', 'visible')
-        .order('created_at', { ascending: false })
-        .limit(limit);
-      if (target.dealId) q = q.eq('deal_id', target.dealId);
-      if (target.businessId) q = q.eq('deals.business_id', target.businessId);
-      const { data, error } = await q;
+      const { data, error } = await client.rpc('list_reviews', {
+        p_business_id: target.businessId ?? null,
+        p_deal_id: target.dealId ?? null,
+        p_limit: limit,
+      });
+      if (isBadUuid(error)) return [];
       if (error) fail(error);
-      return (data ?? []).map(rowToReview);
+      return ((data as unknown[] | null) ?? []).map(rowToReview);
     },
 
     async listMyReviews() {
       const { data: auth } = await client.auth.getUser();
       if (!auth.user) return [];
-      const { data, error } = await client
-        .from('reviews')
-        .select('id, deal_id, customer_id, customer_action_id, rating, body, created_at, deals!inner(title, business_id)')
-        .eq('customer_id', auth.user.id);
-      if (error) fail(error);
-      return (data ?? []).map(rowToReview);
+      return ((await rpc<unknown[] | null>('my_reviews')) ?? []).map(rowToReview);
     },
 
     async createReview(input) {
-      const { data: auth } = await client.auth.getUser();
-      if (!auth.user) throw new RuleViolation('Sign in to rate a visit');
-      const { data: action, error: aErr } = await client
-        .from('customer_actions')
-        .select('id, deal_id, status')
-        .eq('id', input.action_id)
-        .single();
-      if (aErr) fail(aErr);
-      if (action.status !== 'redeemed') throw new RuleViolation('You can rate a visit once your code has been used');
-      const { data, error } = await client
-        .from('reviews')
-        .insert({
-          deal_id: action.deal_id,
-          customer_id: auth.user.id,
-          customer_action_id: action.id,
-          rating: Math.round(input.rating),
-          body: (input.body ?? '').trim().slice(0, 600) || null,
-        })
-        .select('id, deal_id, customer_id, customer_action_id, rating, body, created_at, deals!inner(title, business_id)')
-        .single();
-      if (error) {
-        if (error.code === '23505') throw new RuleViolation('You have already rated this deal');
-        fail(error);
-      }
-      return rowToReview(data);
+      const rows = await rpc<unknown[] | null>('create_review', {
+        p_action_id: input.action_id,
+        p_rating: Math.round(input.rating),
+        p_body: (input.body ?? '').trim().slice(0, 1000) || null,
+      });
+      const row = rows?.[0];
+      if (!row) throw new Error('The review was not saved');
+      return rowToReview(row);
     },
 
     async listSlotLoad(dealId) {
@@ -548,12 +586,17 @@ export function createSupabaseDataSource(client: SupabaseClient): DataSource {
         .order('created_at', { ascending: false })
         .limit(200);
       if (error) fail(error);
-      // Customers' names stay private to them; the order shows the code instead.
+      // First name and initial for the team (0019); a database without it shows the code instead.
+      const names = new Map<string, string | null>();
+      const { data: named } = await client.rpc('business_customer_names', { p_business_id: businessId });
+      for (const r of (named ?? []) as { action_id: string; customer_name: string | null }[]) {
+        names.set(r.action_id, r.customer_name);
+      }
       return (data ?? []).map(rowToAction).map((a) => ({
         ...a,
         deal_title: byId.get(a.deal_id)?.title ?? 'Deal',
         deal_price: byId.get(a.deal_id)?.deal_price ?? null,
-        customer_name: null,
+        customer_name: names.get(a.id) ?? null,
       }));
     },
 
@@ -563,7 +606,9 @@ export function createSupabaseDataSource(client: SupabaseClient): DataSource {
       const uid = await userId(client);
       if (!uid) throw new RuleViolation('Sign in first');
       // Column grants (0003) allow exactly these fields; anything else is refused.
-      const { error } = await client.from('profiles').update(input).eq('id', uid);
+      const { onboarded, ...fields } = input;
+      const row = { ...fields, ...(onboarded ? { onboarded_at: new Date().toISOString() } : {}) };
+      const { error } = await client.from('profiles').update(row).eq('id', uid);
       if (error) fail(error);
     },
 
@@ -643,6 +688,7 @@ export function createSupabaseDataSource(client: SupabaseClient): DataSource {
           address_line: input.address_line,
           phone: input.phone || null,
           email: input.email || null,
+          ...businessExtras(input),
         },
       });
     },
@@ -656,6 +702,7 @@ export function createSupabaseDataSource(client: SupabaseClient): DataSource {
           address_line: input.address_line,
           phone: input.phone || null,
           email: input.email || null,
+          ...businessExtras(input),
         },
       });
     },
@@ -813,6 +860,101 @@ export function createSupabaseDataSource(client: SupabaseClient): DataSource {
         .update({ read_at: new Date().toISOString() })
         .eq('id', id);
       if (error) fail(error);
+    },
+
+    // ---- activity and privacy (0018) ----
+
+    async track(events) {
+      if (events.length === 0) return;
+      // Never throws: a lost event must not break a screen.
+      await client.rpc('track', { p_events: events }).then(
+        () => undefined,
+        () => undefined,
+      );
+    },
+
+    async getMyConsents() {
+      const rows = await rpc<{ purpose: ConsentPurpose; granted: boolean; created_at: string }[] | null>('my_consents');
+      return (rows ?? []).map((r) => ({ purpose: r.purpose, granted: r.granted, created_at: r.created_at }));
+    },
+
+    async setConsent(purpose, granted, channel = 'app') {
+      await rpc('set_consent', {
+        p_purpose: purpose,
+        p_granted: granted,
+        p_notice_version: NOTICE_VERSION,
+        p_channel: channel,
+      });
+    },
+
+    async eraseMyActivity() {
+      await rpc('erase_my_activity');
+    },
+
+    async getMyActivitySummary() {
+      const rows = await rpc<{ name: string; events: number; last_at: string }[] | null>('my_activity_summary');
+      return (rows ?? []).map((r) => ({ name: r.name, events: Number(r.events), last_at: r.last_at }));
+    },
+
+    async notInterested(dealId, scope) {
+      await rpc('not_interested', { p_deal_id: dealId, p_scope: scope });
+    },
+
+    async listHidden() {
+      const { data, error } = await client
+        .from('hidden_items')
+        .select('kind, target_id, created_at')
+        .order('created_at', { ascending: false });
+      if (error) fail(error);
+      const rows = (data ?? []) as { kind: HiddenItem['kind']; target_id: string; created_at: string }[];
+      const ids = (k: HiddenItem['kind']) => rows.filter((r) => r.kind === k).map((r) => r.target_id);
+      // Names to show; a deal no longer on offer may not be readable, so it keeps a plain label.
+      const [biz, cats, deals] = await Promise.all([
+        ids('business').length ? client.from('businesses').select('id, name').in('id', ids('business')) : null,
+        ids('category').length ? client.from('categories').select('id, name').in('id', ids('category')) : null,
+        ids('deal').length ? client.from('deals').select('id, title').in('id', ids('deal')) : null,
+      ]);
+      const name = new Map<string, string>();
+      for (const r of (biz?.data ?? []) as { id: string; name: string }[]) name.set(r.id, r.name);
+      for (const r of (cats?.data ?? []) as { id: string; name: string }[]) name.set(r.id, r.name);
+      for (const r of (deals?.data ?? []) as { id: string; title: string }[]) name.set(r.id, r.title);
+      return rows.map((r) => ({
+        ...r,
+        label: name.get(r.target_id) ?? (r.kind === 'deal' ? 'A deal' : r.kind === 'business' ? 'A place' : 'A kind of deal'),
+      }));
+    },
+
+    async unhide(kind, targetId) {
+      const { error } = await client.from('hidden_items').delete().eq('kind', kind).eq('target_id', targetId);
+      if (error) fail(error);
+    },
+
+    subscribeNotifications(onNew) {
+      // Realtime on the notifications table (0019 adds it to the publication); RLS keeps it to your own.
+      let channel: ReturnType<typeof client.channel> | null = null;
+      let stopped = false;
+      void userId(client).then((uid) => {
+        if (!uid || stopped) return;
+        // A topic of its own each time: channel() hands back an existing one with the
+        // same topic, and one still leaving after the last subscriber would never deliver.
+        channel = client
+          .channel('notifications:' + uid + ':' + ++channelSeq)
+          .on(
+            'postgres_changes',
+            { event: 'INSERT', schema: 'public', table: 'notifications', filter: 'profile_id=eq.' + uid },
+            (payload) => onNew(payload.new as Notification),
+          )
+          .subscribe((status, err) => {
+            // Live alerts are extra (the list still loads), so a dead channel is logged, not shown.
+            if (status === REALTIME_SUBSCRIBE_STATES.CHANNEL_ERROR || status === REALTIME_SUBSCRIBE_STATES.TIMED_OUT) {
+              console.warn('Live notifications: ' + status, err?.message ?? '');
+            }
+          });
+      });
+      return () => {
+        stopped = true;
+        if (channel) void client.removeChannel(channel);
+      };
     },
 
     async recordEvents(events) {

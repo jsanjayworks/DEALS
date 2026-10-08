@@ -16,6 +16,7 @@ import {
   backend,
   currentViewer,
   demoAccounts,
+  demoIsOptional,
   demoUserById,
   onViewerChange,
   signInAs,
@@ -218,6 +219,23 @@ export function useSessionHydrated(): boolean {
     (cb) => useSession.persist.onFinishHydration(cb),
     () => useSession.persist.hasHydrated(),
     () => false,
+  );
+}
+
+const never = () => () => {};
+
+/**
+ * Whether this page shows the demo, for drawing demo-only parts. The server
+ * cannot read this browser's choice and renders the real app, so a page first
+ * hydrates as that and the demo's parts appear just after; otherwise the two
+ * renders differ and React rebuilds the page. A build that is only the demo
+ * renders it on the server too, so there it is true from the start.
+ */
+export function useDemo(): boolean {
+  return useSyncExternalStore(
+    never,
+    () => backend === 'local',
+    () => backend === 'local' && !demoIsOptional,
   );
 }
 

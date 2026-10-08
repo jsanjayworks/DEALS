@@ -46,7 +46,44 @@ export interface AppViewer extends Viewer {
   email?: string | null;
   /** Profile picture, ready to display; null when there is none. */
   avatar_url?: string | null;
+  /** The first-run welcome is done (name, age, suggestions). Missing means done (older accounts). */
+  onboarded?: boolean;
+  /** Agreed to personalised suggestions and said they are 18 or older (migration 0018). */
+  personalised?: boolean;
 }
+
+/** What a person can agree to, each on its own (DPDP Act 2023). */
+export type ConsentPurpose = 'personalisation' | 'voice' | 'location' | 'marketing' | 'adult';
+
+export interface ConsentState {
+  purpose: ConsentPurpose;
+  granted: boolean;
+  created_at: string;
+}
+
+/** One thing someone did, for track() (0018); the server decides what it keeps. */
+export interface ActivityEvent {
+  name: string;
+  session_id?: string;
+  surface?: string;
+  position?: number;
+  deal_id?: string;
+  business_id?: string;
+  query?: string;
+  props?: Record<string, unknown>;
+}
+
+/** Something they said "not for me" to. */
+export interface HiddenItem {
+  kind: 'deal' | 'business' | 'category';
+  target_id: string;
+  /** The deal's title, the place's or the category's name. */
+  label: string;
+  created_at: string;
+}
+
+/** The version of the privacy notice the app shows; recorded with every consent. */
+export const NOTICE_VERSION = '2026-10-v1';
 
 /** A picked image, as expo-image-picker returns it. */
 export interface PickedImage {
@@ -198,6 +235,8 @@ export interface ProfileUpdate {
   email?: string | null;
   /** YYYY-MM-DD. Unlocks 18+ and 21+ deals. */
   date_of_birth?: string | null;
+  /** Marks the first-run welcome as done. */
+  onboarded?: boolean;
 }
 
 export type SupportTopic =
@@ -454,8 +493,25 @@ export interface DataSource {
   replySupportTicket(ticketId: string, reply: string, close?: boolean): Promise<'answered' | 'closed'>;
   reviewBusiness(businessId: string, approve: boolean, reason?: string): Promise<'verified' | 'rejected'>;
 
+  // ---- activity and privacy (0018) ----
+  /** Fire and forget: never throws. */
+  track(events: ActivityEvent[]): Promise<void>;
+  getMyConsents(): Promise<ConsentState[]>;
+  /** A yes or no for one purpose; no to personalisation also forgets what was learned. */
+  setConsent(purpose: ConsentPurpose, granted: boolean, channel?: 'app' | 'voice' | 'web'): Promise<void>;
+  /** "Clear my activity". */
+  eraseMyActivity(): Promise<void>;
+  /** "What do you know about me": counts of what was recorded. */
+  getMyActivitySummary(): Promise<{ name: string; events: number; last_at: string }[]>;
+  /** "Not for me": never suggest this deal, this place or this kind of thing again. */
+  notInterested(dealId: string, scope: HiddenItem['kind']): Promise<void>;
+  listHidden(): Promise<HiddenItem[]>;
+  unhide(kind: HiddenItem['kind'], targetId: string): Promise<void>;
+
   // ---- notifications and analytics ----
   listNotifications(): Promise<Notification[]>;
+  /** New notifications for the signed-in person as they are written; returns the unsubscribe. */
+  subscribeNotifications(onNew: (n: Notification) => void): () => void;
   markNotificationRead(id: string): Promise<void>;
   recordEvents(
     events: { deal_id: string; event_type: string; source?: string }[],

@@ -286,7 +286,10 @@ export interface Notification {
     | 'support_reply'
     | 'deal_paused'
     | 'rate_visit'
-    | 'new_review';
+    | 'new_review'
+    | 'order_cancelled'
+    | 'review_needed'
+    | 'verification_needed';
   title: string;
   body: string;
   data: Record<string, unknown>;

@@ -36,7 +36,18 @@ export type Screen = (typeof SCREENS)[number];
  * Jobs the assistant does rather than only taking someone somewhere: it
  * answers in the sheet from their own orders, or acts after a tap to confirm.
  */
-export const CUSTOMER_JOBS = ['recommend', 'reorder', 'savings', 'my_codes', 'cancel', 'business_info'] as const;
+export const CUSTOMER_JOBS = [
+  'recommend',
+  'reorder',
+  'savings',
+  'my_codes',
+  'cancel',
+  'business_info',
+  // "Not for me" about the deal on screen; query is 'deal', 'business' or 'category'.
+  'not_interested',
+  // Privacy by voice; query is 'summary', 'clear', 'on' or 'off'.
+  'privacy',
+] as const;
 export const MERCHANT_JOBS = ['merchant_summary', 'merchant_pause', 'merchant_resume', 'merchant_redeem'] as const;
 export const INTENT_KINDS = ['search', 'book', 'go', 'open_business', ...CUSTOMER_JOBS, ...MERCHANT_JOBS] as const;
 export type IntentKind = (typeof INTENT_KINDS)[number];

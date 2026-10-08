@@ -4,13 +4,14 @@
  * Redeemed or not); Past goes back from yesterday.
  */
 
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { router } from 'expo-router';
 import { db, type BusinessOrder } from '../../data';
 import { slotKey } from '../../data/booking';
 import { dayHeading } from '../../lib/format';
 import { useQuery } from '../../lib/useQuery';
+import { onLiveNotification } from '../../lib/notificationRoute';
 import { BookingRow } from '../../merchant/BookingRow';
 import { useBusinessId } from '../../merchant/useBusiness';
 import { color, radius, space, type } from '../../theme/tokens';
@@ -37,7 +38,8 @@ export default function BookingsScreen() {
       .sort((a, b) => slotKey(b.slot_start!) - slotKey(a.slot_start!));
     return { upcoming, past };
   }, [businessId]);
-  const { data } = useQuery(fetchBookings);
+  const { data, reload } = useQuery(fetchBookings);
+  useEffect(() => onLiveNotification(() => reload()), [reload]);
 
   const list = (view === 'upcoming' ? data?.upcoming : data?.past) ?? [];
   const groups: { day: string; items: BusinessOrder[] }[] = [];

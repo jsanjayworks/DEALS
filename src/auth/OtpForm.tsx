@@ -1,9 +1,10 @@
 /**
  * The one-time-code form behind both doors: customer sign-in and the
- * "YOLO for Business" merchant login. Email codes always; phone codes only
- * when EXPO_PUBLIC_PHONE_SIGNIN=on, because they need an SMS provider (paid,
- * and DLT registration in India). With phone on, it comes first: most people
- * in India sign in by number.
+ * "YOLO for Business" merchant login. The real app signs in by mobile number,
+ * the way people in India expect; EXPO_PUBLIC_SIGNIN can widen it to
+ * "phone,email" or switch to "email" (phone codes need an SMS provider and
+ * DLT registration; Supabase test numbers work before that). The demo signs
+ * in by email, because its ready-made accounts are email addresses.
  *
  * Both doors lead to the same account. What the account can open afterwards
  * (merchant mode, admin) comes from the data, so the form only signs in and
@@ -14,6 +15,7 @@ import { useState, type ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { router } from 'expo-router';
 import { RuleViolation, type AuthApi, type OtpTarget } from '../data';
+import { useDemo } from '../state/session';
 import { hapticSuccess } from '../lib/device';
 import { color, font, radius, size, space, type } from '../theme/tokens';
 import { Button, Chip } from '../components';
@@ -21,7 +23,15 @@ import { reach } from '../lib/a11y';
 
 type Method = 'phone' | 'email';
 
-const PHONE_ENABLED = process.env.EXPO_PUBLIC_PHONE_SIGNIN === 'on';
+/** How the real app signs in; the first one listed is the default. */
+const REAL_METHODS: Method[] = (() => {
+  const raw = process.env.EXPO_PUBLIC_SIGNIN || (process.env.EXPO_PUBLIC_PHONE_SIGNIN === 'on' ? 'phone,email' : 'phone');
+  const list = raw
+    .split(',')
+    .map((m) => m.trim())
+    .filter((m): m is Method => m === 'phone' || m === 'email');
+  return list.length ? list : ['phone'];
+})();
 
 /** Accepts "98450 12345", "+91 98450 12345" or "919845012345"; returns E.164. */
 function toE164(raw: string): string | null {
@@ -51,7 +61,12 @@ export function OtpForm({
   codeHint?: string;
   onSignedIn: () => void | Promise<void>;
 }) {
-  const [method, setMethod] = useState<Method>(PHONE_ENABLED ? 'phone' : 'email');
+  // The demo has no codes: Continue signs in with the address as it is. Only
+  // once the page is live, since the server renders the real app's form (useDemo).
+  const instant = useDemo() && typeof api.signInWithoutCode === 'function';
+  const methods: Method[] = instant ? ['email'] : REAL_METHODS;
+  const [picked, setMethod] = useState<Method>(methods[0]);
+  const method = methods.includes(picked) ? picked : methods[0];
   const [value, setValue] = useState('');
   const [target, setTarget] = useState<OtpTarget | null>(null);
   const [code, setCode] = useState('');
@@ -69,9 +84,6 @@ export function OtpForm({
       setBusy(false);
     }
   };
-
-  // The demo has no codes: Continue signs in with the address as it is.
-  const instant = typeof api.signInWithoutCode === 'function';
 
   const send = () =>
     run(async () => {
@@ -119,7 +131,7 @@ export function OtpForm({
         </Text>
         <Text style={styles.lead}>{lead}</Text>
 
-        {PHONE_ENABLED ? (
+        {methods.length > 1 ? (
           <View style={styles.methods}>
             <Chip selected={method === 'phone'} onPress={() => pick('phone')}>
               Phone

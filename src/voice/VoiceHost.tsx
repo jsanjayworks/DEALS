@@ -12,6 +12,8 @@ import { usePathname } from 'expo-router';
 import { AnswerView } from '../assistant/AnswerView';
 import type { Answer } from '../assistant/jobs';
 import { useBusinessId } from '../merchant/useBusiness';
+import { db, refreshViewer } from '../data';
+import { track } from '../lib/track';
 import { useOrigin, useSession, useViewer } from '../state/session';
 import { understand } from './assist';
 import { runIntent } from './runIntent';
@@ -38,6 +40,7 @@ const CUSTOMER_EXAMPLES = [
   'Book a table for 4 at Rangoli Kitchen tomorrow at 8',
   'Chicken biryani under 300 in HSR for 4 people',
   "What's my code?",
+  'What do you know about me?',
   'मेरे लिए आज सबसे अच्छी डील कौन सी है?',
   'ಇಂದಿರಾನಗರದಲ್ಲಿ ಬಿರಿಯಾನಿ ಡೀಲ್ಸ್ ತೋರಿಸು',
 ];
@@ -63,13 +66,30 @@ export function VoiceHost() {
   const lang = useSession((s) => s.voiceLang);
   const pathname = usePathname();
   const mode: AssistMode = pathname.startsWith('/merchant') && businessId ? 'merchant' : 'customer';
+  // The deal on screen, for "not for me".
+  const dealOnScreen = /^\/deal\/([^/?#]+)/.exec(pathname)?.[1] ?? null;
 
   const submit = async (text: string, l: VoiceLang) => {
     setBusy(true);
     setProblem(null);
     try {
-      const { result } = await understand('customer', text, l, { mode });
-      const out = await runIntent(result, { origin, signedIn: viewer !== null, businessId });
+      const { result, source } = await understand('customer', text, l, { mode });
+      const out = await runIntent(result, {
+        origin,
+        signedIn: viewer !== null,
+        businessId,
+        personalised: viewer?.personalised ?? false,
+        dealId: dealOnScreen,
+        refresh: refreshViewer,
+      });
+      // What was asked is the strongest signal there is (kept per the person's consent, server-side).
+      track({
+        name: 'voice_query',
+        surface: mode === 'merchant' ? 'voice.merchant' : 'voice',
+        query: text,
+        deal_id: dealOnScreen ?? undefined,
+        props: { kind: result.kind, source, lang: l, ok: out.kind !== 'none' },
+      });
       if (out.kind === 'done') setOpen(false);
       else if (out.kind === 'answer') setAnswer(out.answer);
       else setProblem('Could not work that out. Try saying it another way, or tap an example.');
@@ -119,7 +139,23 @@ export function VoiceHost() {
       problem={problem}
       initialText={asked}
       onSubmit={(t, l) => void submit(t, l)}
-      answer={answer ? <AnswerView answer={answer} onClose={close} onReplace={setAnswer} /> : null}
+      answer={
+        answer ? (
+          <AnswerView
+            answer={answer}
+            onClose={close}
+            onReplace={setAnswer}
+            onHide={
+              viewer
+                ? async (dealId) => {
+                    await db.notInterested(dealId, 'deal');
+                    track({ name: 'not_interested', deal_id: dealId, surface: 'voice' });
+                  }
+                : undefined
+            }
+          />
+        ) : null
+      }
       onAskAgain={() => {
         setAnswer(null);
         setAsked(null);

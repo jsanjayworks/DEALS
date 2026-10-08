@@ -7,11 +7,11 @@
 
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Image } from 'expo-image';
-import { db } from '../data';
+import { backend, db } from '../data';
 import { matchPhoto } from '../data/photo-library';
 import type { MenuItem } from '../data/types';
 import { classifyOffering, keywordsFrom } from './classify';
-import { defaultsFor, emptyForm, toDraftInput, type WizardForm } from './wizard';
+import { addDays, defaultsFor, emptyForm, toDraftInput, type WizardForm } from './wizard';
 import type { MerchantProduct } from '../voice/types';
 import { color, radius, space, type } from '../theme/tokens';
 import { Icon } from '../components';
@@ -69,12 +69,21 @@ const TIME = /^([01]\d|2[0-3]):[0-5]\d$/;
 export async function publishProducts(
   businessId: string,
   products: DraftProduct[],
-  ctx: { businessType: string | null; businessName: string; open: string | null; close: string | null; days: number[] | null },
+  ctx: {
+    businessType: string | null;
+    businessName: string;
+    open: string | null;
+    close: string | null;
+    days: number[] | null;
+    /** Products already posted by an earlier try, by index: a retry never posts them twice. */
+    done?: ReadonlySet<number>;
+    onPosted?: (index: number) => void;
+  },
 ): Promise<number> {
   let posted = 0;
-  for (const p of products) {
+  for (const [i, p] of products.entries()) {
     const price = num(p.priceText);
-    if (!p.post || price == null || !p.title.trim()) continue;
+    if (!p.post || price == null || !p.title.trim() || ctx.done?.has(i)) continue;
     const was = num(p.wasText);
     const found = classifyOffering(p.title + ' ' + p.description) ?? classifyOffering(ctx.businessType ?? '');
     const vertical = found?.vertical ?? 'food';
@@ -83,9 +92,14 @@ export async function publishProducts(
     let close = ctx.close && TIME.test(ctx.close) ? ctx.close : '21:00';
     // Open past midnight: the deal window ends at midnight.
     if (close <= open) close = '23:59';
-    const title = p.title.trim().slice(0, 90);
+    // A deal title needs 4 letters or more: "Tea" becomes "Tea at Chai Adda".
+    const said = p.title.trim();
+    const title = (said.length >= 4 ? said : said + ' at ' + ctx.businessName).slice(0, 90);
+    const base = emptyForm();
     const form: WizardForm = {
-      ...emptyForm(),
+      ...base,
+      // What a shop sells stays up like a menu does: three months, not the wizard's two weeks.
+      ends_at: addDays(base.starts_at, 90),
       offering: title,
       title,
       vertical,
@@ -112,6 +126,7 @@ export async function publishProducts(
     };
     const id = await db.saveDealDraft(toDraftInput(form, businessId));
     await db.submitDeal(id);
+    ctx.onPosted?.(i);
     posted += 1;
   }
   return posted;
@@ -134,7 +149,9 @@ export function VoiceProducts({
     <View style={styles.wrap}>
       <Text style={styles.title}>Your first deals</Text>
       <Text style={styles.lead}>
-        From what you said. Ticked ones go live with these photos when you create your business; change anything first.
+        {backend === 'local'
+          ? 'From what you said. Ticked ones go live with these photos when you create your business; change anything first.'
+          : 'From what you said. Ticked ones are posted with these photos when you create your business, and go live as soon as YOLO verifies it. Change anything first.'}
       </Text>
       {products.map((p) => {
         const noPrice = num(p.priceText) == null;
@@ -187,7 +204,9 @@ export function VoiceProducts({
         );
       })}
       <Text style={styles.count}>
-        {ticked === 0 ? 'No deals will be posted yet.' : ticked + (ticked === 1 ? ' deal' : ' deals') + ' will go live.'}
+        {ticked === 0
+          ? 'No deals will be posted yet.'
+          : ticked + (ticked === 1 ? ' deal' : ' deals') + (backend === 'local' ? ' will go live.' : ' will be posted.')}
       </Text>
     </View>
   );

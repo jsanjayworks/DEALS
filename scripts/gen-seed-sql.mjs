@@ -104,6 +104,26 @@ w();
 w('-- Seeded rows are inserted as the table owner, so RLS is bypassed here by');
 w('-- design. Nothing in this file depends on a signed-in user.');
 w();
+w('-- LOCAL ONLY. This file makes demo accounts (one of them an admin) and sample');
+w('-- businesses. It refuses to run unless the session says it is a local database,');
+w('-- so `supabase db push --include-seed` or `db reset --linked` cannot put it in');
+w('-- production. scripts/db-reset.sh sets this; locally you can run it by hand with');
+w("--   set app.allow_seed = 'on';");
+w('do $$');
+w('begin');
+w("  if current_setting('app.allow_seed', true) is distinct from 'on' then");
+w("    raise exception 'seed.sql is for local databases only (set app.allow_seed = on to run it)';");
+w('  end if;');
+w('  -- Never on a database marked as production, or one people already use.');
+w("  if to_regclass('public.app_settings') is not null");
+w("     and exists (select 1 from public.app_settings where key = 'environment' and value = 'production') then");
+w("    raise exception 'seed.sql refuses to run: this database is marked as production';");
+w('  end if;');
+w("  if exists (select 1 from auth.users) then");
+w("    raise exception 'seed.sql refuses to run: this database already has accounts';");
+w('  end if;');
+w('end $$;');
+w();
 
 // ---- auth users and profiles ----
 w('-- ------------------------------------------------- demo accounts ----------');

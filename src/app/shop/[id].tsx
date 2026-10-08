@@ -5,7 +5,7 @@
  * reviews and the owner's own words. The jump chips scroll to each part.
  */
 
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { Image } from 'expo-image';
 import { router, useLocalSearchParams } from 'expo-router';
@@ -18,6 +18,7 @@ import { amenityLabel } from '../../data/amenities';
 import { callPhone, formatPhone, openDirections } from '../../lib/device';
 import { timeLabel } from '../../lib/format';
 import { openNow } from '../../lib/hours';
+import { track } from '../../lib/track';
 import { useQuery } from '../../lib/useQuery';
 import { RatingSummary, ReviewCard, StarRow } from '../../reviews/Reviews';
 import { useOrigin } from '../../state/session';
@@ -44,15 +45,27 @@ export default function ShopScreen() {
   const [viewing, setViewing] = useState<number | null>(null);
 
   const fetchShop = useCallback(async () => {
-    const [business, deals, reviews] = await Promise.all([
+    const [business, deals, reviews, categories, localities] = await Promise.all([
       db.getBusiness(String(id)),
       db.listShopDeals(String(id), origin),
       db.listReviews({ businessId: String(id) }),
+      // The backend's own lists: on Supabase their ids are uuids, not the sample data's.
+      db.getCategories().catch(() => CATEGORIES),
+      db.getLocalities().catch(() => LOCALITIES),
     ]);
+    const cat = business ? (categories.find((c) => c.id === business.primary_category_id) ?? null) : null;
+    const area = business ? (localities.find((l) => l.id === business.locality_id) ?? null) : null;
     // Opening hours decide "Open now"; computed here, not while drawing.
-    return { business, deals, reviews, open: business ? openNow(business.open_time, business.close_time) : null };
+    return { business, deals, reviews, cat, area, open: business ? openNow(business.open_time, business.close_time) : null };
   }, [id, origin]);
   const { data } = useQuery(fetchShop);
+  // One visit per shop page.
+  const visited = useRef<string | null>(null);
+  useEffect(() => {
+    if (!data?.business || visited.current === data.business.id) return;
+    visited.current = data.business.id;
+    track({ name: 'shop_open', business_id: data.business.id, surface: 'shop' });
+  }, [data]);
 
   const back = () => (router.canGoBack() ? router.back() : router.dismissTo('/'));
 
@@ -72,8 +85,8 @@ export default function ShopScreen() {
   const b = data?.business ?? null;
   const deals: DealCardModel[] = data?.deals ?? [];
   const reviews = data?.reviews ?? [];
-  const cat = b ? CATEGORIES.find((c) => c.id === b.primary_category_id) : null;
-  const area = b ? LOCALITIES.find((l) => l.id === b.locality_id) : null;
+  const cat = data?.cat ?? null;
+  const area = data?.area ?? null;
   const photos = b ? [...new Set([...(b.photos ?? []), ...deals.map((d) => d.image)])].filter(Boolean) : [];
   const cover = photos[0] ?? null;
   const bookable = deals.find((d) => d.primary_cta === 'book' || d.primary_cta === 'reserve' || d.booking_required);

@@ -18,10 +18,13 @@ export function AnswerView({
   answer,
   onClose,
   onReplace,
+  onHide,
 }: {
   answer: Answer;
   onClose: () => void;
   onReplace: (next: Answer) => void;
+  /** "Not for me" on a pick, for someone signed in. */
+  onHide?: (dealId: string) => Promise<void>;
 }) {
   const [busy, setBusy] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -40,11 +43,28 @@ export function AnswerView({
     }
   };
 
+  const hide = async (p: Pick) => {
+    if (!onHide) return;
+    setError(null);
+    try {
+      await onHide(p.deal.id);
+      // The pick goes, and so does any button that would still open it.
+      onReplace({
+        ...answer,
+        picks: (answer.picks ?? []).filter((x) => x.deal.id !== p.deal.id),
+        actions: answer.actions?.filter((a) => a.dealId !== p.deal.id),
+      });
+    } catch (e) {
+      setError(e instanceof RuleViolation ? e.message : 'That did not work. Try again.');
+    }
+  };
+
   const openPick = (p: Pick) => {
     router.push({
       pathname: '/deal/[id]',
       params: {
         id: p.deal.id,
+        from: 'voice',
         ...(p.take ? { take: '1' } : {}),
         ...(p.take && p.take.quantity > 1 ? { qty: String(p.take.quantity) } : {}),
       },
@@ -86,7 +106,7 @@ export function AnswerView({
       {answer.picks?.length ? (
         <View style={styles.list}>
           {answer.picks.map((p) => (
-            <PickRow key={p.deal.id} pick={p} onPress={() => openPick(p)} />
+            <PickRow key={p.deal.id} pick={p} onPress={() => openPick(p)} onHide={onHide ? () => void hide(p) : undefined} />
           ))}
         </View>
       ) : null}
@@ -127,41 +147,55 @@ export function AnswerView({
   );
 }
 
-function PickRow({ pick, onPress }: { pick: Pick; onPress: () => void }) {
+function PickRow({ pick, onPress, onHide }: { pick: Pick; onPress: () => void; onHide?: () => void }) {
   const d = pick.deal;
   const free = !d.deal_price;
   return (
-    <Pressable
-      onPress={onPress}
-      accessibilityRole="button"
-      accessibilityLabel={d.title + ' at ' + d.business.name + (pick.take ? ', order' : ', open')}
-      style={({ pressed }) => [styles.pick, pressed && { opacity: 0.8 }]}
-    >
-      <Image source={{ uri: d.image }} style={styles.pickImage} contentFit="cover" transition={120} />
-      <View style={styles.pickText}>
-        <Text style={styles.pickTitle} numberOfLines={2}>
-          {d.title}
-        </Text>
-        <Text style={styles.pickMeta} numberOfLines={1}>
-          {d.business.name} · {distanceLabel(d.distance_km)}
-        </Text>
-        <View style={styles.priceRow}>
-          <Text style={styles.price}>{free ? 'Free' : inr(d.deal_price!) + (d.price_unit ?? '')}</Text>
-          {!free && d.original_price && d.original_price > d.deal_price! ? (
-            <Text style={styles.was}>{inr(d.original_price)}</Text>
-          ) : null}
-        </View>
-        {pick.why.map((w) => (
-          <View key={w} style={styles.whyRow}>
-            <Icon name="check" size={12} color={color.textSecondary} strokeWidth={2.4} />
-            <Text style={styles.why} numberOfLines={2}>
-              {w}
-            </Text>
+    <View style={styles.pickWrap}>
+      <Pressable
+        onPress={onPress}
+        accessibilityRole="button"
+        accessibilityLabel={d.title + ' at ' + d.business.name + (pick.take ? ', order' : ', open')}
+        style={({ pressed }) => [styles.pick, pressed && { opacity: 0.8 }]}
+      >
+        <Image source={{ uri: d.image }} style={styles.pickImage} contentFit="cover" transition={120} />
+        <View style={styles.pickText}>
+          <Text style={styles.pickTitle} numberOfLines={2}>
+            {d.title}
+          </Text>
+          <Text style={styles.pickMeta} numberOfLines={1}>
+            {d.business.name} · {distanceLabel(d.distance_km)}
+          </Text>
+          <View style={styles.priceRow}>
+            <Text style={styles.price}>{free ? 'Free' : inr(d.deal_price!) + (d.price_unit ?? '')}</Text>
+            {!free && d.original_price && d.original_price > d.deal_price! ? (
+              <Text style={styles.was}>{inr(d.original_price)}</Text>
+            ) : null}
           </View>
-        ))}
-      </View>
-      <Icon name="chev" size={16} color={color.textMuted} />
-    </Pressable>
+          {pick.why.map((w) => (
+            <View key={w} style={styles.whyRow}>
+              <Icon name="check" size={12} color={color.textSecondary} strokeWidth={2.4} />
+              <Text style={styles.why} numberOfLines={2}>
+                {w}
+              </Text>
+            </View>
+          ))}
+        </View>
+        <Icon name="chev" size={16} color={color.textMuted} />
+      </Pressable>
+      {onHide ? (
+        <Pressable
+          onPress={onHide}
+          accessibilityRole="button"
+          accessibilityLabel={'Not for me: ' + d.title}
+          hitSlop={6}
+          style={({ pressed }) => [styles.hide, pressed && { opacity: 0.6 }]}
+        >
+          <Icon name="x" size={12} color={color.textSecondary} strokeWidth={2.2} />
+          <Text style={styles.hideText}>Not for me</Text>
+        </Pressable>
+      ) : null}
+    </View>
   );
 }
 
@@ -241,6 +275,21 @@ const styles = StyleSheet.create({
   },
   list: {
     gap: space.sm,
+  },
+  pickWrap: {
+    gap: 4,
+  },
+  hide: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-end',
+    gap: 4,
+    paddingVertical: 2,
+    paddingHorizontal: space.sm,
+  },
+  hideText: {
+    ...type.small,
+    color: color.textSecondary,
   },
   pick: {
     flexDirection: 'row',

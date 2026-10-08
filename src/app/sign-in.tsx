@@ -15,12 +15,11 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { DemoLogins } from '../auth/DemoLogins';
 import { DoorLink, OtpForm } from '../auth/OtpForm';
-import { auth, backend } from '../data';
-import { useSession } from '../state/session';
+import { ExploreDemo } from '../auth/ExploreDemo';
+import { auth } from '../data';
+import { useDemo, useSession } from '../state/session';
 import { color, space } from '../theme/tokens';
 import { Header } from '../components';
-
-const DEMO = backend === 'local';
 
 /** Where a finished sign-in may continue to. Anything else closes the sheet. */
 const NEXT_ROUTES = ['/list-business', '/merchant'] as const;
@@ -32,6 +31,8 @@ export default function SignInScreen() {
   const insets = useSafeAreaInsets();
   const { next } = useLocalSearchParams<{ next?: string }>();
   const setMode = useSession((s) => s.setMode);
+  // The demo's parts appear once the page is live; the server renders the real app.
+  const demo = useDemo();
   const close = () => (router.canGoBack() ? router.back() : router.dismissTo('/'));
 
   return (
@@ -46,9 +47,9 @@ export default function SignInScreen() {
             api={auth}
             title="Welcome to YOLO Deals"
             lead={
-              DEMO
+              demo
                 ? 'Demo: enter any email to sign in. No code needed; a new email makes a new account.'
-                : 'We will send you a one-time code. No password needed.'
+                : 'We will text a one-time code to your mobile. No password needed.'
             }
             onSignedIn={() => {
               const to = asNext(next);
@@ -63,7 +64,7 @@ export default function SignInScreen() {
               />
             }
           />
-          {DEMO ? (
+          {demo ? (
             <DemoLogins
               onSignedIn={(kind) => {
                 // Each demo account lands where that person would start.
@@ -79,6 +80,7 @@ export default function SignInScreen() {
               }}
             />
           ) : null}
+          <ExploreDemo />
         </ScrollView>
       </KeyboardAvoidingView>
     </View>
