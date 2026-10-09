@@ -6,7 +6,7 @@
 
 import { accessToken } from '../data';
 import { LOCALITIES } from '../data/seed-reference';
-import { ruleCustomerIntent, ruleDealDraft, ruleMerchantProfile } from './rules';
+import { ruleCustomerIntent, ruleDealDraft, ruleMerchantProfile, settleCustomerIntent } from './rules';
 import type { AssistMode, AssistTask, CustomerIntent, DealVoiceDraft, MerchantProfile, VoiceLang } from './types';
 
 type ResultOf<T extends AssistTask> = T extends 'customer'
@@ -59,7 +59,11 @@ export async function understand<T extends AssistTask>(
     });
     if (res.ok) {
       const body = (await res.json()) as { result?: ResultOf<T> };
-      if (body.result) return { result: body.result, source: 'ai' };
+      if (body.result) {
+        const result =
+          task === 'customer' ? (settleCustomerIntent(body.result as CustomerIntent, text) as ResultOf<T>) : body.result;
+        return { result, source: 'ai' };
+      }
     }
   } catch {
     // Offline, timed out, or no server: the rules answer instead.

@@ -164,9 +164,9 @@ if (site) {
   else if (res.status === 503) {
     const why = (await res.json().catch(() => ({}))).error ?? '503';
     console.warn(
-      '! /api/assist is not set up (' + why + '). Add ANTHROPIC_API_KEY (--visibility sensitive) and both\n' +
+      '! /api/assist is not set up (' + why + '). Add GROQ_API_KEY or ANTHROPIC_API_KEY (--visibility sensitive) and both\n' +
         '  EXPO_PUBLIC_SUPABASE_ values (plain text) to the EAS production environment with eas env:create,\n' +
         '  then deploy again. See docs/LAUNCH.md step 7.',
     );
-  } else console.error('✗ /api/assist answered ' + res.status + ' to a caller who is not signed in. Check it at once: it may be spending the Anthropic key for anyone.');
+  } else console.error('✗ /api/assist answered ' + res.status + ' to a caller who is not signed in. Check it at once: it may be spending the AI key for anyone.');
 }

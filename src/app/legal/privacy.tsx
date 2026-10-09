@@ -39,7 +39,7 @@ export default function PrivacyScreen() {
           items={[
             'To run the service: show deals near you, let you claim them, and give the business what it needs to honour your claim.',
             'To personalise it, only if you agree: what you open, search for, ask, save and book picks deals for you (“Picked for you”, “Best deal for me”). This is off unless you switch it on, needs you to be 18 or older, and can be switched off or cleared any time under Profile → Privacy and data. Switching it off also forgets what was learned.',
-            'To understand what you ask by voice: the words go to our server and to Anthropic, which reads them to work out what you want. Only signed-in people can use it, within a daily limit.',
+            'To understand what you ask by voice: the words go to our server and to our AI provider (Groq or Anthropic), which reads them to work out what you want. Only signed-in people can use it, within a daily limit.',
             'To check age limits: deals marked 18+ or 21+ are shown only when your date of birth meets them.',
             'To verify businesses and keep listings honest, and to prevent fraud and abuse.',
             'To answer your support requests and send notices about your account and claims.',
@@ -54,7 +54,7 @@ export default function PrivacyScreen() {
           items={[
             'Businesses: when you claim, book or enquire about a deal, that business sees your first name and initial (for example “Aarav S.”) and the details of your order (code, quantity, time slot and any message you write) so it can serve you. It does not see your phone number or email. Businesses see counts of views and orders for their own deals, never who viewed them.',
             'Reviews show your first name and initial.',
-            'Service providers who run parts of YOLO Deals for us, under contract: our database and sign-in provider (Supabase), the SMS or email provider that sends sign-in codes, our website host (Expo), Anthropic (to understand voice requests) and your browser’s speech service (Google in Chrome, Microsoft in Edge) when you use the microphone. Your data may be stored or processed on their servers, which can be outside India.',
+            'Service providers who run parts of YOLO Deals for us, under contract: our database and sign-in provider (Supabase), the SMS or email provider that sends sign-in codes, our website host (Expo), Groq or Anthropic (to understand voice requests) and your browser’s speech service (Google in Chrome, Microsoft in Edge) when you use the microphone. Your data may be stored or processed on their servers, which can be outside India.',
             'Authorities, when the law requires it.',
           ]}
         />

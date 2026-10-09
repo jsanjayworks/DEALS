@@ -3,9 +3,11 @@
  * (from speech recognition, in English, Hindi, Kannada or a mix) in, one
  * structured answer out, matching src/voice/types.ts.
  *
- * Runs only where ANTHROPIC_API_KEY is set (.env.local, or the host's
- * secrets); the key never reaches the browser. Without it this answers 503
- * and the app falls back to its built-in rules (src/voice/rules.ts).
+ * Uses Claude when ANTHROPIC_API_KEY is set, otherwise Groq's free tier
+ * (openai/gpt-oss-120b) when GROQ_API_KEY is set: in .env.local, or the
+ * host's environment. Keys never reach the browser. With neither this
+ * answers 503 and the app falls back to its built-in rules
+ * (src/voice/rules.ts), as it does whenever an answer fails or is unsure.
  *
  * Only a signed-in person may use it, within a daily allowance
  * (use_voice_quota, migration 0017), so nobody can spend the key by finding
@@ -22,9 +24,18 @@ import { INTENT_KINDS, SCREENS } from '../../voice/types';
 
 const MODEL = 'claude-opus-5-5';
 
+/** Groq's free tier: a model with strict JSON output, so answers match the schemas below. */
+const GROQ_MODEL = 'openai/gpt-oss-120b';
+const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions';
+
 /** Longest input and answer per task: a command is a sentence, a business a paragraph or two. */
 const MAX_CHARS = { customer: 600, deal: 2000, merchant: 4000 } as const;
 const MAX_TOKENS = { customer: 2000, deal: 4000, merchant: 8000 } as const;
+/**
+ * Groq's free tier refuses a request whose prompt plus answer limit could
+ * pass 8,000 tokens a minute, so its answers are capped lower.
+ */
+const GROQ_MAX_TOKENS = { customer: 1500, deal: 2500, merchant: 4500 } as const;
 
 /**
  * How long the server waits for Claude, a little under how long the app
@@ -131,7 +142,7 @@ const SYSTEM = {
 
 Actions:
 - search: they want to find deals. Put an English search phrase in query that keeps every detail they gave: the thing (biryani, haircut, car wash, 2BHK), price limits ("under 300"), the area if it is one of the covered areas ("in HSR Layout"), group size ("for 4 people"), and time words ("tonight", "this weekend").
-- book: they want to book or reserve something, usually a table or a time slot. business is the place's name if they said one; query is what they want (e.g. "dinner table", "haircut"). Resolve date to YYYY-MM-DD from today. time is 24-hour HH:MM: a bare "8" or "8 o'clock" for dinner means 20:00, for lunch 13:00, for breakfast 08:00. people is the party size.
+- book: they want to book or reserve something, usually a table or a time slot. business is the place's name if they said one; query is what they want (e.g. "dinner table", "haircut"). Resolve date to YYYY-MM-DD from today; a booking is never in the past, so Hindi "kal" and Kannada "naale" mean tomorrow here. time is 24-hour HH:MM: a bare "8" or "8 o'clock" for dinner means 20:00, for lunch 13:00, for breakfast 08:00. people is the party size.
 - go: they want a screen of the app. screen is one of: my_deals (their deals, codes, orders or bookings as a customer), saved, notifications, profile, help, order_history, vehicle, home, search; or for a business owner: merchant_dashboard, merchant_bookings, merchant_redeem, merchant_new_deal, merchant_deals, merchant_insights.
 - open_business: they name a place and want to look at it, not book it ("show me Rangoli Kitchen").
 
@@ -176,13 +187,144 @@ const FORMATS = {
   deal: betaZodOutputFormat(DealSchema),
 };
 
+const SCHEMAS = { customer: CustomerSchema, merchant: MerchantSchema, deal: DealSchema };
+
+/**
+ * The same schemas as JSON Schema for Groq's strict mode, which wants every
+ * field required and no extra keywords; number bounds are left to zod,
+ * which checks every answer again before it is used.
+ */
+function strictSchema(schema: z.ZodType): unknown {
+  const strip = (node: unknown): unknown => {
+    if (Array.isArray(node)) return node.map(strip);
+    if (!node || typeof node !== 'object') return node;
+    return Object.fromEntries(
+      Object.entries(node)
+        .filter(([k]) => !['$schema', 'minimum', 'maximum', 'exclusiveMinimum', 'exclusiveMaximum'].includes(k))
+        .map(([k, v]) => [k, strip(v)]),
+    );
+  };
+  return strip(z.toJSONSchema(schema, { io: 'output' }));
+}
+
+const GROQ_SCHEMAS = {
+  customer: strictSchema(CustomerSchema),
+  merchant: strictSchema(MerchantSchema),
+  deal: strictSchema(DealSchema),
+};
+
 // Quick for spoken commands; more thought for a whole business description.
 const EFFORT = { customer: 'low', merchant: 'medium', deal: 'low' } as const;
 
 const LANG_NAME: Record<string, string> = { 'en-IN': 'English', 'hi-IN': 'Hindi', 'kn-IN': 'Kannada' };
 
+type Task = keyof typeof MAX_CHARS;
+
+async function askClaude(task: Task, said: string, signal: AbortSignal): Promise<Response> {
+  const client = new Anthropic({ timeout: TIMEOUT_MS[task], maxRetries: 0 });
+  try {
+    const response = await client.beta.messages.parse({
+      model: MODEL,
+      max_tokens: MAX_TOKENS[task],
+      // If this model declines, the API retries on a suitable fallback model.
+      betas: ['server-side-fallback-2026-07-01'],
+      fallbacks: 'default',
+      output_config: { effort: EFFORT[task], format: FORMATS[task] },
+      system: SYSTEM[task],
+      messages: [{ role: 'user', content: said }],
+    },
+    // If the app gives up first, stop the call then too.
+    { signal });
+    if (response.stop_reason === 'refusal' || !response.parsed_output) {
+      return Response.json({ error: 'not_understood' }, { status: 422 });
+    }
+    return Response.json({ result: response.parsed_output });
+  } catch (error) {
+    // The app stopped waiting: nothing to log, nobody to answer.
+    if (error instanceof Anthropic.APIUserAbortError) return new Response(null, { status: 499 });
+    if (error instanceof Anthropic.APIConnectionTimeoutError) return Response.json({ error: 'slow' }, { status: 504 });
+    // Shows in the host's logs; the person just gets the built-in rules.
+    console.error('assist failed', task, error instanceof Error ? error.message : error);
+    if (error instanceof Anthropic.AuthenticationError) return Response.json({ error: 'bad_key' }, { status: 503 });
+    if (error instanceof Anthropic.RateLimitError) return Response.json({ error: 'busy' }, { status: 429 });
+    if (error instanceof Anthropic.APIError) return Response.json({ error: 'upstream' }, { status: 502 });
+    return Response.json({ error: 'failed' }, { status: 500 });
+  }
+}
+
+async function askGroq(task: Task, said: string, signal: AbortSignal): Promise<Response> {
+  // Stop at our own deadline, or when the app stops waiting, whichever is first.
+  const stop = new AbortController();
+  const timer = setTimeout(() => stop.abort(), TIMEOUT_MS[task]);
+  const onLeave = () => stop.abort();
+  signal.addEventListener('abort', onLeave);
+  const ask = () =>
+    fetch(GROQ_URL, {
+      method: 'POST',
+      headers: { Authorization: 'Bearer ' + process.env.GROQ_API_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: GROQ_MODEL,
+        messages: [
+          { role: 'system', content: SYSTEM[task] },
+          { role: 'user', content: said },
+        ],
+        response_format: {
+          type: 'json_schema',
+          json_schema: { name: task, strict: true, schema: GROQ_SCHEMAS[task] },
+        },
+        // Little thinking: it is quick, and the free tier counts its tokens.
+        reasoning_effort: 'low',
+        reasoning_format: 'hidden',
+        max_completion_tokens: GROQ_MAX_TOKENS[task],
+      }),
+      signal: stop.signal,
+    });
+  try {
+    let res = await ask();
+    // The free tier allows a few requests a minute; when the wait is short, wait once.
+    const wait = Number(res.headers.get('retry-after'));
+    if (res.status === 429 && wait > 0 && wait <= 6) {
+      await res.body?.cancel().catch(() => {});
+      await new Promise((done) => setTimeout(done, wait * 1000));
+      res = await ask();
+    }
+    if (!res.ok) {
+      const detail = (await res.text().catch(() => '')).slice(0, 300);
+      console.error('assist failed', task, 'groq', res.status, detail);
+      if (res.status === 401 || res.status === 403) return Response.json({ error: 'bad_key' }, { status: 503 });
+      if (res.status === 429 || res.status === 413) return Response.json({ error: 'busy' }, { status: 429 });
+      // 400 is usually an answer that did not fit the schema: the rules take over.
+      if (res.status === 400) return Response.json({ error: 'not_understood' }, { status: 422 });
+      return Response.json({ error: 'upstream' }, { status: 502 });
+    }
+    const data = (await res.json()) as { choices?: { message?: { content?: string | null }; finish_reason?: string }[] };
+    const choice = data.choices?.[0];
+    let parsed: unknown = null;
+    try {
+      parsed = JSON.parse(choice?.message?.content ?? '');
+    } catch {
+      parsed = null;
+    }
+    // Checked again here: nothing reaches the app that the schema does not allow.
+    const checked = SCHEMAS[task].safeParse(parsed);
+    if (choice?.finish_reason !== 'stop' || !checked.success) {
+      return Response.json({ error: 'not_understood' }, { status: 422 });
+    }
+    return Response.json({ result: checked.data });
+  } catch (error) {
+    if (signal.aborted) return new Response(null, { status: 499 });
+    if (stop.signal.aborted) return Response.json({ error: 'slow' }, { status: 504 });
+    console.error('assist failed', task, 'groq', error instanceof Error ? error.message : error);
+    return Response.json({ error: 'failed' }, { status: 500 });
+  } finally {
+    clearTimeout(timer);
+    signal.removeEventListener('abort', onLeave);
+  }
+}
+
 export async function POST(request: Request) {
-  if (!process.env.ANTHROPIC_API_KEY) {
+  const provider = process.env.ANTHROPIC_API_KEY ? 'claude' : process.env.GROQ_API_KEY ? 'groq' : null;
+  if (!provider) {
     return Response.json({ error: 'no_key' }, { status: 503 });
   }
 
@@ -233,33 +375,6 @@ export async function POST(request: Request) {
       : 'They are a customer.',
   ].join('\n');
 
-  const client = new Anthropic({ timeout: TIMEOUT_MS[task], maxRetries: 0 });
-  try {
-    const response = await client.beta.messages.parse({
-      model: MODEL,
-      max_tokens: MAX_TOKENS[task],
-      // If this model declines, the API retries on a suitable fallback model.
-      betas: ['server-side-fallback-2026-07-01'],
-      fallbacks: 'default',
-      output_config: { effort: EFFORT[task], format: FORMATS[task] },
-      system: SYSTEM[task],
-      messages: [{ role: 'user', content: context + '\n\nWhat they said:\n"""\n' + text + '\n"""' }],
-    },
-    // If the app gives up first, stop the call then too.
-    { signal: request.signal });
-    if (response.stop_reason === 'refusal' || !response.parsed_output) {
-      return Response.json({ error: 'not_understood' }, { status: 422 });
-    }
-    return Response.json({ result: response.parsed_output });
-  } catch (error) {
-    // The app stopped waiting: nothing to log, nobody to answer.
-    if (error instanceof Anthropic.APIUserAbortError) return new Response(null, { status: 499 });
-    if (error instanceof Anthropic.APIConnectionTimeoutError) return Response.json({ error: 'slow' }, { status: 504 });
-    // Shows in the host's logs; the person just gets the built-in rules.
-    console.error('assist failed', task, error instanceof Error ? error.message : error);
-    if (error instanceof Anthropic.AuthenticationError) return Response.json({ error: 'bad_key' }, { status: 503 });
-    if (error instanceof Anthropic.RateLimitError) return Response.json({ error: 'busy' }, { status: 429 });
-    if (error instanceof Anthropic.APIError) return Response.json({ error: 'upstream' }, { status: 502 });
-    return Response.json({ error: 'failed' }, { status: 500 });
-  }
+  const said = context + '\n\nWhat they said:\n"""\n' + text + '\n"""';
+  return provider === 'claude' ? askClaude(task, said, request.signal) : askGroq(task, said, request.signal);
 }

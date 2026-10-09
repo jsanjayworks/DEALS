@@ -84,7 +84,7 @@ function topicOf(t: string, extra?: RegExp): string | null {
   s = s.replace(/\b(near|around|close to) (me|us|here)\b|\b(nearby|close by|around here)\b/gi, ' ');
   s = s
     .replace(
-      /\b(what'?s|whats|what is|what|which is|which|where|the|a|an|best|good|great|top|nice|deals?|offers?|for (me|us)|me|my|i|today|now|right now|please|can you|could you|would you|suggest|recommend(ations?)?|something|anything|want|need|show|give|tell|should|surprise|is|are|there|any|some|to|of)\b/gi,
+      /\b(what'?s|whats|what is|what|which is|which|where|the|a|an|best|good|great|top|nice|deals?|offers?|for (me|us|you)|me|my|you|your|i|today|now|right now|please|can you|could you|would you|suggest|recommend(ations?)?|something|anything|want|need|show|give|tell|should|surprise|is|are|there|any|some|to|of)\b/gi,
       ' ',
     )
     .replace(/\b(eat|eating|hungry)\b/gi, 'food');
@@ -248,6 +248,22 @@ function recommendJob(t: string, blank: Blank): CustomerIntent | null {
   }
   const q = topicOf(t);
   return { ...blank, kind: 'recommend', query: q, heard: q ? 'Best for you: ' + q : 'Best deals for you today' };
+}
+
+/**
+ * Tidies a job the AI understood with the same rules the fallback uses, so
+ * either way the app acts alike: "this place" in the words means the whole
+ * place, and a topic like "dinner tonight" is the meal, not words to search.
+ */
+export function settleCustomerIntent(intent: CustomerIntent, text: string): CustomerIntent {
+  if (intent.kind === 'not_interested') {
+    const scope = hideScope(text);
+    return scope === 'deal' ? intent : { ...intent, query: scope };
+  }
+  if (intent.kind === 'recommend' && intent.query) {
+    return { ...intent, query: topicOf(intent.query) };
+  }
+  return intent;
 }
 
 export function ruleCustomerIntent(text: string, today: string, mode: AssistMode = 'customer'): CustomerIntent {
