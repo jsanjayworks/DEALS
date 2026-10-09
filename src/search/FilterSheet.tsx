@@ -12,7 +12,7 @@ import { Pressable, StyleSheet, Switch, Text, View } from 'react-native';
 import { TOP_CATEGORIES } from '../data/seed-reference';
 import type { DealTypeCode, SearchFilters, SortKey } from '../data/types';
 import { color, space, type } from '../theme/tokens';
-import { Button, Chip, Label, Sheet } from '../components';
+import { Button, Chip, Label, Sheet, useSheetPresence } from '../components';
 import { AMENITIES } from '../data/amenities';
 
 import { EMPTY_FILTERS } from './parser';
@@ -83,9 +83,10 @@ export interface FilterSheetProps {
   hideCategory?: boolean;
 }
 
-/** Mounted only while open, so each opening drafts from the live filters. */
+/** Mounted only while open (and while it slides away), so each opening drafts from the live filters. */
 export function FilterSheet(props: FilterSheetProps) {
-  return props.visible ? <FilterSheetOpen {...props} /> : null;
+  const { shown, opening } = useSheetPresence(props.visible);
+  return shown ? <FilterSheetOpen key={opening} {...props} /> : null;
 }
 
 function FilterSheetOpen({ visible, filters, onApply, onClose, hideCategory }: FilterSheetProps) {

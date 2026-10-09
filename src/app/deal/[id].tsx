@@ -61,6 +61,7 @@ import {
   VerifiedBadge,
 } from '../../components';
 import { pressedProps } from '../../lib/a11y';
+import { toast } from '../../ui/Toast';
 
 const HERO_HEIGHT = 300;
 /** Space either side of the photo card on a phone. */
@@ -152,13 +153,6 @@ export default function DealDetailScreen() {
   const [reportOpen, setReportOpen] = useState(false);
   const [reported, setReported] = useState(false);
   const [savedOverride, setSavedOverride] = useState<boolean | null>(null);
-  /** A short confirmation over the page, e.g. "Link copied". */
-  const [toast, setToast] = useState<string | null>(null);
-  useEffect(() => {
-    if (!toast) return;
-    const t = setTimeout(() => setToast(null), 2200);
-    return () => clearTimeout(t);
-  }, [toast]);
 
   // Once the photo scrolls away, a solid bar with the title fades in behind
   // the round buttons, so they never float over the text below.
@@ -304,7 +298,9 @@ export default function DealDetailScreen() {
     track({ name: saved ? 'unsave' : 'save', deal_id: deal.id });
     setSavedOverride(!saved);
     try {
-      setSavedOverride(await db.toggleSavedDeal(deal.id));
+      const nowSaved = await db.toggleSavedDeal(deal.id);
+      setSavedOverride(nowSaved);
+      toast(nowSaved ? 'Saved to your list' : 'Removed from saved', nowSaved ? 'heart' : 'check');
     } catch {
       setSavedOverride(saved);
     }
@@ -615,7 +611,7 @@ export default function DealDetailScreen() {
             onPress={() => {
               track({ name: 'share', deal_id: deal.id });
               void shareDeal(deal).then((r) => {
-                if (r === 'copied') setToast('Link copied. Paste it anywhere to share.');
+                if (r === 'copied') toast('Link copied. Paste it anywhere to share.', 'share');
               });
             }}
           />
@@ -627,12 +623,6 @@ export default function DealDetailScreen() {
           />
         </View>
       </View>
-
-      {toast ? (
-        <View style={[styles.toast, { top: insets.top + 72 }]} pointerEvents="none" accessibilityLiveRegion="polite">
-          <Text style={styles.toastText}>{toast}</Text>
-        </View>
-      ) : null}
 
       {/* Sticky action bar on a phone; inline in the details column when wide */}
       {wide ? null : actionBar}
@@ -1111,18 +1101,6 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: space.lg,
     paddingBottom: 10,
-  },
-  toast: {
-    position: 'absolute',
-    alignSelf: 'center',
-    paddingHorizontal: space.lg,
-    paddingVertical: space.sm,
-    borderRadius: radius.pill,
-    backgroundColor: color.text,
-  },
-  toastText: {
-    ...type.captionMedium,
-    color: color.white,
   },
   topBackdrop: {
     ...StyleSheet.absoluteFill,

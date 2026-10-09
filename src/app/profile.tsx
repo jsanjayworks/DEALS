@@ -15,21 +15,14 @@ import { useCallback, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Constants from 'expo-constants';
 import { router } from 'expo-router';
-import { auth, db, demoAccounts, demoIsOptional, leaveDemo, resetDemoData } from '../data';
+import { auth, db, demoIsOptional, leaveDemo, resetDemoData } from '../data';
 import { useQuery } from '../lib/useQuery';
-import { type AccountKind, useDemo, useSession, useViewer } from '../state/session';
+import { useDemo, useSession, useViewer } from '../state/session';
 import { choiceLabel } from '../data/vehicles';
 import { color, radius, size, space, type } from '../theme/tokens';
-import { Avatar, Button, Chip, EmptyState, Header, Icon, type IconName, VerifiedBadge } from '../components';
-
-const ACCOUNT_LABEL: Record<AccountKind, string> = {
-  customer: 'Customer',
-  merchant: 'Merchant',
-  admin: 'Admin',
-};
+import { Avatar, Button, EmptyState, Header, Icon, type IconName, VerifiedBadge } from '../components';
 
 export default function ProfileScreen() {
-  const setAccount = useSession((s) => s.setAccount);
   const viewer = useViewer();
   const vehicle = choiceLabel(useSession((s) => s.vehicleId));
   // The demo's parts appear once the page is live; the server renders the real app.
@@ -71,12 +64,12 @@ export default function ProfileScreen() {
         <EmptyState
           icon="user"
           title="Sign in to YOLO Deals"
-          body="Claim deals, keep your codes and save favourites with a one-time code."
+          body="Claim deals, keep your codes and save favourites. Sign in with your mobile number."
           action={
             <View style={styles.signedOutActions}>
               <Button onPress={() => router.push('/sign-in')}>Sign in</Button>
               <Button variant="secondary" onPress={() => router.push('/business')}>
-                Merchant login
+                YOLO for Business
               </Button>
             </View>
           }
@@ -251,20 +244,13 @@ export default function ProfileScreen() {
 
         {demo ? (
           <>
-            <Text style={styles.sectionTitle}>Demo account</Text>
+            <Text style={styles.sectionTitle}>Demo</Text>
             <View style={styles.group}>
               <Text style={styles.demoNote}>
                 {demoIsOptional
-                  ? 'You are exploring the demo: sample data in this browser only. Switch accounts here without signing out.'
-                  : 'Running on offline demo data. Switch accounts here without signing out.'}
+                  ? 'You are exploring the demo: sample data in this browser only.'
+                  : 'Running on offline demo data.'}
               </Text>
-              <View style={styles.chips}>
-                {(Object.keys(ACCOUNT_LABEL) as AccountKind[]).map((k) => (
-                  <Chip key={k} selected={viewer.id === demoAccounts[k].id} onPress={() => setAccount(k)}>
-                    {ACCOUNT_LABEL[k]}
-                  </Chip>
-                ))}
-              </View>
               <ResetDemo />
               {demoIsOptional ? (
                 <View style={styles.reset}>

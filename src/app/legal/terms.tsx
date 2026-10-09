@@ -35,8 +35,8 @@ export default function TermsScreen() {
 
       <Section n={4} title="Your account">
         <P>
-          You sign in with a one-time code. Keep access to your email (or phone) secure, give accurate
-          details, and do not use someone else’s account. You are responsible for claims made from
+          You sign in with your mobile number (while YOLO Deals is being tested, without a code). Use
+          only your own number, give accurate details, and do not use someone else’s account. You are responsible for claims made from
           your account.
         </P>
       </Section>

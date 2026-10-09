@@ -1,8 +1,7 @@
 /**
  * "Just looking?" on the real sign-in screens: a way into the demo, with
- * sample businesses and ready-made customer, merchant and admin accounts,
- * for anyone who wants to see how YOLO works before signing up. Web only,
- * since the demo keeps its data in the browser.
+ * sample businesses and deals, for anyone who wants to see how YOLO works
+ * before signing up. Web only, since the demo keeps its data in the browser.
  */
 
 import { Platform, StyleSheet, Text, View } from 'react-native';
@@ -20,7 +19,7 @@ export function ExploreDemo({ lead }: { lead?: string }) {
       <Text style={styles.title}>Just looking around?</Text>
       <Text style={styles.body}>
         {lead ??
-          'Explore the demo: sample businesses and ready-made customer, merchant and admin accounts. Nothing there is real, and it stays in this browser.'}
+          'Explore the demo: sample businesses and deals to try ordering, booking and listing a business. Nothing there is real, and it stays in this browser.'}
       </Text>
       <Button small variant="secondary" icon="sparkles" onPress={enterDemo}>
         Explore the demo

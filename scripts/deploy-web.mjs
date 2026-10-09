@@ -95,8 +95,15 @@ ok('Supabase project ' + url);
 }
 
 // ---- sign-in method ----
-const signin = env.EXPO_PUBLIC_SIGNIN || 'phone';
-if (/phone/.test(signin) && env.YOLO_SMS_READY !== 'yes') {
+// Testing phase: a mobile number alone signs in. Codes come back for launch.
+const signin = env.EXPO_PUBLIC_SIGNIN || 'number';
+if (/number/.test(signin)) {
+  console.warn(
+    '\n! Sign-in is by mobile number with no code (testing): anyone who types a number opens that\n' +
+      '  account, the admin\'s too. Before real customers, set EXPO_PUBLIC_SIGNIN=phone and follow\n' +
+      '  docs/LAUNCH.md step 3 (codes on, testing passwords cleared).\n',
+  );
+} else if (/phone/.test(signin) && env.YOLO_SMS_READY !== 'yes') {
   console.warn(
     '\n! Sign-in is by phone (EXPO_PUBLIC_SIGNIN=' + signin + '). Real codes need an SMS provider and DLT registration in\n' +
       '  Supabase Auth > Phone; until then only the test numbers you add there can sign in. Set\n' +

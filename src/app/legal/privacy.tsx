@@ -95,8 +95,9 @@ export default function PrivacyScreen() {
 
       <Section n={8} title="Security">
         <P>
-          Sign-in is by one-time code, so there is no password to steal. Data travels over encrypted
-          connections and every database read is checked against who is asking. No system is
+          While YOLO Deals is being tested, you sign in with your mobile number alone; before it opens
+          to the public, sign-in will need a one-time code sent to that number. Data travels over
+          encrypted connections and every database read is checked against who is asking. No system is
           perfectly secure; if a breach affects you, we will tell you and the authorities as the law
           requires.
         </P>

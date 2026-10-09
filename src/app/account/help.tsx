@@ -23,6 +23,7 @@ import { useQuery } from '../../lib/useQuery';
 import { useViewer } from '../../state/session';
 import { color, font, radius, space, type } from '../../theme/tokens';
 import { Button, Chip, Header, Icon, Label, StatusPill } from '../../components';
+import { toast } from '../../ui/Toast';
 
 const FAQ: { id: string; q: string; a: string }[] = [
   {
@@ -102,6 +103,7 @@ function TicketItem({
       await db.followUpSupportTicket(t.id, text.trim());
       setText('');
       hapticSuccess();
+      toast('Message sent');
       onSent();
     } catch (e) {
       setError(e instanceof RuleViolation ? e.message : 'That did not send. Try again.');
@@ -207,6 +209,7 @@ export default function HelpScreen() {
                 preset={params.action}
                 onSent={() => {
                   hapticSuccess();
+                  toast('Request sent. We will reply here.');
                   reload();
                 }}
               />

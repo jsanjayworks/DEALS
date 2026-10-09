@@ -1,23 +1,20 @@
 /**
- * Customer sign-in with a one-time code.
+ * Customer sign-in and sign-up in one: a mobile number while YOLO is being
+ * tested (one-time codes come back for launch, see OtpForm).
  *
- * There is no separate sign-up. A first sign-in creates the account, and the
+ * A number with no account asks for a name and makes one; the
  * on_auth_user_created trigger (0004) gives it the profile everything else
  * hangs off. Merchants have their own door, "YOLO for Business" at /business,
  * which uses the same account; the link at the bottom goes there.
- *
- * On the local demo the same form signs in to the three demo accounts, which
- * are listed under it with their addresses and the code.
  */
 
 import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { DemoLogins } from '../auth/DemoLogins';
 import { DoorLink, OtpForm } from '../auth/OtpForm';
 import { ExploreDemo } from '../auth/ExploreDemo';
 import { auth } from '../data';
-import { useDemo, useSession } from '../state/session';
+import { useDemo } from '../state/session';
 import { color, space } from '../theme/tokens';
 import { Header } from '../components';
 
@@ -30,7 +27,6 @@ const asNext = (v: unknown): NextRoute | null =>
 export default function SignInScreen() {
   const insets = useSafeAreaInsets();
   const { next } = useLocalSearchParams<{ next?: string }>();
-  const setMode = useSession((s) => s.setMode);
   // The demo's parts appear once the page is live; the server renders the real app.
   const demo = useDemo();
   const close = () => (router.canGoBack() ? router.back() : router.dismissTo('/'));
@@ -48,8 +44,8 @@ export default function SignInScreen() {
             title="Welcome to YOLO Deals"
             lead={
               demo
-                ? 'Demo: enter any email to sign in. No code needed; a new email makes a new account.'
-                : 'We will text a one-time code to your mobile. No password needed.'
+                ? 'Demo: any number signs in. A new number makes a new demo account in this browser.'
+                : 'Enter your mobile number. New here? We will make your account. No code or password while YOLO is in testing.'
             }
             onSignedIn={() => {
               const to = asNext(next);
@@ -59,27 +55,11 @@ export default function SignInScreen() {
             footer={
               <DoorLink
                 prompt="Own a business?"
-                action="Merchant login"
+                action="YOLO for Business"
                 onPress={() => router.replace('/business')}
               />
             }
           />
-          {demo ? (
-            <DemoLogins
-              onSignedIn={(kind) => {
-                // Each demo account lands where that person would start.
-                if (kind === 'merchant') {
-                  setMode('merchant');
-                  router.replace('/merchant');
-                } else if (kind === 'admin') router.replace('/profile');
-                else {
-                  const to = asNext(next);
-                  if (to) router.replace(to);
-                  else close();
-                }
-              }}
-            />
-          ) : null}
           <ExploreDemo />
         </ScrollView>
       </KeyboardAvoidingView>

@@ -29,7 +29,7 @@ export {
   type SectionProps,
   type FieldProps,
 } from './Layout';
-export { Sheet, type SheetProps } from './Sheet';
+export { Sheet, SHEET_CLOSE_MS, useSheetPresence, type SheetProps } from './Sheet';
 export { LocalityPicker, type LocalityPickerProps } from './LocalityPicker';
 export { Glass, type GlassProps } from './Glass';
 export { useHoverPress } from './useHoverPress';

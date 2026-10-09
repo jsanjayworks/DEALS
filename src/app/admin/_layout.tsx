@@ -7,6 +7,7 @@ import { Stack, router } from 'expo-router';
 import { View } from 'react-native';
 import { useViewer, useViewerReady } from '../../state/session';
 import { color } from '../../theme/tokens';
+import { screenTransition } from '../../ui/ScreenTransition';
 import { Button, EmptyState, Header } from '../../components';
 
 /**
@@ -37,6 +38,7 @@ export default function AdminLayout() {
   return (
     <Stack
       screenOptions={{ headerShown: false, contentStyle: { backgroundColor: color.background, ...COLUMN } }}
+      screenLayout={screenTransition}
     />
   );
 }

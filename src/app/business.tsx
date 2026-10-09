@@ -16,7 +16,6 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { StatusBar } from 'expo-status-bar';
 import { Redirect, router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { DemoLogins } from '../auth/DemoLogins';
 import { DoorLink, OtpForm } from '../auth/OtpForm';
 import { ExploreDemo } from '../auth/ExploreDemo';
 import { auth, refreshViewer } from '../data';
@@ -58,7 +57,7 @@ export default function BusinessLoginScreen() {
               </Pressable>
               <Text style={styles.overline}>YOLO for Business</Text>
               <Text style={styles.title} accessibilityRole="header">
-                Merchant login
+                Partner with YOLO
               </Text>
               <Text style={styles.lead}>Post deals, redeem codes and see what is working.</Text>
             </View>
@@ -68,27 +67,18 @@ export default function BusinessLoginScreen() {
             <View style={styles.card}>
             <OtpForm
               api={auth}
-              title="Sign in to your business"
+              title="Register or log in"
               lead={
                 demo
-                  ? 'Demo: enter any email, no code needed. A new email goes on to set up its business.'
-                  : 'New here? Sign in with your mobile number and set up your business next, by voice if you like.'
+                  ? 'Demo: any number signs in. A new number goes on to set up its business in this browser.'
+                  : 'Enter your mobile number. New here? We make your account and you set up your business next, by voice if you like. No code or password while YOLO is in testing.'
               }
               onSignedIn={async () => {
                 setMode('merchant');
                 await refreshViewer();
               }}
             />
-            {demo ? (
-              <DemoLogins
-                only={['merchant', 'customer']}
-                onSignedIn={(kind) => {
-                  // The redirects above take it from here.
-                  if (kind === 'merchant') setMode('merchant');
-                }}
-              />
-            ) : null}
-            <ExploreDemo lead="See how a merchant posts deals, takes bookings and redeems codes, with a ready-made restaurant account. Nothing there is real." />
+            <ExploreDemo lead="See how YOLO works on sample shops and deals, and try listing a business. Nothing there is real, and it stays in this browser." />
             </View>
           </View>
 

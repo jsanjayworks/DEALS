@@ -23,6 +23,7 @@ import { BricolageGrotesque_700Bold } from '@expo-google-fonts/bricolage-grotesq
 import { Fraunces_600SemiBold } from '@expo-google-fonts/fraunces/600SemiBold';
 import { color } from '../theme/tokens';
 import { installFocusRing } from '../lib/focus-ring';
+import { installWebMotion } from '../lib/web-motion';
 import { ChromeProvider } from '../ui/chrome';
 import { DemoBar } from '../ui/DemoBar';
 import { FirstRun } from '../ui/FirstRun';
@@ -30,6 +31,8 @@ import { LiveAlerts } from '../ui/LiveAlerts';
 import { LaunchSplash, markLaunchDone } from '../ui/LaunchSplash';
 import { LoadErrorBanner } from '../ui/LoadErrorBanner';
 import { PageTitle } from '../ui/PageTitle';
+import { screenTransition } from '../ui/ScreenTransition';
+import { ToastHost } from '../ui/Toast';
 import { VoiceHost } from '../voice/VoiceHost';
 import { track } from '../lib/track';
 
@@ -41,6 +44,7 @@ export const unstable_settings = {
 
 // Web: no outline box after clicks and taps; a brand ring for keyboard users.
 installFocusRing();
+installWebMotion();
 
 /** The website opens on the brand screen; phones have the native splash. */
 const WEB = Platform.OS === 'web';
@@ -94,6 +98,7 @@ export default function RootLayout() {
               headerShown: false,
               contentStyle: { backgroundColor: color.background },
             }}
+            screenLayout={screenTransition}
           >
             <Stack.Screen name="(customer)" />
             <Stack.Screen name="deal/[id]" options={{ presentation: 'card' }} />
@@ -110,6 +115,7 @@ export default function RootLayout() {
           <PageTitle />
           <FirstRun />
           <LiveAlerts />
+          <ToastHost />
           <VoiceHost />
           {splashDone ? null : <LaunchSplash ready onDone={endSplash} />}
         </ChromeProvider>

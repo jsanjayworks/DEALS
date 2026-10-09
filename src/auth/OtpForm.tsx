@@ -1,10 +1,12 @@
 /**
- * The one-time-code form behind both doors: customer sign-in and the
- * "YOLO for Business" merchant login. The real app signs in by mobile number,
- * the way people in India expect; EXPO_PUBLIC_SIGNIN can widen it to
- * "phone,email" or switch to "email" (phone codes need an SMS provider and
- * DLT registration; Supabase test numbers work before that). The demo signs
- * in by email, because its ready-made accounts are email addresses.
+ * The sign-in form behind both doors: customer sign-in and the "YOLO for
+ * Business" merchant login.
+ *
+ * While YOLO is being tested, a mobile number alone signs in ("number"): no
+ * code, no password. A number with no account asks for a name and makes one.
+ * For launch, EXPO_PUBLIC_SIGNIN switches to one-time codes: "phone", "email"
+ * or "phone,email" (phone codes need an SMS provider and DLT registration).
+ * The demo always signs in by number.
  *
  * Both doors lead to the same account. What the account can open afterwards
  * (merchant mode, admin) comes from the data, so the form only signs in and
@@ -20,17 +22,19 @@ import { hapticSuccess } from '../lib/device';
 import { color, font, radius, size, space, type } from '../theme/tokens';
 import { Button, Chip } from '../components';
 import { reach } from '../lib/a11y';
+import { toast } from '../ui/Toast';
 
-type Method = 'phone' | 'email';
+/** "number": mobile number, no code (testing). "phone" and "email": a one-time code. */
+type Method = 'number' | 'phone' | 'email';
 
 /** How the real app signs in; the first one listed is the default. */
 const REAL_METHODS: Method[] = (() => {
-  const raw = process.env.EXPO_PUBLIC_SIGNIN || (process.env.EXPO_PUBLIC_PHONE_SIGNIN === 'on' ? 'phone,email' : 'phone');
+  const raw = process.env.EXPO_PUBLIC_SIGNIN || 'number';
   const list = raw
     .split(',')
     .map((m) => m.trim())
-    .filter((m): m is Method => m === 'phone' || m === 'email');
-  return list.length ? list : ['phone'];
+    .filter((m): m is Method => m === 'number' || m === 'phone' || m === 'email');
+  return list.length ? list : ['number'];
 })();
 
 /** Accepts "98450 12345", "+91 98450 12345" or "919845012345"; returns E.164. */
@@ -40,6 +44,9 @@ function toE164(raw: string): string | null {
   if (digits.length === 12 && digits.startsWith('91')) return '+' + digits;
   return null;
 }
+
+/** "+919000017011" as people write it: "+91 90000 17011". */
+const showNumber = (e164: string) => e164.replace(/^\+91(\d{5})(\d{5})$/, '+91 $1 $2');
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -61,15 +68,17 @@ export function OtpForm({
   codeHint?: string;
   onSignedIn: () => void | Promise<void>;
 }) {
-  // The demo has no codes: Continue signs in with the address as it is. Only
-  // once the page is live, since the server renders the real app's form (useDemo).
-  const instant = useDemo() && typeof api.signInWithoutCode === 'function';
-  const methods: Method[] = instant ? ['email'] : REAL_METHODS;
+  // The demo has no codes: it signs in by number. Only once the page is live,
+  // since the server renders the real app's form (useDemo).
+  const methods: Method[] = useDemo() ? ['number'] : REAL_METHODS;
   const [picked, setMethod] = useState<Method>(methods[0]);
   const method = methods.includes(picked) ? picked : methods[0];
   const [value, setValue] = useState('');
   const [target, setTarget] = useState<OtpTarget | null>(null);
   const [code, setCode] = useState('');
+  /** A number with no account yet: asking for the name to make one. */
+  const [newNumber, setNewNumber] = useState<string | null>(null);
+  const [name, setName] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -88,7 +97,7 @@ export function OtpForm({
   const send = () =>
     run(async () => {
       let t: OtpTarget;
-      if (method === 'phone') {
+      if (method === 'phone' || method === 'number') {
         const phone = toE164(value);
         if (!phone) throw new RuleViolation('Enter a 10-digit mobile number');
         t = { phone };
@@ -97,9 +106,14 @@ export function OtpForm({
         if (!EMAIL_RE.test(email)) throw new RuleViolation('Enter a valid email address');
         t = { email };
       }
-      if (instant && api.signInWithoutCode) {
-        await api.signInWithoutCode(t);
+      if (method === 'number' && 'phone' in t) {
+        if ((await api.signInWithNumber(t.phone)) === 'needs_name') {
+          setNewNumber(t.phone);
+          setName('');
+          return;
+        }
         hapticSuccess();
+        toast('Welcome back');
         await onSignedIn();
         return;
       }
@@ -117,11 +131,66 @@ export function OtpForm({
       await onSignedIn();
     });
 
+  const create = () =>
+    run(async () => {
+      if (!newNumber) return;
+      if (name.trim().length < 2) throw new RuleViolation('Enter your name');
+      await api.signInWithNumber(newNumber, name.trim());
+      hapticSuccess();
+      toast('Welcome to YOLO, ' + name.trim().split(/\s+/)[0]);
+      await onSignedIn();
+    });
+
   const pick = (m: Method) => {
     setMethod(m);
     setValue('');
     setError(null);
   };
+
+  if (newNumber) {
+    return (
+      <View>
+        <Text style={styles.title} accessibilityRole="header">
+          Welcome to YOLO
+        </Text>
+        <Text style={styles.lead}>{showNumber(newNumber)} is new here. What should we call you?</Text>
+        <TextInput
+          value={name}
+          onChangeText={(t) => {
+            setName(t);
+            setError(null);
+          }}
+          onSubmitEditing={() => void create()}
+          placeholder="Your name"
+          placeholderTextColor={color.textMuted}
+          autoCapitalize="words"
+          autoComplete="name"
+          textContentType="name"
+          accessibilityLabel="Your name"
+          autoFocus
+          style={[styles.input, styles.nameInput]}
+        />
+        {error ? <Text style={styles.error}>{error}</Text> : null}
+        <View style={styles.cta}>
+          <Button variant="cta" full loading={busy} onPress={() => void create()}>
+            Create my account
+          </Button>
+        </View>
+        <View style={styles.links}>
+          <Pressable
+            onPress={() => {
+              setNewNumber(null);
+              setError(null);
+            }}
+            accessibilityRole="button"
+            hitSlop={8}
+          >
+            <Text style={styles.link}>Change number</Text>
+          </Pressable>
+        </View>
+      </View>
+    );
+  }
 
   if (!target) {
     return (
@@ -133,17 +202,16 @@ export function OtpForm({
 
         {methods.length > 1 ? (
           <View style={styles.methods}>
-            <Chip selected={method === 'phone'} onPress={() => pick('phone')}>
-              Phone
-            </Chip>
-            <Chip selected={method === 'email'} onPress={() => pick('email')}>
-              Email
-            </Chip>
+            {methods.map((m) => (
+              <Chip key={m} selected={method === m} onPress={() => pick(m)}>
+                {m === 'email' ? 'Email' : 'Phone'}
+              </Chip>
+            ))}
           </View>
         ) : null}
 
         <View style={styles.inputRow}>
-          {method === 'phone' ? <Text style={styles.prefix}>+91</Text> : null}
+          {method !== 'email' ? <Text style={styles.prefix}>+91</Text> : null}
           <TextInput
             value={value}
             onChangeText={(t) => {
@@ -151,13 +219,13 @@ export function OtpForm({
               setError(null);
             }}
             onSubmitEditing={() => void send()}
-            placeholder={method === 'phone' ? '98450 12345' : 'you@example.com'}
+            placeholder={method !== 'email' ? '98450 12345' : 'you@example.com'}
             placeholderTextColor={color.textMuted}
-            keyboardType={method === 'phone' ? 'phone-pad' : 'email-address'}
+            keyboardType={method !== 'email' ? 'phone-pad' : 'email-address'}
             autoCapitalize="none"
-            autoComplete={method === 'phone' ? 'tel' : 'email'}
-            textContentType={method === 'phone' ? 'telephoneNumber' : 'emailAddress'}
-            accessibilityLabel={method === 'phone' ? 'Mobile number' : 'Email address'}
+            autoComplete={method !== 'email' ? 'tel' : 'email'}
+            textContentType={method !== 'email' ? 'telephoneNumber' : 'emailAddress'}
+            accessibilityLabel={method !== 'email' ? 'Mobile number' : 'Email address'}
             style={styles.input}
           />
         </View>
@@ -165,7 +233,7 @@ export function OtpForm({
 
         <View style={styles.cta}>
           <Button variant="cta" full loading={busy} onPress={() => void send()}>
-            {instant ? 'Continue' : 'Send code'}
+            {method === 'number' ? 'Continue' : 'Send code'}
           </Button>
         </View>
         <Text style={styles.agree}>
@@ -302,6 +370,14 @@ const styles = StyleSheet.create({
     backgroundColor: color.surface,
     ...type.body,
     color: color.text,
+  },
+  nameInput: {
+    // The shared input style grows sideways in a row; here it stands alone.
+    flexGrow: 0,
+    flexShrink: 0,
+    flexBasis: 'auto',
+    height: size.input,
+    marginTop: space.xl,
   },
   codeInput: {
     flex: 0,

@@ -12,6 +12,7 @@ import { shortAgo } from '../lib/format';
 import { hapticSuccess, hapticTap } from '../lib/device';
 import { color, radius, space, type } from '../theme/tokens';
 import { Button, Icon, Sheet } from '../components';
+import { toast } from '../ui/Toast';
 
 export function StarRow({ rating, size = 14 }: { rating: number; size?: number }) {
   return (
@@ -117,6 +118,7 @@ export function RateSheet({
     try {
       const review = await db.createReview({ action_id: actionId, rating: stars, body });
       hapticSuccess();
+      toast('Thanks for your review');
       setStars(0);
       setBody('');
       onDone(review);

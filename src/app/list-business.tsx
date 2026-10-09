@@ -105,7 +105,10 @@ function SetupForm({
   }, []);
   const { data: refs } = useQuery(fetchRefs);
 
-  const [owner, setOwner] = useState(defaultName);
+  // The account's name until they type their own: a brand-new account's name
+  // can arrive a moment after this opens.
+  const [ownerTyped, setOwner] = useState<string | null>(null);
+  const owner = ownerTyped ?? defaultName;
   const [role, setRole] = useState('');
   const [name, setName] = useState('');
   const [does, setDoes] = useState('');

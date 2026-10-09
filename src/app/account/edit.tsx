@@ -16,6 +16,7 @@ import { hapticSuccess } from '../../lib/device';
 import { useViewer } from '../../state/session';
 import { color, radius, space, type } from '../../theme/tokens';
 import { Avatar, Button, EmptyState, Field, Header } from '../../components';
+import { toast } from '../../ui/Toast';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -91,6 +92,7 @@ function EditForm({ viewer, onDone }: { viewer: AppViewer; onDone: () => void })
       await db.setAvatar({ uri: result.assets[0].uri, mimeType: result.assets[0].mimeType });
       await refreshViewer();
       hapticSuccess();
+      toast('Photo updated');
     } catch (e) {
       setError(e instanceof RuleViolation ? e.message : 'That picture did not upload. Try another one.');
     } finally {
@@ -125,6 +127,7 @@ function EditForm({ viewer, onDone }: { viewer: AppViewer; onDone: () => void })
       });
       await refreshViewer();
       hapticSuccess();
+      toast('Profile saved');
       onDone();
     } catch (e) {
       setError(e instanceof RuleViolation ? e.message : 'That did not save. Please try again.');

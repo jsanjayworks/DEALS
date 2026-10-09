@@ -201,26 +201,21 @@ export function signOutDemo(): void {
   publish(null);
 }
 
-export type DemoAccountKind = keyof typeof demoAccounts;
-
-/** The ready-made demo accounts, listed on the sign-in screens. No email is sent. */
-export const DEMO_LOGINS: { kind: DemoAccountKind; label: string; who: string; email: string }[] = [
-  { kind: 'customer', label: 'Customer', who: 'Aarav Sharma', email: 'customer@demo.yolodeals.in' },
-  { kind: 'merchant', label: 'Merchant', who: 'Meera Rao, Rangoli Kitchen', email: 'merchant@demo.yolodeals.in' },
-  { kind: 'admin', label: 'Admin', who: 'YOLO Ops', email: 'admin@demo.yolodeals.in' },
-];
-
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-/** A ready-made account for its address, or the account for any other email, made on first use. */
+/** The demo account for an address or number, made on first use. */
 function demoAccountFor(target: OtpTarget): AppViewer {
-  const email = 'email' in target ? target.email.trim().toLowerCase() : '';
+  if ('phone' in target) {
+    const user = local.userForPhone(target.phone);
+    if (!user) throw new RuleViolation('No account has this number yet');
+    return user;
+  }
+  const email = target.email.trim().toLowerCase();
   if (!EMAIL_RE.test(email)) throw new RuleViolation('Enter a valid email address');
-  const known = DEMO_LOGINS.find((l) => l.email === email);
-  return known ? demoAccounts[known.kind] : local.userForEmail(email);
+  return local.userForEmail(email);
 }
 
-/** The demo signs in without a code: any email goes straight in. */
+/** The demo has no codes: a number signs in as it does in the testing phase. */
 const demoAuth: AuthApi = {
   async sendCode(target) {
     demoAccountFor(target);
@@ -228,8 +223,11 @@ const demoAuth: AuthApi = {
   async verifyCode(target) {
     signInAs(demoAccountFor(target));
   },
-  async signInWithoutCode(target) {
-    signInAs(demoAccountFor(target));
+  async signInWithNumber(phone, name) {
+    const user = local.userForPhone(phone, name);
+    if (!user) return 'needs_name';
+    signInAs(user);
+    return 'signed_in';
   },
   async signOut() {
     signOutDemo();

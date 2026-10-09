@@ -95,15 +95,20 @@ export interface PickedImage {
 export type OtpTarget = { phone: string } | { email: string };
 
 /**
- * Sign-in by one-time code. Only the Supabase backend has one; the local
- * demo switches accounts instead.
+ * Sign-in. While YOLO is being tested, a mobile number alone signs in, with
+ * no code or password (signInWithNumber); one-time codes (sendCode and
+ * verifyCode) come back for launch, chosen with EXPO_PUBLIC_SIGNIN.
  */
 export interface AuthApi {
   sendCode(target: OtpTarget): Promise<void>;
   verifyCode(target: OtpTarget, code: string): Promise<void>;
   signOut(): Promise<void>;
-  /** The demo only: any email signs in straight away, no code. */
-  signInWithoutCode?(target: OtpTarget): Promise<void>;
+  /**
+   * Testing phase: signs in by number alone. A number with no account yet
+   * needs a name, and then gets an account in that name: until a name is
+   * given this answers 'needs_name'.
+   */
+  signInWithNumber(phone: string, name?: string): Promise<'signed_in' | 'needs_name'>;
 }
 
 export interface FeedQuery {

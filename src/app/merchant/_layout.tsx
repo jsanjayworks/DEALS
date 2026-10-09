@@ -11,6 +11,7 @@ import { Redirect, Stack } from 'expo-router';
 import { useBusinessId } from '../../merchant/useBusiness';
 import { useSession, useViewer, useViewerReady } from '../../state/session';
 import { color } from '../../theme/tokens';
+import { screenTransition } from '../../ui/ScreenTransition';
 
 /**
  * On a wide screen merchant mode is a centred column, not a 1,280 px stretch:
@@ -41,6 +42,7 @@ export default function MerchantLayout() {
         headerShown: false,
         contentStyle: { backgroundColor: color.background, ...COLUMN },
       }}
+      screenLayout={screenTransition}
     >
       <Stack.Screen name="(tabs)" />
       <Stack.Screen name="deal/[id]" />

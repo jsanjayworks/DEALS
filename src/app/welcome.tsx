@@ -26,7 +26,10 @@ export default function WelcomeScreen() {
   const insets = useSafeAreaInsets();
   const { next } = useLocalSearchParams<{ next?: string }>();
   const lang = useSession((s) => s.voiceLang);
-  const [name, setName] = useState(viewer?.full_name ?? '');
+  // The account's name until they say or type their own: a brand-new
+  // account's name can arrive a moment after this opens.
+  const [typedName, setName] = useState<string | null>(null);
+  const name = typedName ?? viewer?.full_name ?? '';
   const [adult, setAdult] = useState(false);
   const [personalise, setPersonalise] = useState(false);
   const [byVoice, setByVoice] = useState(false);

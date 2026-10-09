@@ -19,6 +19,7 @@ import { Button, Chip, EmptyState, Field, Header, Label, VerifiedBadge } from '.
 import { PinLocation } from '../../merchant/PinLocation';
 import { ShopEditor, type ShopDraft } from '../../merchant/ShopEditor';
 import { CATEGORIES } from '../../data/seed-reference';
+import { toast } from '../../ui/Toast';
 
 export default function BusinessDetailsScreen() {
   const { business, loading, reload } = useBusiness();
@@ -110,6 +111,7 @@ function DetailsForm({
         photos: shop.photos,
       });
       hapticSuccess();
+      toast('Business details saved');
       setSaved(true);
       onSaved();
     } catch (e) {

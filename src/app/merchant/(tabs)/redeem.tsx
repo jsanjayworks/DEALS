@@ -16,6 +16,7 @@ import { ACTION_LABEL, slotLabel } from '../../../lib/format';
 import { hapticSuccess } from '../../../lib/device';
 import { color, font, radius, size, space, status as statusColor, type } from '../../../theme/tokens';
 import { Button, Header, Icon } from '../../../components';
+import { toast } from '../../../ui/Toast';
 
 const PREFIX = 'YOLO-';
 
@@ -52,6 +53,7 @@ export default function RedeemScreen() {
       const action = await db.redeemAction(PREFIX + body);
       const deal = await db.getDeal(action.deal_id);
       hapticSuccess();
+      toast('Code redeemed');
       setRecent((r) => [{ action, deal, at: new Date() }, ...r].slice(0, 10));
       setJustRedeemed(true);
       setCode('');

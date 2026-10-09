@@ -35,7 +35,7 @@ import {
   type PayMethod,
 } from '../lib/payment';
 import { color, font, inr, radius, space, status, type } from '../theme/tokens';
-import { Button, Chip, Icon, Label, Sheet, type IconName } from '../components';
+import { Button, Chip, Icon, Label, Sheet, useSheetPresence, type IconName } from '../components';
 
 const PAY_METHODS: { key: PayMethod; icon: IconName; detail: string }[] = [
   { key: 'upi', icon: 'phone', detail: 'Google Pay, PhonePe, Paytm or any UPI app' },
@@ -167,11 +167,12 @@ export interface ClaimSheetProps {
 }
 
 /**
- * Mounted only while open, so every opening starts from a blank form and the
- * clock the slots are built from is read at that moment.
+ * Mounted only while open (and while it slides away), so every opening starts
+ * from a blank form and the clock the slots are built from is read at that moment.
  */
 export function ClaimSheet(props: ClaimSheetProps) {
-  return props.visible ? <ClaimSheetOpen {...props} /> : null;
+  const { shown, opening } = useSheetPresence(props.visible);
+  return shown ? <ClaimSheetOpen key={opening} {...props} /> : null;
 }
 
 /** The slot nearest the asked-for time on the asked-for day, among those offered. */

@@ -214,8 +214,44 @@ const AVATARS = 'avatars';
 const DEAL_PHOTOS = 'deal-photos';
 const AVATAR_TYPES: Record<string, string> = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' };
 
+/**
+ * The password behind number sign-in during testing. Not a secret: anyone
+ * can work it out, which is the point (no code, no password). Before launch
+ * these passwords are cleared and codes come back (docs/LAUNCH.md step 3).
+ */
+const numberPassword = (phone: string) => 'yolo-testing-' + phone.replace(/\D/g, '');
+
+/** Supabase's answers when phone sign-in is not switched on in the project. */
+const PHONE_OFF = 'Sign-in by number is not switched on yet. In Supabase, turn on the Phone provider (docs/LAUNCH.md step 3).';
+
 export function createSupabaseAuth(client: SupabaseClient): AuthApi {
   return {
+    async signInWithNumber(phone, name) {
+      const password = numberPassword(phone);
+      const { error } = await client.auth.signInWithPassword({ phone, password });
+      if (!error) return 'signed_in';
+      if (error.code === 'phone_provider_disabled') throw new RuleViolation(PHONE_OFF);
+      if (error.code !== 'invalid_credentials' && !/invalid login credentials/i.test(error.message)) {
+        throw new RuleViolation(error.message);
+      }
+      // No account for this number yet: one is made once we know the name.
+      const fullName = name?.trim();
+      if (!fullName) return 'needs_name';
+      const { data, error: made } = await client.auth.signUp({ phone, password, options: { data: { full_name: fullName } } });
+      if (made) {
+        if (made.code === 'phone_provider_disabled') throw new RuleViolation(PHONE_OFF);
+        if (/already registered/i.test(made.message)) {
+          throw new RuleViolation('This number already has an account that signs in with a code.');
+        }
+        throw new RuleViolation(made.message);
+      }
+      if (!data.session || !data.user) {
+        throw new RuleViolation('The account was made, but Supabase wants a text to confirm it. Turn off phone confirmations (docs/LAUNCH.md step 3).');
+      }
+      // The profile is made by a trigger without the name; it is the person's own to set.
+      await client.from('profiles').update({ full_name: fullName }).eq('id', data.user.id);
+      return 'signed_in';
+    },
     async sendCode(target: OtpTarget) {
       const { error } =
         'phone' in target

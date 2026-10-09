@@ -19,7 +19,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useSession } from '../state/session';
 import { color, radius, space, type } from '../theme/tokens';
-import { Button, Chip, Icon, Sheet } from '../components';
+import { Button, Chip, Icon, Sheet, useSheetPresence } from '../components';
 import { speechSupported, UNSUPPORTED_TEXT, useSpeech } from './useSpeech';
 import { VOICE_LANGS, type VoiceLang } from './types';
 
@@ -49,8 +49,9 @@ export interface VoiceSheetProps {
 }
 
 export function VoiceSheet(props: VoiceSheetProps) {
-  // Mounted only while open, so each opening starts fresh and listening.
-  return props.visible ? <VoiceSheetOpen {...props} /> : null;
+  // Mounted only while open (and while it slides away), so each opening starts fresh and listening.
+  const { shown, opening } = useSheetPresence(props.visible);
+  return shown ? <VoiceSheetOpen key={opening} {...props} /> : null;
 }
 
 function VoiceSheetOpen({
@@ -78,9 +79,16 @@ function VoiceSheetOpen({
   // Short commands go on their own the moment the speaker stops.
   const speech = useSpeech({
     onEnd: (heard) => {
-      if (autoSubmit && heard && !busy) onSubmit(heard, lang);
+      // Not once it is closing: it stays up a moment only to slide away.
+      if (autoSubmit && heard && !busy && visible) onSubmit(heard, lang);
     },
   });
+
+  // Closing stops listening at once, not when the sheet has slid away.
+  const { listening, stop } = speech;
+  useEffect(() => {
+    if (!visible && listening) stop();
+  }, [visible, listening, stop]);
 
   // Listen straight away, in the language last used, unless it was asked already.
   useEffect(() => {

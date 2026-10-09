@@ -10,12 +10,15 @@
  *
  * The web version animates `active:scale-[.98]` on press. Pressable's `pressed`
  * state gives the same feedback without an Animated value for every button.
+ * Where there is a pointer, buttons answer the hover too: filled ones lift a
+ * little with a deeper shadow, outlined and text ones tint, all eased.
  */
 
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import type { ReactNode } from 'react';
 import { LinearGradient } from 'expo-linear-gradient';
-import { color, font, radius, size, theme, type } from '../theme/tokens';
+import { alpha, color, font, radius, size, theme, type } from '../theme/tokens';
+import { EASE_ALL } from '../lib/web-motion';
 import { Icon, type IconName } from './Icon';
 import { pressedProps } from '../lib/a11y';
 
@@ -47,6 +50,9 @@ const LABEL: Record<ButtonVariant, string> = {
   text: color.brand,
 };
 
+/** Pressable's state; React Native Web also reports the pointer hovering. */
+type PressState = { pressed: boolean; hovered?: boolean };
+
 export function Button({
   children,
   onPress,
@@ -73,20 +79,25 @@ export function Button({
       accessibilityLabel={accessibilityLabel}
       aria-disabled={!!isDisabled}
       aria-busy={!!loading}
-      style={({ pressed }) => [
-        styles.base,
-        {
-          height,
-          borderRadius: corner,
-          paddingHorizontal: small ? 16 : 20,
-          backgroundColor: FILL[variant],
-          alignSelf: full ? 'stretch' : 'flex-start',
-        },
-        sheen && styles.sheenShadow,
-        variant === 'secondary' && styles.bordered,
-        pressed && !isDisabled && styles.pressed,
-        isDisabled && styles.disabled,
-      ]}
+      style={(state) => {
+        const { pressed, hovered } = state as PressState;
+        return [
+          styles.base,
+          EASE_ALL,
+          {
+            height,
+            borderRadius: corner,
+            paddingHorizontal: small ? 16 : 20,
+            backgroundColor: FILL[variant],
+            alignSelf: full ? 'stretch' : 'flex-start',
+          },
+          sheen && styles.sheenShadow,
+          variant === 'secondary' && styles.bordered,
+          hovered && !pressed && !isDisabled && HOVER[sheen ? 'sheen' : variant],
+          pressed && !isDisabled && styles.pressed,
+          isDisabled && styles.disabled,
+        ];
+      }}
     >
       {sheen ? (
         <LinearGradient
@@ -139,12 +150,17 @@ export function Chip({ children, onPress, selected, count, disabled }: ChipProps
       {...pressedProps(!!selected)}
       // Chips are 36 px tall to sit in rows; the touch area reaches 44.
       hitSlop={4}
-      style={({ pressed }) => [
-        styles.chip,
-        selected ? styles.chipOn : styles.chipOff,
-        disabled && styles.chipDisabled,
-        pressed && !disabled && styles.pressed,
-      ]}
+      style={(state) => {
+        const { pressed, hovered } = state as PressState;
+        return [
+          styles.chip,
+          EASE_ALL,
+          selected ? styles.chipOn : styles.chipOff,
+          disabled && styles.chipDisabled,
+          hovered && !pressed && !disabled && (selected ? styles.chipOnHover : styles.chipOffHover),
+          pressed && !disabled && styles.pressed,
+        ];
+      }}
     >
       <Text
         style={[
@@ -168,6 +184,38 @@ export function Chip({ children, onPress, selected, count, disabled }: ChipProps
     </Pressable>
   );
 }
+
+/** What a hovered button turns into, by variant ("sheen" is the gold main action). */
+const HOVER = StyleSheet.create({
+  primary: {
+    transform: [{ translateY: -1 }],
+    shadowColor: color.text,
+    shadowOpacity: 0.18,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 6 },
+  },
+  cta: {
+    transform: [{ translateY: -1 }],
+    shadowColor: color.text,
+    shadowOpacity: 0.18,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 6 },
+  },
+  sheen: {
+    transform: [{ translateY: -1 }],
+    shadowColor: color.accentText,
+    shadowOpacity: 0.45,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 12 },
+  },
+  secondary: {
+    backgroundColor: color.surfaceSoftAlt,
+    borderColor: alpha(color.brand, 0.35),
+  },
+  text: {
+    backgroundColor: alpha(color.brand, 0.07),
+  },
+});
 
 const styles = StyleSheet.create({
   base: {
@@ -197,7 +245,7 @@ const styles = StyleSheet.create({
   },
   pressed: {
     opacity: 0.85,
-    transform: [{ scale: 0.98 }],
+    transform: [{ scale: 0.97 }],
   },
   chipDisabled: {
     backgroundColor: color.surfaceSoftAlt,
@@ -225,6 +273,13 @@ const styles = StyleSheet.create({
   chipOff: {
     backgroundColor: color.surface,
     borderColor: color.border,
+  },
+  chipOffHover: {
+    backgroundColor: color.surfaceSoftAlt,
+    borderColor: alpha(color.brand, 0.45),
+  },
+  chipOnHover: {
+    opacity: 0.92,
   },
   chipLabel: {
     ...type.captionMedium,

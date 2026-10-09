@@ -563,6 +563,8 @@ export interface LocalDataSource extends DataSource {
   getViewer(): LocalViewer;
   /** The account for an email, made on first use: the demo signs in without a code. */
   userForEmail(email: string): LocalViewer;
+  /** The account with this number; a new one in that name when there is none and a name is given. */
+  userForPhone(phone: string, name?: string): LocalViewer | null;
   /** An account by id, for putting the remembered one back after a reload. */
   userById(id: string): LocalViewer | null;
   /** Direct access for tests and for the outbox worker. */
@@ -846,6 +848,27 @@ export function createLocalDataSource(
         is_admin: false,
         business_ids: [],
         // A new account sees the welcome: name, age, and whether to personalise.
+        onboarded: false,
+        personalised: false,
+      };
+      store.users[user.id] = user;
+      return user;
+    },
+
+    userForPhone(phone, name) {
+      const last10 = (p?: string | null) => (p ?? '').replace(/\D/g, '').slice(-10);
+      const want = last10(phone);
+      const found = allUsers().find((u) => last10(u.phone) === want);
+      if (found || !name?.trim()) return found ?? null;
+      const user: LocalViewer = {
+        id: uid('usr'),
+        full_name: name.trim(),
+        phone: '+91' + want,
+        email: null,
+        date_of_birth: null,
+        is_yolo_verified: false,
+        is_admin: false,
+        business_ids: [],
         onboarded: false,
         personalised: false,
       };
